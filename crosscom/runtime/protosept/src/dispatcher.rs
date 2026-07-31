@@ -704,7 +704,16 @@ fn push_return(ctx: &mut Context, rt: &HostReturnTy, raw: RawReturn) -> Result<(
             Ok(())
         }
         (HostReturnTy::Int, RawReturn::Long(v)) => {
-            ctx.stack_frame_mut()?.stack.push(Data::Int(v as i64));
+            // C ABI for IDL `int` is c_int (see ccidl-rs type_map), but the
+            // CIF reads the integer return register as the wider c_long.
+            // Only the low 32 bits are meaningful, so narrow through c_int
+            // before widening — otherwise a negative return arrives with a
+            // zero-extended high half (`-1` reads back as `4294967295`) and
+            // every `== -1` sentinel comparison in script silently fails.
+            // Same hazard the `Bool` arm below normalizes for.
+            ctx.stack_frame_mut()?
+                .stack
+                .push(Data::Int((v as c_int) as i64));
             Ok(())
         }
         (HostReturnTy::Bool, RawReturn::Long(v)) => {
@@ -741,9 +750,11 @@ fn push_return(ctx: &mut Context, rt: &HostReturnTy, raw: RawReturn) -> Result<(
                 push_returned_foreign(ctx, type_tag.as_str(), p, true)
             }
             (HostReturnTy::Int, RawReturn::Long(v)) => {
+                // Same c_int narrowing as the non-nullable `Int` arm above:
+                // without it a negative `?int` payload zero-extends.
                 ctx.stack_frame_mut()?
                     .stack
-                    .push(Data::Some(Rc::new(Data::Int(v as i64))));
+                    .push(Data::Some(Rc::new(Data::Int((v as c_int) as i64))));
                 Ok(())
             }
             (HostReturnTy::Bool, RawReturn::Long(v)) => {

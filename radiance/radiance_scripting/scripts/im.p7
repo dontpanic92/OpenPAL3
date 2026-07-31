@@ -1,0 +1,72 @@
+// radiance_scripting.im — small helpers for IMMEDIATE-mode `IUiHost` code.
+//
+// Distinct from `radiance_scripting.ui`, which is the declarative
+// (`Element` / `measure` / `paint`) widget layer. Screens that still drive
+// imgui directly — chiefly `yaobow_editor` — use these to avoid open-coding
+// the same call patterns.
+//
+// The motivating case is imgui tables. Cells in an imgui table do not
+// auto-advance: the caller must invoke `table_next_column()` before *every*
+// cell. With no helper for that, the editor's settings and game-picker grids
+// were written as manually unrolled sequences —
+//
+//     ui.table_next_column(); self.render_settings_row(ui, 0);
+//     ui.table_next_column(); self.render_settings_row(ui, 1);
+//     ...                                        (ten times, by hand)
+//
+// even though an ordinary `for` loop was available. `grid` and `cells` below
+// make the loop form the obvious one to reach for.
+
+import radiance;
+
+// Emit a table whose cells come from an index closure.
+//
+// `count` cells are submitted into a `cols`-wide table, each preceded by the
+// required `table_next_column()`. `cell(i)` draws cell `i`.
+pub fn grid(
+    ui: box<radiance.IUiHost>,
+    id: string,
+    cols: int,
+    count: int,
+    cell: fn(int),
+) {
+    ui.table(id, cols, () => {
+        for i in Range(0, count) {
+            ui.table_next_column();
+            cell(i);
+        }
+    });
+}
+
+// NOTE: an `array<fn()>` overload for heterogeneous cells is deliberately
+// absent — `array<fn()>` does not resolve today (`fn() -> unit` is not found
+// as an array element type, though `array<fn(int)>` works). See
+// `specs/language-gaps.md`. Heterogeneous rows keep using `ui.table` with
+// explicit `table_next_column()` calls.
+
+// Emit a table over an explicit list of *ordinals* rather than a dense
+// `0..count` range, advancing a column per entry.
+//
+// Grids that are laid out by hand (the editor's game picker places specific
+// games in specific cells, with blanks between them) need to keep their
+// bespoke ordering. Passing the ordinals as data preserves that while still
+// using a loop; `blank` marks a cell that should render empty.
+pub fn grid_of(
+    ui: box<radiance.IUiHost>,
+    id: string,
+    cols: int,
+    ordinals: array<int>,
+    blank: int,
+    cell: fn(int),
+) {
+    ui.table(id, cols, () => {
+        for ord in ordinals {
+            ui.table_next_column();
+            if ord == blank {
+                ui.dummy(0.0, 0.0);
+            } else {
+                cell(ord);
+            }
+        }
+    });
+}

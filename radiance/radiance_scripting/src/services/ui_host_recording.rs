@@ -19,7 +19,7 @@
 //! - [`HostFacade`] is the ComObject the script sees; it holds a
 //!   clone of the `Rc<RecordingUiHost>` and forwards every method.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use crosscom::{ComRc, IAction};
@@ -66,6 +66,12 @@ pub enum UiCall {
     Group,
     StyleAlpha {
         alpha: f32,
+    },
+    ClipRect {
+        x0: f32,
+        y0: f32,
+        x1: f32,
+        y1: f32,
     },
     WithFont {
         font_idx: i32,
@@ -214,6 +220,9 @@ pub enum UiCall {
     BodyExit(&'static str),
 }
 
+/// "Nothing is pressed" sentinel, mirroring `radiance_scripting.ui.NO_PRESS`.
+const NO_PRESS: i32 = -1;
+
 #[derive(Default)]
 pub struct RecordingUiHost {
     pub calls: RefCell<Vec<UiCall>>,
@@ -243,6 +252,11 @@ pub struct RecordingUiHost {
     /// `mouse_is_down`; when exhausted it falls back to `mouse_is_down`.
     /// Lets a single test drive a multi-frame press→release latch.
     pub mouse_down_script: RefCell<std::collections::VecDeque<bool>>,
+    /// Cross-frame press latch (`press_latch` / `set_press_latch`). Mirrors
+    /// the production host: state lives here, not in the script's `UiCtx`,
+    /// so it survives across paint passes even when the script rebuilds its
+    /// context every frame. Seeded to the scripts' `NO_PRESS` sentinel.
+    pub press_latch: Cell<i32>,
 }
 
 impl RecordingUiHost {
@@ -251,6 +265,9 @@ impl RecordingUiHost {
     /// `ComRc<IUiHost>` is what gets interned into the script.
     pub fn create() -> (Rc<RecordingUiHost>, ComRc<IUiHost>) {
         let host = Rc::new(RecordingUiHost::default());
+        // `#[derive(Default)]` would leave the latch at 0, which is a
+        // *valid* widget key; seed the scripts' "nothing pressed" sentinel.
+        host.press_latch.set(NO_PRESS);
         let facade = HostFacade {
             inner: host.clone(),
         };
@@ -382,6 +399,11 @@ impl IUiHostImpl for HostFacade {
     fn style_alpha(&self, alpha: f32, body: ComRc<IAction>) {
         self.inner.record(UiCall::StyleAlpha { alpha });
         invoke_body("style_alpha", &self.inner, body);
+    }
+
+    fn clip_rect(&self, x0: f32, y0: f32, x1: f32, y1: f32, body: ComRc<IAction>) {
+        self.inner.record(UiCall::ClipRect { x0, y0, x1, y1 });
+        invoke_body("clip_rect", &self.inner, body);
     }
 
     fn with_font(&self, font_idx: i32, body: ComRc<IAction>) {
@@ -736,6 +758,12 @@ impl IUiHostImpl for HostFacade {
     }
     fn calc_text_size_y(&self, _s: &str) -> f32 {
         self.inner.char_size.borrow().1
+    }
+    fn press_latch(&self) -> i32 {
+        self.inner.press_latch.get()
+    }
+    fn set_press_latch(&self, key: i32) {
+        self.inner.press_latch.set(key);
     }
     fn any_key_or_mouse_down(&self) -> bool {
         false

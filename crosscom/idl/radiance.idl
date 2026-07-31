@@ -505,6 +505,23 @@ interface IUiHost: IUnknown {
     void group(IAction body);
     void style_alpha(float alpha, IAction body);
 
+    // Push a rectangular clip region (in script/logical pixels) for the
+    // duration of `body`, then pop it. The region is intersected with the
+    // clip rect already in effect.
+    //
+    // Applied to BOTH the current window's clip stack and the background
+    // draw list, because the script UI layer draws through both: cursor-
+    // positioned widgets (`image_uv`, `button`, `text`) land on the window
+    // list, while absolutely-placed art (`image_rect`, `text_at`) goes on
+    // the background list so it composes independently of imgui auto-flow.
+    // Clipping only one of them would let art bleed past the region.
+    //
+    // This replaces per-caller UV trimming: content that legitimately
+    // overhangs its container (a cloud drifting off a fixed game canvas, a
+    // scrolled row) is now clipped by the host instead of each script
+    // recomputing trimmed draw rects and proportionally adjusted UVs.
+    void clip_rect(float x0, float y0, float x1, float y1, IAction body);
+
     // Push an imgui style color for the duration of `body` and pop
     // it on exit. `slot` matches the `imgui::StyleColor` enum values
     // exposed by imgui-rs:
@@ -769,6 +786,25 @@ interface IUiHost: IUnknown {
     // release 鈫?next-press sequence the legacy code used) is left to
     // the script.
     bool any_key_or_mouse_down();
+
+    // --- Cross-frame press latch --------------------------------------
+    // A single integer slot the script UI layer uses to remember which
+    // widget is currently held down between frames.
+    //
+    // Widgets that draw their own chrome (sprite buttons, hosted game
+    // layouts, synthetic text rows) cannot use imgui's native button state,
+    // so they implement press/release themselves: latch a key on
+    // press-inside, fire `on_click` on release-inside while still holding
+    // that key. That requires state which survives from one frame to the
+    // next.
+    //
+    // The host owns it because the script side has no reliable per-screen
+    // place to keep it: a screen that builds its context inside `render`
+    // would silently reset the latch every frame and never fire a click.
+    // `0` is not a valid key; scripts use `-1` as the "nothing pressed"
+    // sentinel and the host simply stores whatever it is given.
+    int press_latch();
+    void set_press_latch(int key);
 
     // --- Menus --------------------------------------------------------
     // Top-of-viewport menu bar (`igBeginMainMenuBar` / `igEndMainMenuBar`).

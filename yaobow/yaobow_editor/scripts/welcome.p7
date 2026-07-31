@@ -13,6 +13,14 @@ import scripting_services;
 import yaobow_editor.yaobow_editor_services;
 import yaobow_editor.editor_consts;
 import yaobow_editor.theme_menu;
+// Immediate-mode helpers (table/grid cell advance).
+import radiance_scripting.im;
+
+// Sentinel ordinal marking a deliberately empty cell in the game grid.
+let BLANK_CELL: int = -1;
+
+// Number of games listed in the settings screen (one row each).
+let GAME_COUNT: int = 10;
 
 // Intent codes written by render, consumed by update. Modelled as
 // an enum so the dispatchers in `update` get compile-time exhaustiveness
@@ -50,37 +58,22 @@ pub struct[radiance.IUiLayer, radiance.IDirector] WelcomeDirector(
         ui.window_centered("妖弓编辑器", 720.0, 480.0, () => {
             ui.text_with_font(0, "妖弓编辑器");
             ui.dummy(0.0, 24.0);
-            ui.table("welcome.games", 3, () => {
-                ui.table_next_column();
-                self.render_game_cell(ui, 0);
-                ui.table_next_column();
-                self.render_game_cell(ui, 8);
-                ui.table_next_column();
-                self.render_game_cell(ui, 5);
-                ui.table_next_column();
-                self.render_game_cell(ui, 1);
-                ui.table_next_column();
-                self.render_game_cell(ui, 9);
-                ui.table_next_column();
-                self.render_game_cell(ui, 6);
-                ui.table_next_column();
-                self.render_game_cell(ui, 2);
-                ui.table_next_column();
-                ui.dummy(0.0, 0.0);
-                ui.table_next_column();
-                self.render_game_cell(ui, 7);
-                ui.table_next_column();
-                self.render_game_cell(ui, 3);
-                ui.table_next_column();
-                ui.dummy(0.0, 0.0);
-                ui.table_next_column();
-                ui.dummy(0.0, 0.0);
-                ui.table_next_column();
-                self.render_game_cell(ui, 4);
-                ui.table_next_column();
-                ui.dummy(0.0, 0.0);
-                ui.table_next_column();
-                ui.dummy(0.0, 0.0);
+            // The 3-wide game grid, laid out by hand: ordinals are placed in
+            // a specific visual order with deliberate gaps, so the cells are
+            // passed as DATA rather than a dense range. `BLANK_CELL` renders
+            // an empty cell.
+            //
+            // This was previously fifteen manually unrolled
+            // `ui.table_next_column(); self.render_game_cell(ui, N);` pairs.
+            let cells: array<int> = [
+                0,          8,          5,
+                1,          9,          6,
+                2,          BLANK_CELL, 7,
+                3,          BLANK_CELL, BLANK_CELL,
+                4,          BLANK_CELL, BLANK_CELL,
+            ];
+            im.grid_of(ui, "welcome.games", 3, cells, BLANK_CELL, (ordinal: int) => {
+                self.render_game_cell(ui, ordinal);
             });
             ui.dummy(0.0, 16.0);
             if ui.button("设置", 120.0, 24.0) {
@@ -157,19 +150,17 @@ pub struct[radiance.IUiLayer, radiance.IDirector] SettingsDirector(
         ui.window_centered("游戏路径设置", 820.0, 560.0, () => {
             ui.text_with_font(0, "游戏资源路径设置");
             ui.dummy(0.0, 12.0);
+            // One row per game. `render_settings_row` emits its own four
+            // `table_next_column()` calls, so this is a plain table rather
+            // than an `im.grid`. Previously ten unrolled call lines.
             ui.table("settings.rows", 4, () => {
-                self.render_settings_row(ui, 0);
-                self.render_settings_row(ui, 1);
-                self.render_settings_row(ui, 2);
-                self.render_settings_row(ui, 3);
-                self.render_settings_row(ui, 4);
-                self.render_settings_row(ui, 5);
-                self.render_settings_row(ui, 6);
-                self.render_settings_row(ui, 7);
-                self.render_settings_row(ui, 8);
-                self.render_settings_row(ui, 9);
+                for ordinal in Range(0, GAME_COUNT) {
+                    self.render_settings_row(ui, ordinal);
+                }
             });
             ui.dummy(0.0, 16.0);
+            // Heterogeneous cells, so this stays an explicit `ui.table`
+            // (there is no `array<fn()>` helper — see `im.p7`).
             ui.table("settings.footer", 2, () => {
                 ui.table_next_column();
                 if ui.button("保存并返回", 200.0, 32.0) {

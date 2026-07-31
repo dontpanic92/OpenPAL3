@@ -20,7 +20,7 @@
 // `render` advances the pure timing/input state machines in `tick_*`
 // helpers (kept separate from layout: they only read `dt` + input +
 // text metrics) and otherwise just composes `gui.Stack` / `gui.Positioned`
-// / `gui.Column` of screen-local leaf elements (`FittedImg`, `FadeWrap`,
+// / `gui.Column` of screen-local leaf elements (`FittedImg`,
 // `PromptLabel`, `VersionLabel`, `TitleGameButton`). The state-machine
 // ticks run AFTER `paint_root` so the original "draw the current frame,
 // then advance" ordering is preserved exactly.
@@ -84,7 +84,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] TitleDirector(
     pub current_pic_game: int,
     pub current_pic_index: int,
     pub pic_state: int,
-    pub intent: int,
+    pub intent: title_consts.Intent,
     pub intent_arg: int,
     pub current_pic: ?box<scripting_services.ITexture>,
 ) {
@@ -135,7 +135,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] TitleDirector(
 
     // Declare the whole title screen as a widget tree. The fade-in alpha
     // (computed from `self.time`) wraps the logo / prompt / preview group
-    // via `FadeWrap`; the version label sits outside it at full opacity.
+    // via `gui.Opacity`; the version label sits outside it at full opacity.
     pub fn build(self: refmut<Self>, ui: box<radiance.IUiHost>) -> box<gui.Element> {
         let display_w = ui.display_size_x() as float;
         let display_h = ui.display_size_y() as float;
@@ -175,13 +175,12 @@ pub struct[radiance.IUiLayer, radiance.IDirector] TitleDirector(
                 self.build_left_pane(list_w)),
             self.build_right_pane(pic_cx, pic_cy, pic_w, pic_h),
         ];
-        let faded = box(FadeWrap(box(gui.Stack(faded_items)) as box<gui.Element>, alpha))
-            as box<gui.Element>;
+        let faded: box<gui.Element> = gui.Opacity(gui.Stack(faded_items), alpha);
 
         let root_items: array<box<gui.Element>> = [
             faded,
             gui.Positioned(5.0, display_h - 24.0, 320.0, 24.0,
-                box(VersionLabel("妖弓主程序 build-dev")) as box<gui.Element>),
+                VersionLabel("妖弓主程序 build-dev")),
         ];
         return gui.Stack(root_items);
     }
@@ -192,8 +191,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] TitleDirector(
             return gui.Stack(empty);
         }
         return gui.Positioned(cx - bw * 0.5, cy - bh * 0.5, bw, bh,
-            box(FittedImg(self.logo!.imgui_id(), self.logo_w as float, self.logo_h as float))
-                as box<gui.Element>);
+            FittedImg(self.logo!.imgui_id(), self.logo_w as float, self.logo_h as float));
     }
 
     // Left pane content: either the blinking "press any key" prompt or
@@ -202,7 +200,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] TitleDirector(
         if self.prompt_phase == PROMPT_SHOWING_LIST {
             return self.build_game_list(list_w);
         }
-        return box(PromptLabel(self.prompt_label())) as box<gui.Element>;
+        return PromptLabel(self.prompt_label());
     }
 
     pub fn build_game_list(self: refmut<Self>, list_w: float) -> box<gui.Element> {
@@ -221,11 +219,11 @@ pub struct[radiance.IUiLayer, radiance.IDirector] TitleDirector(
     pub fn game_btn(self: refmut<Self>, ordinal: int, w: float) -> box<gui.Element> {
         let label = game_full_name(ordinal);
         let hovered = self.hovered_game == ordinal;
-        return box(TitleGameButton(
+        return title_game_button(
             label, w, LIST_ROW_HEIGHT, ordinal, hovered,
             (o: int) => { self.set_hovered(o); },
             (o: int) => { self.submit_game(o); },
-        )) as box<gui.Element>;
+        );
     }
 
     // The prompt string to display this frame (the blink phase decides
@@ -276,9 +274,9 @@ pub struct[radiance.IUiLayer, radiance.IDirector] TitleDirector(
             // The outline fits into 70% of the pane height (centred on
             // the pane centre), matching the legacy `render_outline`.
             let h70 = h * 0.7;
-            let img = box(FittedImg(frame.imgui_id(), fw, fh)) as box<gui.Element>;
+            let img: box<gui.Element> = FittedImg(frame.imgui_id(), fw, fh);
             return gui.Positioned(cx - w * 0.5, cy - h70 * 0.5, w, h70,
-                box(FadeWrap(img, a)) as box<gui.Element>);
+                gui.Opacity(img, a));
         }
         let empty: array<box<gui.Element>> = [];
         return gui.Stack(empty);
@@ -294,8 +292,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] TitleDirector(
         }
         let tex = self.current_pic!;
         return gui.Positioned(cx - w * 0.5, cy - h * 0.5, w, h,
-            box(FittedImg(tex.imgui_id(), tex.width() as float, tex.height() as float))
-                as box<gui.Element>);
+            FittedImg(tex.imgui_id(), tex.width() as float, tex.height() as float));
     }
 
     // --- State mutators invoked from widget callbacks -------------------
@@ -306,13 +303,13 @@ pub struct[radiance.IUiLayer, radiance.IDirector] TitleDirector(
 
     pub fn submit_game(self: refmut<Self>, ordinal: int) {
         if ordinal == title_consts.MENU_SETTINGS {
-            self.intent = title_consts.INTENT_OPEN_SETTINGS;
+            self.intent = title_consts.Intent.OpenSettings;
             self.intent_arg = 0;
         } else if ordinal == title_consts.MENU_EXIT {
-            self.intent = title_consts.INTENT_EXIT;
+            self.intent = title_consts.Intent.Exit;
             self.intent_arg = 0;
         } else {
-            self.intent = title_consts.INTENT_OPEN_GAME;
+            self.intent = title_consts.Intent.OpenGame;
             self.intent_arg = ordinal;
         }
     }
@@ -435,40 +432,47 @@ pub struct[radiance.IUiLayer, radiance.IDirector] TitleDirector(
     ) -> ?box<radiance.IDirector> {
         let code = self.intent;
         let arg = self.intent_arg;
-        self.intent = title_consts.INTENT_NONE;
+        self.intent = title_consts.Intent.None;
         self.intent_arg = 0;
-        if code == title_consts.INTENT_OPEN_GAME {
-            let cfg = self.host.config();
-            let key = self.host.games().config_key(arg);
-            let path = cfg.get_asset_path(key);
-            if path == "" {
+        match code {
+            title_consts.Intent.OpenGame => {
+                let cfg = self.host.config();
+                let key = self.host.games().config_key(arg);
+                let path = cfg.get_asset_path(key);
+                if path == "" {
+                    return make_settings_director(self.host);
+                }
+                // Per-game dispatch — single source of truth for which
+                // service builds which game's director. Rust never sees
+                // the ordinal during the swap (engine just gets the
+                // returned director and installs it once).
+                if arg == title_consts.GAME_PAL3 {
+                    return self.host.pal3().create_director(path, arg);
+                }
+                if arg == title_consts.GAME_PAL3A {
+                    return self.host.pal3().create_director(path, arg);
+                }
+                if arg == title_consts.GAME_PAL4 {
+                    return self.host.pal4().create_director(path);
+                }
+                if arg == title_consts.GAME_PAL5 {
+                    return self.host.pal5().create_director(path, arg);
+                }
+                if arg == title_consts.GAME_SWDHC {
+                    return self.host.swd5().create_director(path, arg);
+                }
+            },
+            title_consts.Intent.OpenSettings => {
                 return make_settings_director(self.host);
-            }
-            // Per-game dispatch — single source of truth for which
-            // service builds which game's director. Rust never sees
-            // the ordinal during the swap (engine just gets the
-            // returned director and installs it once).
-            if arg == title_consts.GAME_PAL3 {
-                return self.host.pal3().create_director(path, arg);
-            }
-            if arg == title_consts.GAME_PAL3A {
-                return self.host.pal3().create_director(path, arg);
-            }
-            if arg == title_consts.GAME_PAL4 {
-                return self.host.pal4().create_director(path);
-            }
-            if arg == title_consts.GAME_PAL5 {
-                return self.host.pal5().create_director(path, arg);
-            }
-            if arg == title_consts.GAME_SWDHC {
-                return self.host.swd5().create_director(path, arg);
-            }
-        }
-        if code == title_consts.INTENT_OPEN_SETTINGS {
-            return make_settings_director(self.host);
-        }
-        if code == title_consts.INTENT_EXIT {
-            self.host.app().exit();
+            },
+            title_consts.Intent.Exit => {
+                self.host.app().exit();
+            },
+            title_consts.Intent.None
+            | title_consts.Intent.SaveAndReturn
+            | title_consts.Intent.Cancel
+            | title_consts.Intent.PickFolder
+            | title_consts.Intent.ClearPath => {},
         }
         return null;
     }
@@ -500,7 +504,7 @@ pub fn make_title_director(
         NO_HOVER,                                       // current_pic_game
         0,                                              // current_pic_index
         PIC_OUTLINE,                                    // pic_state
-        title_consts.INTENT_NONE,                       // intent
+        title_consts.Intent.None,                       // intent
         0,                                              // intent_arg
         null,                                           // current_pic
     )) as box<radiance.IDirector>;
@@ -515,11 +519,11 @@ pub fn make_title_director(
 
 pub struct[radiance.IUiLayer, radiance.IDirector] TitleSettingsDirector(
     pub host: box<yaobow_services.IYaobowHostContext>,
-    pub intent: int,
+    pub intent: title_consts.Intent,
     pub intent_arg: int,
 ) {
     pub fn activate(self: refmut<Self>) -> int {
-        self.intent = title_consts.INTENT_NONE;
+        self.intent = title_consts.Intent.None;
         self.intent_arg = 0;
         0
     }
@@ -548,11 +552,11 @@ pub struct[radiance.IUiLayer, radiance.IDirector] TitleSettingsDirector(
                             ui.table("title.settings.footer", 2, () => {
                                 ui.table_next_column();
                                 if ui.button("保存并返回", 200.0, 32.0) {
-                                    self.intent = title_consts.INTENT_SAVE_AND_RETURN;
+                                    self.intent = title_consts.Intent.SaveAndReturn;
                                 }
                                 ui.table_next_column();
                                 if ui.button("取消", 200.0, 32.0) {
-                                    self.intent = title_consts.INTENT_CANCEL;
+                                    self.intent = title_consts.Intent.Cancel;
                                 }
                             });
                         });
@@ -571,12 +575,12 @@ pub struct[radiance.IUiLayer, radiance.IDirector] TitleSettingsDirector(
         ui.text(path_label(cfg.get_asset_path(self.host.games().config_key(ordinal))));
         ui.table_next_column();
         if ui.button(f"选择...##title_pick_{ordinal}", 100.0, 24.0) {
-            self.intent = title_consts.INTENT_PICK_FOLDER;
+            self.intent = title_consts.Intent.PickFolder;
             self.intent_arg = ordinal;
         }
         ui.table_next_column();
         if ui.button(f"清除##title_clear_{ordinal}", 80.0, 24.0) {
-            self.intent = title_consts.INTENT_CLEAR_PATH;
+            self.intent = title_consts.Intent.ClearPath;
             self.intent_arg = ordinal;
         }
     }
@@ -611,27 +615,33 @@ pub struct[radiance.IUiLayer, radiance.IDirector] TitleSettingsDirector(
     ) -> ?box<radiance.IDirector> {
         let code = self.intent;
         let arg = self.intent_arg;
-        self.intent = title_consts.INTENT_NONE;
+        self.intent = title_consts.Intent.None;
         self.intent_arg = 0;
 
         let cfg = self.host.config();
-        if code == title_consts.INTENT_SAVE_AND_RETURN {
-            cfg.save();
-            return make_title_director_as_director(self.host);
-        }
-        if code == title_consts.INTENT_CANCEL {
-            cfg.reload();
-            return make_title_director_as_director(self.host);
-        }
-        if code == title_consts.INTENT_PICK_FOLDER {
-            let current = cfg.get_asset_path(self.host.games().config_key(arg));
-            let picked = cfg.pick_folder(current);
-            if picked != "" {
-                cfg.set_asset_path(self.host.games().config_key(arg), picked);
-            }
-        }
-        if code == title_consts.INTENT_CLEAR_PATH {
-            cfg.set_asset_path(self.host.games().config_key(arg), "");
+        match code {
+            title_consts.Intent.SaveAndReturn => {
+                cfg.save();
+                return make_title_director_as_director(self.host);
+            },
+            title_consts.Intent.Cancel => {
+                cfg.reload();
+                return make_title_director_as_director(self.host);
+            },
+            title_consts.Intent.PickFolder => {
+                let current = cfg.get_asset_path(self.host.games().config_key(arg));
+                let picked = cfg.pick_folder(current);
+                if picked != "" {
+                    cfg.set_asset_path(self.host.games().config_key(arg), picked);
+                }
+            },
+            title_consts.Intent.ClearPath => {
+                cfg.set_asset_path(self.host.games().config_key(arg), "");
+            },
+            title_consts.Intent.None
+            | title_consts.Intent.OpenGame
+            | title_consts.Intent.OpenSettings
+            | title_consts.Intent.Exit => {},
         }
         return null;
     }
@@ -640,7 +650,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] TitleSettingsDirector(
 fn make_settings_director(
     host: box<yaobow_services.IYaobowHostContext>,
 ) -> box<radiance.IDirector> {
-    return box(TitleSettingsDirector(host, title_consts.INTENT_NONE, 0))
+    return box(TitleSettingsDirector(host, title_consts.Intent.None, 0))
         as box<radiance.IDirector>;
 }
 
@@ -676,7 +686,7 @@ fn make_title_director_as_director(
         NO_HOVER,                                       // current_pic_game
         0,                                              // current_pic_index
         PIC_OUTLINE,                                    // pic_state
-        title_consts.INTENT_NONE,                       // intent
+        title_consts.Intent.None,                       // intent
         0,                                              // intent_arg
         null,                                           // current_pic
     )) as box<radiance.IDirector>;
@@ -745,54 +755,34 @@ fn pic_folder(ordinal: int) -> string {
 // rect. Always wrapped in a `gui.Positioned`. Mirrors the legacy
 // `draw_fitted_image` helper.
 pub struct[gui.Element] FittedImg(tex: int, src_w: float, src_h: float) {
-    fn measure(self: ref<Self>, avail_w: float, avail_h: float,
-               ui: box<radiance.IUiHost>) -> gui.Size {
-        return gui.Size(0.0, 0.0);
+    fn measure(self: ref<Self>, avail: gui.Size, ui: box<radiance.IUiHost>) -> gui.Size {
+        return gui.Size.ZERO;
     }
-    fn paint(self: ref<Self>, x: float, y: float, w: float, h: float,
+    fn paint(self: ref<Self>, rect: gui.Rect,
              ui: box<radiance.IUiHost>, ctx: box<gui.UiCtx>) {
-        if self.src_w <= 0.0 || self.src_h <= 0.0 { return; }
-        let mut scale = w / self.src_w;
-        let h_scale = h / self.src_h;
-        if h_scale < scale { scale = h_scale; }
-        let tw = self.src_w * scale;
-        let th = self.src_h * scale;
-        ui.set_cursor_pos(x + (w - tw) * 0.5, y + (h - th) * 0.5);
-        ui.image(self.tex, tw, th);
-    }
-}
-
-// Applies an imgui global-alpha multiplier around `child` (used for the
-// master title fade-in and the outline GIF cross-fade).
-pub struct[gui.Element] FadeWrap(child: box<gui.Element>, alpha: float) {
-    fn measure(self: ref<Self>, avail_w: float, avail_h: float,
-               ui: box<radiance.IUiHost>) -> gui.Size {
-        return self.child.measure(avail_w, avail_h, ui);
-    }
-    fn paint(self: ref<Self>, x: float, y: float, w: float, h: float,
-             ui: box<radiance.IUiHost>, ctx: box<gui.UiCtx>) {
-        let child = self.child;
-        ui.style_alpha(self.alpha, () => {
-            child.paint(x, y, w, h, ui, ctx);
-        });
+        // Aspect-preserving centred fit — now one `Rect.fit` call instead of
+        // hand-rolled scale selection plus centring arithmetic.
+        let dst = rect.fit(gui.Size(self.src_w, self.src_h));
+        if dst.is_empty() { return; }
+        ui.set_cursor_pos(dst.x, dst.y);
+        ui.image(self.tex, dst.w, dst.h);
     }
 }
 
 // Centred black "press any key" prompt label. Uses `ui.text` (not the
 // lib's background-draw-list `Text`) so it inherits the enclosing
-// `FadeWrap` alpha, exactly like the legacy `draw_prompt_text`.
+// `gui.Opacity` alpha, exactly like the legacy `draw_prompt_text`.
 pub struct[gui.Element] PromptLabel(text: string) {
-    fn measure(self: ref<Self>, avail_w: float, avail_h: float,
-               ui: box<radiance.IUiHost>) -> gui.Size {
+    fn measure(self: ref<Self>, avail: gui.Size, ui: box<radiance.IUiHost>) -> gui.Size {
         return gui.Size(ui.calc_text_size_x(self.text), ui.calc_text_size_y(self.text));
     }
-    fn paint(self: ref<Self>, x: float, y: float, w: float, h: float,
+    fn paint(self: ref<Self>, rect: gui.Rect,
              ui: box<radiance.IUiHost>, ctx: box<gui.UiCtx>) {
-        let tw = ui.calc_text_size_x(self.text);
-        let th = ui.calc_text_size_y(self.text);
         let label = self.text;
-        ui.style_color(title_consts.SC_TEXT, 0.0, 0.0, 0.0, 1.0, () => {
-            ui.set_cursor_pos(x + (w - tw) * 0.5, y + (h - th) * 0.5);
+        let at = rect.center(gui.Size(ui.calc_text_size_x(label), ui.calc_text_size_y(label)));
+        let c = gui.Color.BLACK;
+        ui.style_color(gui.SC_TEXT, c.r, c.g, c.b, c.a, () => {
+            ui.set_cursor_pos(at.x, at.y);
             ui.text(label);
         });
     }
@@ -800,15 +790,15 @@ pub struct[gui.Element] PromptLabel(text: string) {
 
 // Bottom-left version string (small grey font, full opacity).
 pub struct[gui.Element] VersionLabel(label: string) {
-    fn measure(self: ref<Self>, avail_w: float, avail_h: float,
-               ui: box<radiance.IUiHost>) -> gui.Size {
-        return gui.Size(0.0, 0.0);
+    fn measure(self: ref<Self>, avail: gui.Size, ui: box<radiance.IUiHost>) -> gui.Size {
+        return gui.Size.ZERO;
     }
-    fn paint(self: ref<Self>, x: float, y: float, w: float, h: float,
+    fn paint(self: ref<Self>, rect: gui.Rect,
              ui: box<radiance.IUiHost>, ctx: box<gui.UiCtx>) {
         let label = self.label;
-        ui.style_color(title_consts.SC_TEXT, 0.5, 0.5, 0.5, 1.0, () => {
-            ui.set_cursor_pos(x, y);
+        let c = gui.Color.gray(0.5);
+        ui.style_color(gui.SC_TEXT, c.r, c.g, c.b, c.a, () => {
+            ui.set_cursor_pos(rect.x, rect.y);
             ui.text_with_font(title_consts.FONT_SMALL, label);
         });
     }
@@ -818,7 +808,42 @@ pub struct[gui.Element] VersionLabel(label: string) {
 // depending on hover. Reports hover via `on_hover` (so the right pane can
 // preview that game) and selection via `on_click`. Mirrors the legacy
 // `draw_game_button` + `submit_game_button`.
-pub struct[gui.Element] TitleGameButton(
+// The bare button, with no chrome styling of its own — `title_game_button`
+// below wraps it in the transparent-chrome + tinted-text style stack.
+pub struct[gui.Element] TitleGameButtonBody(
+    label: string,
+    bw: float,
+    bh: float,
+    ordinal: int,
+    on_hover: fn(int),
+    on_click: fn(int),
+) {
+    fn measure(self: ref<Self>, avail: gui.Size, ui: box<radiance.IUiHost>) -> gui.Size {
+        return gui.Size(self.bw, self.bh);
+    }
+    fn paint(self: ref<Self>, rect: gui.Rect,
+             ui: box<radiance.IUiHost>, ctx: box<gui.UiCtx>) {
+        let ord = self.ordinal;
+        let lbl = self.label;
+        let hb = self.on_hover;
+        let cb = self.on_click;
+        ui.set_cursor_pos(rect.x, rect.y);
+        if ui.button(lbl, rect.w, rect.h) {
+            cb(ord);
+        }
+        if ui.is_item_hovered() {
+            hb(ord);
+        }
+    }
+}
+
+// A game-list row: transparent button chrome in all three states plus text
+// tinted by hover state.
+//
+// This used to be a four-deep nest of `ui.style_color(..., () => { ... })`
+// closures inside `paint`. `gui.themed` folds parallel slot/colour arrays
+// into the same nesting declaratively.
+pub fn title_game_button(
     label: string,
     bw: float,
     bh: float,
@@ -826,34 +851,15 @@ pub struct[gui.Element] TitleGameButton(
     hovered: bool,
     on_hover: fn(int),
     on_click: fn(int),
-) {
-    fn measure(self: ref<Self>, avail_w: float, avail_h: float,
-               ui: box<radiance.IUiHost>) -> gui.Size {
-        return gui.Size(self.bw, self.bh);
-    }
-    fn paint(self: ref<Self>, x: float, y: float, w: float, h: float,
-             ui: box<radiance.IUiHost>, ctx: box<gui.UiCtx>) {
-        let tr = if self.hovered { 0.75 } else { 0.3 };
-        let ord = self.ordinal;
-        let lbl = self.label;
-        let hb = self.on_hover;
-        let cb = self.on_click;
-        // Transparent button chrome in all three states + colored text,
-        // matching the legacy nested `style_color` block.
-        ui.style_color(title_consts.SC_BUTTON, 0.0, 0.0, 0.0, 0.0, () => {
-            ui.style_color(title_consts.SC_BUTTON_HOVERED, 0.0, 0.0, 0.0, 0.0, () => {
-                ui.style_color(title_consts.SC_BUTTON_ACTIVE, 0.0, 0.0, 0.0, 0.0, () => {
-                    ui.style_color(title_consts.SC_TEXT, tr, tr, tr, 1.0, () => {
-                        ui.set_cursor_pos(x, y);
-                        if ui.button(lbl, w, h) {
-                            cb(ord);
-                        }
-                        if ui.is_item_hovered() {
-                            hb(ord);
-                        }
-                    });
-                });
-            });
-        });
-    }
+) -> box<gui.Element> {
+    let tint = gui.Color.gray(if hovered { 0.75 } else { 0.3 });
+    let slots: array<int> = [
+        gui.SC_BUTTON, gui.SC_BUTTON_HOVERED, gui.SC_BUTTON_ACTIVE, gui.SC_TEXT,
+    ];
+    let colors: array<gui.Color> = [
+        gui.Color.TRANSPARENT, gui.Color.TRANSPARENT, gui.Color.TRANSPARENT, tint,
+    ];
+    return gui.themed(
+        TitleGameButtonBody(label, bw, bh, ordinal, on_hover, on_click),
+        slots, colors);
 }

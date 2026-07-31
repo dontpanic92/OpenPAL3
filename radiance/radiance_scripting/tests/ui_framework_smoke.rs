@@ -25,7 +25,7 @@ import radiance_scripting.ui;
 pub fn entry(host: box<radiance.IUiHost>) -> int {
     let ctx = ui.make_ctx();
     let items: array<box<ui.Element>> = [
-        ui.Text("a"),
+        ui.Text("a", ui.Color.WHITE),
         ui.Button("go", 100.0, 20.0, () => { host.text("clicked"); }),
     ];
     let root: box<ui.Element> = ui.Column(items, 0.0);

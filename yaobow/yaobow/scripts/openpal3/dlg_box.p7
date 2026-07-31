@@ -192,7 +192,7 @@ pub struct[openpal3.IPal3DialogRenderer] Pal3DialogRendererImpl(
             gui.Positioned(
                 text_x, dialog_y + lh * DLG_TEXT_TOP_PAD_FACTOR,
                 text_width, dialog_height,
-                box(DialogText(text)) as box<gui.Element>),
+                DialogText(text)),
         ];
         let root = gui.Stack(items);
         gui.paint_root(root, ui, gui.make_ctx());
@@ -242,7 +242,7 @@ pub struct[openpal3.IPal3DialogRenderer] Pal3DialogRendererImpl(
         // (>= 0 fades to black, < 0 to white).
         let opacity = if c < 0.0 { 0.0 - c } else { c };
         let shade = if c < 0.0 { 1.0 } else { 0.0 };
-        let root = box(Curtain(shade, opacity)) as box<gui.Element>;
+        let root: box<gui.Element> = Curtain(shade, opacity);
         gui.paint_root(root, ui, gui.make_ctx());
         0
     }
@@ -257,8 +257,7 @@ fn sprite_rect(
     s: ?box<scripting_services.ISprite>,
     x0: float, y0: float, x1: float, y1: float,
 ) -> box<gui.Element> {
-    return gui.Positioned(x0, y0, x1 - x0, y1 - y0,
-        box(SpriteRect(s)) as box<gui.Element>);
+    return gui.Positioned(x0, y0, x1 - x0, y1 - y0, gui.Sprite(s));
 }
 
 // Native pixel width / height of a (possibly null) sprite, as a float.
@@ -275,41 +274,25 @@ fn sprite_h(s: ?box<scripting_services.ISprite>) -> float {
 // Screen-local widget leaves (declarative `gui.Element` impls).
 // ---------------------------------------------------------------------------
 
-// Blit a held sprite (using its own UV) into the assigned rect. No-op on
-// a null sprite. Replaces the legacy `draw_sprite` helper.
-pub struct[gui.Element] SpriteRect(s: ?box<scripting_services.ISprite>) {
-    fn measure(self: ref<Self>, avail_w: float, avail_h: float,
-               ui: box<radiance.IUiHost>) -> gui.Size {
-        return gui.Size(0.0, 0.0);
-    }
-    fn paint(self: ref<Self>, x: float, y: float, w: float, h: float,
-             ui: box<radiance.IUiHost>, ctx: box<gui.UiCtx>) {
-        if self.s == null { return; }
-        let sp = self.s!;
-        ui.image_rect(sp.com_id(), x, y, x + w, y + h, sp.u0(), sp.v0(), sp.u1(), sp.v1());
-    }
-}
-
 // The wrapped dialog text grid. Draws `content` character-by-character at
 // a tight CJK advance, wrapping at the assigned rect width, honouring the
 // `\i` (yellow) / `\r` (white) inline colour codes. Origin + wrap-limit
 // come from the enclosing `gui.Positioned`. Lifted from the legacy
 // `render_text`.
 pub struct[gui.Element] DialogText(content: string) {
-    fn measure(self: ref<Self>, avail_w: float, avail_h: float,
-               ui: box<radiance.IUiHost>) -> gui.Size {
-        return gui.Size(avail_w, avail_h);
+    fn measure(self: ref<Self>, avail: gui.Size, ui: box<radiance.IUiHost>) -> gui.Size {
+        return avail;
     }
-    fn paint(self: ref<Self>, x: float, y: float, w: float, h: float,
+    fn paint(self: ref<Self>, rect: gui.Rect,
              ui: box<radiance.IUiHost>, ctx: box<gui.UiCtx>) {
         let font_size = ui.game_font_size_small();
         if font_size <= 0.0 { return; }
 
         let line_pitch = font_size * DLG_LINE_HEIGHT_FACTOR;
         let char_advance = font_size * DLG_CHAR_ADVANCE_FACTOR;
-        let wrap_limit = w;
-        let origin_x = x;
-        let top_y = y;
+        let wrap_limit = rect.w;
+        let origin_x = rect.x;
+        let top_y = rect.y;
 
         let text = self.content;
         let mut text_x = 0.0;
@@ -359,13 +342,13 @@ pub struct[gui.Element] DialogText(content: string) {
 // Fullscreen fade curtain: a flat `(shade,shade,shade,opacity)` rect over
 // the whole viewport. Replaces the legacy `render_curtain` `fill_rect`.
 pub struct[gui.Element] Curtain(shade: float, opacity: float) {
-    fn measure(self: ref<Self>, avail_w: float, avail_h: float,
-               ui: box<radiance.IUiHost>) -> gui.Size {
-        return gui.Size(avail_w, avail_h);
+    fn measure(self: ref<Self>, avail: gui.Size, ui: box<radiance.IUiHost>) -> gui.Size {
+        return avail;
     }
-    fn paint(self: ref<Self>, x: float, y: float, w: float, h: float,
+    fn paint(self: ref<Self>, rect: gui.Rect,
              ui: box<radiance.IUiHost>, ctx: box<gui.UiCtx>) {
-        ui.fill_rect(x, y, x + w, y + h, self.shade, self.shade, self.shade, self.opacity);
+        ui.fill_rect(rect.x, rect.y, rect.right(), rect.bottom(),
+                     self.shade, self.shade, self.shade, self.opacity);
     }
 }
 

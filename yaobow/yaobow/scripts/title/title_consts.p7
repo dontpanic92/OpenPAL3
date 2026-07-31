@@ -47,14 +47,23 @@ pub let GAME_PAL5: int = 3;
 pub let GAME_SWDHC: int = 6;
 
 // Intent codes written by render, consumed by update.
-pub let INTENT_NONE: int = 0;
-pub let INTENT_OPEN_GAME: int = 1;
-pub let INTENT_OPEN_SETTINGS: int = 2;
-pub let INTENT_EXIT: int = 3;
-pub let INTENT_SAVE_AND_RETURN: int = 4;
-pub let INTENT_CANCEL: int = 5;
-pub let INTENT_PICK_FOLDER: int = 6;
-pub let INTENT_CLEAR_PATH: int = 7;
+// What the user asked for on this frame, drained once per `update`.
+// A typed enum rather than untyped `int` codes: `match` on it is
+// exhaustiveness-checked, so adding a variant surfaces every site that has to
+// handle it instead of silently falling through an `if` chain.
+//
+// Shared by both title screens; `TitleDirector` uses the first four variants
+// and `TitleSettingsDirector` the last four.
+pub enum Intent(
+    None,
+    OpenGame,
+    OpenSettings,
+    Exit,
+    SaveAndReturn,
+    Cancel,
+    PickFolder,
+    ClearPath,
+);
 
 // Sentinel ordinals for non-game entries in the yaobow.title list. Distinct
 // from GAME_PAL3/GAME_PAL4 so the OPEN_GAME path can never receive a

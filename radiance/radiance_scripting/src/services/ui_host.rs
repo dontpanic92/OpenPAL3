@@ -330,6 +330,10 @@ fn render_clipped_lines(
         });
 }
 
+/// "Nothing is pressed" sentinel for [`ImguiUiHost::press_latch`]. Mirrors
+/// `radiance_scripting.ui.NO_PRESS` on the script side.
+const NO_PRESS: i32 = -1;
+
 /// Stateless production `IUiHost` ComObject. Construct once per
 /// scripting session and intern via `ScriptHost::intern` so scripts
 /// can hold a stable `box<IUiHost>` handle across frames.
@@ -341,6 +345,18 @@ pub struct ImguiUiHost {
     /// Keyed read-only text buffers for `set_text_buffer` /
     /// `show_text_buffer` (see `TextBufferRegistry`).
     text_buffers: RefCell<TextBufferRegistry>,
+    /// Cross-frame press latch for script-drawn interactive widgets
+    /// (`press_latch` / `set_press_latch`).
+    ///
+    /// This lives on the host, not in the script's `UiCtx`, because it must
+    /// survive between frames. Several screens build their paint context
+    /// inside `render` — with script-side storage those screens silently
+    /// reset the latch every frame, so a press could never be observed on
+    /// the following release frame and `on_click` would never fire.
+    /// Anchoring it here makes that class of bug impossible to write.
+    ///
+    /// Seeded with the scripts' `NO_PRESS` sentinel.
+    press_latch: Cell<i32>,
 }
 
 ComObject_UiHost!(super::ImguiUiHost);
@@ -350,6 +366,7 @@ impl ImguiUiHost {
         ComRc::<IUiHost>::from_object(ImguiUiHost {
             dock_layouts_built: RefCell::new(HashSet::new()),
             text_buffers: RefCell::new(TextBufferRegistry::default()),
+            press_latch: Cell::new(NO_PRESS),
         })
     }
 }
@@ -499,6 +516,56 @@ impl IUiHostImpl for ImguiUiHost {
         });
     }
 
+    fn clip_rect(&self, x0: f32, y0: f32, x1: f32, y1: f32, body: ComRc<IAction>) {
+        let _ = with_frame("clip_rect", |f| {
+            let s = if f.dpi_scale > 0.0 { f.dpi_scale } else { 1.0 };
+            let min = imgui::sys::ImVec2 {
+                x: x0 * s,
+                y: y0 * s,
+            };
+            let max = imgui::sys::ImVec2 {
+                x: x1 * s,
+                y: y1 * s,
+            };
+
+            // The script UI layer draws through two lists: cursor-positioned
+            // widgets land on the current window's list, while absolutely
+            // placed art (`image_rect` / `text_at`) goes on the background
+            // list. `igPushClipRect` only covers the former, so the
+            // background list needs its own push or overhanging art would
+            // escape the region.
+            //
+            // Both pushes use raw `imgui-sys` rather than the safe
+            // `DrawListMut::with_clip_rect_intersect`. That wrapper holds a
+            // `DrawListMut` token for the duration of its closure, and
+            // imgui-rs allows only ONE live instance of the background draw
+            // list — so any widget inside `body` that calls `image_rect` /
+            // `text_at` (which re-acquire it) panics with "The DrawListMut
+            // instance for the background draw list is already loaded!".
+            // That is precisely what a clipped `Sprite` does, so the safe
+            // form aborts the process on the first clipped frame. Pushing
+            // and popping around the body keeps no token alive while script
+            // code runs.
+            //
+            // `intersect_with_current_clip_rect = true` on both, so nesting
+            // composes and a child region can never widen its parent's.
+            unsafe {
+                let bg = imgui::sys::igGetBackgroundDrawList_Nil();
+                imgui::sys::igPushClipRect(min, max, true);
+                if !bg.is_null() {
+                    imgui::sys::ImDrawList_PushClipRect(bg, min, max, true);
+                }
+
+                body.invoke();
+
+                if !bg.is_null() {
+                    imgui::sys::ImDrawList_PopClipRect(bg);
+                }
+                imgui::sys::igPopClipRect();
+            }
+        });
+    }
+
     fn with_font(&self, font_idx: i32, body: ComRc<IAction>) {
         with_frame("with_font", |f| {
             let font = f
@@ -511,7 +578,6 @@ impl IUiHostImpl for ImguiUiHost {
             token.pop();
         });
     }
-
     fn tab_item(&self, label: &str, closable: bool, body: ComRc<IAction>) -> bool {
         with_frame("tab_item", |f| {
             let mut opened = true;
@@ -1179,6 +1245,14 @@ impl IUiHostImpl for ImguiUiHost {
             }
         })
         .unwrap_or(0.0)
+    }
+
+    fn press_latch(&self) -> i32 {
+        self.press_latch.get()
+    }
+
+    fn set_press_latch(&self, key: i32) {
+        self.press_latch.set(key);
     }
 
     fn any_key_or_mouse_down(&self) -> bool {

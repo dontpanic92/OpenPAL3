@@ -23,6 +23,9 @@
 
 import radiance;
 import shared.openpal3;
+// Used for its geometry primitives (`Rect.fit`) only — this screen is still
+// painted imperatively rather than as an `Element` tree.
+import radiance_scripting.ui as gui;
 
 // --- Native (800x600) layout constants -----------------------------------
 // The whole menu is authored in PAL3's native 800x600 (4:3) space and
@@ -124,13 +127,14 @@ pub fn paint_state_menu(
     // Fit a 4:3 (800x600) canvas inside the window and centre it; the
     // leftover margins become black letterbox bars. `s` scales native px
     // to screen px; (ox, oy) is the canvas top-left in screen space.
-    let sx = lw / REF_W;
-    let sy = lh / REF_H;
-    let s = if sx < sy { sx } else { sy };
-    let cw = REF_W * s;
-    let ch = REF_H * s;
-    let ox = (lw - cw) * 0.5;
-    let oy = (lh - ch) * 0.5;
+    let viewport = gui.Rect(0.0, 0.0, lw, lh);
+    let native = gui.Size(REF_W, REF_H);
+    let canvas = viewport.fit(native);
+    let s = viewport.fit_scale(native);
+    let cw = canvas.w;
+    let ch = canvas.h;
+    let ox = canvas.x;
+    let oy = canvas.y;
 
     // Dim the whole screen with a semi-transparent overlay (covers both
     // the menu's 4:3 area and the letterbox margins), so the live scene

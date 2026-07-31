@@ -144,25 +144,15 @@ pub struct[openpal3.IPal3StatusRenderer] Pal3StatusRendererImpl(
     }
 }
 
+// Place a sprite in the rect `(x0, y0)-(x1, y1)`. The screen-local
+// `SpriteRect` element this used to wrap is gone — `gui.Sprite` is the shared
+// widget for "blit an `ISprite` into the rect the parent assigns", and it is
+// null-safe, so the caller no longer needs its own guard.
 fn sprite_rect(
     s: ?box<scripting_services.ISprite>,
     x0: float, y0: float, x1: float, y1: float,
 ) -> box<gui.Element> {
-    return gui.Positioned(x0, y0, x1 - x0, y1 - y0,
-        box(SpriteRect(s)) as box<gui.Element>);
-}
-
-pub struct[gui.Element] SpriteRect(s: ?box<scripting_services.ISprite>) {
-    fn measure(self: ref<Self>, avail_w: float, avail_h: float,
-               ui: box<radiance.IUiHost>) -> gui.Size {
-        return gui.Size(0.0, 0.0);
-    }
-    fn paint(self: ref<Self>, x: float, y: float, w: float, h: float,
-             ui: box<radiance.IUiHost>, ctx: box<gui.UiCtx>) {
-        if self.s == null { return; }
-        let sp = self.s!;
-        ui.image_rect(sp.com_id(), x, y, x + w, y + h, sp.u0(), sp.v0(), sp.u1(), sp.v1());
-    }
+    return gui.Positioned(x0, y0, x1 - x0, y1 - y0, gui.Sprite(s));
 }
 
 pub fn make_pal3_status_renderer(

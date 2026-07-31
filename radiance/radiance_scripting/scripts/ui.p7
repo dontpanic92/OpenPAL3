@@ -15,8 +15,14 @@
 // The tree is rebuilt every frame and painted in two passes — `measure`
 // (size under available space) then `paint` (draw into an absolute rect)
 // — so it leverages the existing imgui runtime with no retained state.
-// Persistent, cross-frame input state (the press latch for sprite
-// buttons) lives in `UiCtx`, owned by the screen, NOT in the widgets.
+// Persistent, cross-frame input state (the press latch for sprite buttons)
+// lives in the ENGINE, behind `IUiHost.press_latch`; `UiCtx` is only a thin
+// proxy over it. That placement is deliberate — see `UiCtx` below.
+//
+// Geometry and colour are aggregates, not loose floats: `measure` takes and
+// returns a `Size`, `paint` takes the `Rect` it must draw into, and widgets
+// carry a single `Color` rather than four `r, g, b, a` fields. `Rect.fit`
+// owns the letterbox computation that screens used to open-code.
 //
 // API shape: widgets are PUBLIC capitalized structs (`Text`, `Image`,
 // `Button`, `Column`, `LayoutImage`, ...) constructed directly with named
@@ -29,9 +35,12 @@
 // take `fn(int) -> box<Element>` — both invoked inside the lib widget
 // across the module boundary (`p7/tests/xmodule_closure.rs`). Data-driven
 // screens stay loop-free via `UiLayout` (hosts a game UI-layout atlas) and
-// `ListView` (builds rows from an index closure). There are no lowercase
-// factory shims; only `make_ctx` (builds the press-latch context) and
-// `paint_root` (lays out + paints the tree) are free functions.
+// `ListView` (builds rows from an index closure). Fixed-resolution game art
+// is hosted by `NativeCanvas`, which letterbox-fits a design canvas, clips to
+// it, and lets children be positioned in plain native pixels. There are no
+// lowercase factory shims; only `make_ctx` (builds the paint context),
+// `themed` (folds a style-colour stack), `align_factor` and `paint_root`
+// (lays out + paints the tree) are free functions.
 
 import radiance;
 import scripting_services;
@@ -40,8 +49,146 @@ import scripting_services;
 // Core public types
 // ---------------------------------------------------------------------
 
-// Result of `measure`: a widget's desired size in logical pixels.
-pub struct Size(w: float, h: float);
+// A size in logical pixels. Returned by `measure`.
+//
+// `[Copy]` matters: sizes and rects are routinely used more than once in a
+// single expression (measure a child, then paint into the same available
+// space), and without the opt-in every second use would be a `UseAfterMove`.
+pub struct[Copy] Size(pub w: float, pub h: float) {
+    pub ZERO = Self(0.0, 0.0);
+
+    // Shrink by `hpad` horizontally and `vpad` vertically, clamped at zero —
+    // the "space left for the child after padding" computation.
+    pub fn deflate(ref self, hpad: float, vpad: float) -> Self {
+        Size(max(self.w - hpad, 0.0), max(self.h - vpad, 0.0))
+    }
+
+    pub fn inflate(ref self, hpad: float, vpad: float) -> Self {
+        Size(self.w + hpad, self.h + vpad)
+    }
+
+    pub fn is_empty(ref self) -> bool {
+        self.w <= 0.0 || self.h <= 0.0
+    }
+}
+
+// An axis-aligned rectangle in logical pixels: `(x, y)` is the top-left
+// corner and `(w, h)` the extent. This is the unit of layout — `paint`
+// receives the rect the parent assigned rather than four loose floats.
+pub struct[Copy] Rect(pub x: float, pub y: float, pub w: float, pub h: float) {
+    pub ZERO = Self(0.0, 0.0, 0.0, 0.0);
+
+    // Build a rect from a top-left corner and a size.
+    pub fn from_size(x: float, y: float, size: Size) -> Self {
+        Rect(x, y, size.w, size.h)
+    }
+
+    pub fn right(ref self) -> float { self.x + self.w }
+    pub fn bottom(ref self) -> float { self.y + self.h }
+    pub fn center_x(ref self) -> float { self.x + self.w * 0.5 }
+    pub fn center_y(ref self) -> float { self.y + self.h * 0.5 }
+    pub fn size(ref self) -> Size { Size(self.w, self.h) }
+    pub fn is_empty(ref self) -> bool { self.w <= 0.0 || self.h <= 0.0 }
+
+    // Translate without resizing.
+    pub fn offset(ref self, dx: float, dy: float) -> Self {
+        Rect(self.x + dx, self.y + dy, self.w, self.h)
+    }
+
+    // Shrink by a per-edge inset (the `Padding` widget's geometry).
+    pub fn inset(ref self, left: float, top: float, right: float, bottom: float) -> Self {
+        Rect(
+            self.x + left,
+            self.y + top,
+            max(self.w - left - right, 0.0),
+            max(self.h - top - bottom, 0.0),
+        )
+    }
+
+    // Uniform inset on all four edges.
+    pub fn inset_all(ref self, d: float) -> Self {
+        self.inset(d, d, d, d)
+    }
+
+    // Place a `size` inside this rect at fractional alignment `(ax, ay)`,
+    // where (0,0) is top-left, (0.5,0.5) centre and (1,1) bottom-right.
+    // This is the single primitive behind `Center`, `Align`, and the
+    // cross-axis placement in `Row` / `Column`.
+    pub fn align(ref self, size: Size, ax: float, ay: float) -> Self {
+        Rect(
+            self.x + (self.w - size.w) * ax,
+            self.y + (self.h - size.h) * ay,
+            size.w,
+            size.h,
+        )
+    }
+
+    // Centre a `size` inside this rect (`align(size, 0.5, 0.5)`).
+    pub fn center(ref self, size: Size) -> Self {
+        self.align(size, 0.5, 0.5)
+    }
+
+    // Letterbox a `native` canvas into this rect, preserving aspect ratio and
+    // centring the result. Returns `Rect.ZERO` when either extent is empty.
+    //
+    // This one method replaces the `let scale = if sx < sy { sx } else { sy }`
+    // idiom that appeared *nine times* across the UI scripts, along with the
+    // `origin_x` / `origin_y` arithmetic that always followed it.
+    pub fn fit(ref self, native: Size) -> Self {
+        if native.is_empty() || self.is_empty() {
+            return Rect.ZERO;
+        }
+        let scale = min(self.w / native.w, self.h / native.h);
+        self.center(Size(native.w * scale, native.h * scale))
+    }
+
+    // The scale factor `fit(native)` would apply. Screens that place children
+    // in native coordinates need the factor as well as the fitted rect.
+    pub fn fit_scale(ref self, native: Size) -> float {
+        if native.is_empty() || self.is_empty() {
+            return 0.0;
+        }
+        min(self.w / native.w, self.h / native.h)
+    }
+
+    pub fn contains(ref self, px: float, py: float) -> bool {
+        px >= self.x && px <= self.right() && py >= self.y && py <= self.bottom()
+    }
+}
+
+// An RGBA colour with components in [0, 1]. Alpha defaults to opaque, so
+// `Color(1.0, 0.0, 0.0)` is red.
+//
+// Widgets take a single `color: Color` field instead of four loose `r, g, b, a`
+// floats; the components are unpacked only at the `IUiHost` call boundary,
+// which stays on primitives because those cross the crosscom FFI.
+pub struct[Copy] Color(pub r: float, pub g: float, pub b: float, pub a: float = 1.0) {
+    pub WHITE       = Self(1.0, 1.0, 1.0, 1.0);
+    pub BLACK       = Self(0.0, 0.0, 0.0, 1.0);
+    pub TRANSPARENT = Self(0.0, 0.0, 0.0, 0.0);
+    pub RED         = Self(1.0, 0.0, 0.0, 1.0);
+    pub GREEN       = Self(0.0, 1.0, 0.0, 1.0);
+    pub BLUE        = Self(0.0, 0.0, 1.0, 1.0);
+    // Muted grey used for disabled list rows (PAL3/PAL4 save slots).
+    pub DISABLED    = Self(0.45, 0.45, 0.45, 1.0);
+    // Warm parchment tint used for game-menu headings.
+    pub PARCHMENT   = Self(1.0, 0.95, 0.7, 1.0);
+
+    // Opaque grey at intensity `v`.
+    pub fn gray(v: float) -> Self {
+        Color(v, v, v, 1.0)
+    }
+
+    // Same hue, different opacity.
+    pub fn with_alpha(ref self, a: float) -> Self {
+        Color(self.r, self.g, self.b, a)
+    }
+
+    // Multiply the alpha channel (for fade-in / cross-fade animations).
+    pub fn scale_alpha(ref self, f: float) -> Self {
+        Color(self.r, self.g, self.b, self.a * f)
+    }
+}
 
 // Sentinel for "no sprite button is currently pressed".
 pub let NO_PRESS: int = -1;
@@ -53,18 +200,72 @@ pub let ALIGN_START: int = 0;
 pub let ALIGN_CENTER: int = 1;
 pub let ALIGN_END: int = 2;
 
-// Threaded through `paint`. Holds the engine UI host plus the cross-frame
-// sprite-button press latch (`pressed` = the key of the held ImageButton,
-// or `NO_PRESS`). Build one per screen via `make_ctx` and reuse it every
-// frame.
-// `pressed` is public so screen-local `struct[Element]` widgets (game
-// screens that host their own atlas/sprite chrome rather than a CEGUI
-// `IUiLayoutHandle`, e.g. PAL3's cover menu) can participate in the same
-// cross-frame press latch as the built-in `LayoutImage` / `TextButton` /
-// `UiLayout` widgets.
+// `ALIGN_*` as the fractional factor `Rect.align` wants.
+pub fn align_factor(align: int) -> float {
+    if align == ALIGN_CENTER { return 0.5; }
+    if align == ALIGN_END { return 1.0; }
+    return 0.0;
+}
+
+// imgui `StyleColor` slots, mirroring the values imgui-rs exposes and the
+// subset `IUiHost.style_color` documents. Previously each screen redeclared
+// these (e.g. `title_consts.SC_*`); they belong with the widget layer that
+// consumes them.
+pub let SC_TEXT: int = 0;
+pub let SC_WINDOW_BG: int = 2;
+pub let SC_BUTTON: int = 21;
+pub let SC_BUTTON_HOVERED: int = 22;
+pub let SC_BUTTON_ACTIVE: int = 23;
+
+// Threaded through `paint`. A thin, stateless proxy over the host's
+// cross-frame press latch (the key of the widget currently held down, or
+// `NO_PRESS`).
+//
+// The latch deliberately lives in the ENGINE (`IUiHost.press_latch`), not in
+// this struct. It used to be a plain field here, which made a whole class of
+// silent bug writable: five screens called `make_ctx()` *inside* their
+// per-frame `render`, rebuilding the latch every frame. Any interactive widget
+// on those screens could never fire — a press on frame N was forgotten before
+// the release on frame N+1 could observe it. Those screens only worked because
+// they happened to use imgui's native `button`. With host-side storage,
+// building a fresh `UiCtx` every frame is harmless.
+//
+// Widgets go through `pressed()` / `set_pressed()` / `track_press()` rather
+// than touching storage directly, which is what let the storage move without
+// changing a single call site.
 pub struct UiCtx(
-    pub pressed: int = NO_PRESS,
+    // Retained so `UiCtx` has a field (and a stable constructor shape); the
+    // real latch is host-side. Not read by any widget.
+    pub unused: int = NO_PRESS,
 ) {
+    // The key of the widget currently held down, or `NO_PRESS`.
+    pub fn pressed(self: ref<Self>, ui: box<radiance.IUiHost>) -> int {
+        return ui.press_latch();
+    }
+
+    pub fn set_pressed(self: ref<Self>, ui: box<radiance.IUiHost>, key: int) {
+        ui.set_press_latch(key);
+    }
+
+    // The standard press/release interaction, shared by every clickable
+    // widget. Latches `key` on press-inside, and on release-inside (while
+    // this widget still owns the latch) clears it and fires `on_click`.
+    //
+    // Every clickable widget used to open-code these six lines; four copies
+    // had drifted apart in ordering.
+    pub fn track_press(self: ref<Self>, ui: box<radiance.IUiHost>, key: int,
+                       hovered: bool, held: bool, on_click: fn()) {
+        let was = self.pressed(ui);
+        if hovered && held && was == NO_PRESS {
+            self.set_pressed(ui, key);
+        }
+        if was == key && !held && hovered {
+            self.set_pressed(ui, NO_PRESS);
+            let cb = on_click;
+            cb();
+        }
+    }
+
     // Call once at the END of each frame (after the tree is painted).
     // When the mouse button is up, clear the latch so the next frame
     // starts fresh and a press that ended off-target doesn't linger.
@@ -72,9 +273,9 @@ pub struct UiCtx(
     // still observe `was == self.key` on the release frame and fire its
     // `on_click` — clearing first would erase the latch before any
     // widget runs.
-    fn end_frame(self: refmut<Self>, ui: box<radiance.IUiHost>) {
+    pub fn end_frame(self: ref<Self>, ui: box<radiance.IUiHost>) {
         if !ui.mouse_down(0) {
-            self.pressed = NO_PRESS;
+            self.set_pressed(ui, NO_PRESS);
         }
     }
 }
@@ -86,12 +287,15 @@ pub fn make_ctx() -> box<UiCtx> {
 }
 
 // The widget interface. Every element can be measured (given the space
-// available to it) and painted (into an absolute rect the parent chose).
+// available to it) and painted (into the absolute `Rect` the parent chose).
+//
+// Both halves take aggregates rather than loose floats: `measure` gets the
+// available `Size` and returns a desired `Size`; `paint` gets the `Rect` it
+// must draw into. `Size` and `Rect` are `[Copy]`, so a widget can measure a
+// child and then reuse the same `avail`/`rect` without tripping move checking.
 pub proto Element {
-    fn measure(self: ref<Element>, avail_w: float, avail_h: float,
-               ui: box<radiance.IUiHost>) -> Size;
-    fn paint(self: ref<Element>, x: float, y: float, w: float, h: float,
-             ui: box<radiance.IUiHost>, ctx: box<UiCtx>);
+    fn measure(self: ref<Element>, avail: Size, ui: box<radiance.IUiHost>) -> Size;
+    fn paint(self: ref<Element>, rect: Rect, ui: box<radiance.IUiHost>, ctx: box<UiCtx>);
 }
 
 // ---------------------------------------------------------------------
@@ -100,20 +304,21 @@ pub proto Element {
 
 pub struct[Element] Text(
     content: string,
-    r: float = 1.0,
-    g: float = 1.0,
-    b: float = 1.0,
-    a: float = 1.0,
+    // NOTE: no default. Default-value expressions are spliced into the
+    // *call site's* scope, so only literals survive an import — a
+    // struct-typed default (`Color.WHITE`, `Color(...)`, or a module
+    // constant) fails to resolve in every consuming module. See
+    // `specs/language-gaps.md`. Pass `Color.WHITE` explicitly.
+    color: Color,
 ) {
-    fn measure(self: ref<Self>, avail_w: float, avail_h: float,
-               ui: box<radiance.IUiHost>) -> Size {
+    fn measure(self: ref<Self>, avail: Size, ui: box<radiance.IUiHost>) -> Size {
         return Size(ui.calc_text_size_x(self.content), ui.calc_text_size_y(self.content));
     }
-    fn paint(self: ref<Self>, x: float, y: float, w: float, h: float,
-             ui: box<radiance.IUiHost>, ctx: box<UiCtx>) {
+    fn paint(self: ref<Self>, rect: Rect, ui: box<radiance.IUiHost>, ctx: box<UiCtx>) {
         // Drawn on the background draw list at an absolute position so it
         // composes with image chrome and ignores imgui auto-flow.
-        ui.text_at(x, y, self.r, self.g, self.b, self.a, self.content);
+        let c = self.color;
+        ui.text_at(rect.x, rect.y, c.r, c.g, c.b, c.a, self.content);
     }
 }
 
@@ -121,18 +326,44 @@ pub struct[Element] Image(
     tex: int,
     w: float,
     h: float,
-    u0: float,
-    v0: float,
-    u1: float,
-    v1: float,
+    u0: float = 0.0,
+    v0: float = 0.0,
+    u1: float = 1.0,
+    v1: float = 1.0,
 ) {
-    fn measure(self: ref<Self>, avail_w: float, avail_h: float,
-               ui: box<radiance.IUiHost>) -> Size {
+    fn measure(self: ref<Self>, avail: Size, ui: box<radiance.IUiHost>) -> Size {
         return Size(self.w, self.h);
     }
-    fn paint(self: ref<Self>, x: float, y: float, w: float, h: float,
-             ui: box<radiance.IUiHost>, ctx: box<UiCtx>) {
-        ui.image_rect(self.tex, x, y, x + w, y + h, self.u0, self.v0, self.u1, self.v1);
+    fn paint(self: ref<Self>, rect: Rect, ui: box<radiance.IUiHost>, ctx: box<UiCtx>) {
+        ui.image_rect(self.tex, rect.x, rect.y, rect.right(), rect.bottom(),
+                      self.u0, self.v0, self.u1, self.v1);
+    }
+}
+
+// A sprite from the engine `ISprite` layer (an atlas sub-rect plus its
+// texture id and UVs), stretched into the rect the parent assigns.
+//
+// This replaces the blit helper that every screen used to hand-roll under a
+// different name — `blit` in PAL3's state menu, `paint_sprite` in its start
+// menu, `sprite_rect` / `SpriteRect` in the dialog box and status UI — all of
+// which unpacked `com_id/width/height/u0..v1` identically.
+//
+// `measure` reports the sprite's natural pixel size (zero when absent), so a
+// `Sprite` can either size itself inside a `Row`/`Column` or be stretched by
+// an enclosing `Positioned` / `NativeCanvas`. A null sprite paints nothing.
+pub struct[Element] Sprite(
+    sprite: ?box<scripting_services.ISprite>,
+) {
+    fn measure(self: ref<Self>, avail: Size, ui: box<radiance.IUiHost>) -> Size {
+        if self.sprite == null { return Size.ZERO; }
+        let s = self.sprite!;
+        return Size(s.width() as float, s.height() as float);
+    }
+    fn paint(self: ref<Self>, rect: Rect, ui: box<radiance.IUiHost>, ctx: box<UiCtx>) {
+        if self.sprite == null || rect.is_empty() { return; }
+        let s = self.sprite!;
+        ui.image_rect(s.com_id(), rect.x, rect.y, rect.right(), rect.bottom(),
+                      s.u0(), s.v0(), s.u1(), s.v1());
     }
 }
 
@@ -142,14 +373,12 @@ pub struct[Element] Button(
     h: float,
     on_click: fn(),
 ) {
-    fn measure(self: ref<Self>, avail_w: float, avail_h: float,
-               ui: box<radiance.IUiHost>) -> Size {
+    fn measure(self: ref<Self>, avail: Size, ui: box<radiance.IUiHost>) -> Size {
         return Size(self.w, self.h);
     }
-    fn paint(self: ref<Self>, x: float, y: float, w: float, h: float,
-             ui: box<radiance.IUiHost>, ctx: box<UiCtx>) {
-        ui.set_cursor_pos(x, y);
-        let clicked = ui.button(self.label, w, h);
+    fn paint(self: ref<Self>, rect: Rect, ui: box<radiance.IUiHost>, ctx: box<UiCtx>) {
+        ui.set_cursor_pos(rect.x, rect.y);
+        let clicked = ui.button(self.label, rect.w, rect.h);
         if clicked {
             let cb = self.on_click;
             cb();
@@ -158,12 +387,10 @@ pub struct[Element] Button(
 }
 
 pub struct[Element] SizedBox(w: float, h: float) {
-    fn measure(self: ref<Self>, avail_w: float, avail_h: float,
-               ui: box<radiance.IUiHost>) -> Size {
+    fn measure(self: ref<Self>, avail: Size, ui: box<radiance.IUiHost>) -> Size {
         return Size(self.w, self.h);
     }
-    fn paint(self: ref<Self>, x: float, y: float, w: float, h: float,
-             ui: box<radiance.IUiHost>, ctx: box<UiCtx>) {}
+    fn paint(self: ref<Self>, rect: Rect, ui: box<radiance.IUiHost>, ctx: box<UiCtx>) {}
 }
 
 // A single image quad sourced from a host UI-layout draw list
@@ -196,47 +423,93 @@ pub struct[Element] LayoutImage(
     pu1: float = 1.0,
     pv1: float = 1.0,
 ) {
-    fn measure(self: ref<Self>, avail_w: float, avail_h: float,
-               ui: box<radiance.IUiHost>) -> Size {
-        return Size(0.0, 0.0);
+    fn measure(self: ref<Self>, avail: Size, ui: box<radiance.IUiHost>) -> Size {
+        return Size.ZERO;
     }
-    fn paint(self: ref<Self>, x: float, y: float, w: float, h: float,
-             ui: box<radiance.IUiHost>, ctx: box<UiCtx>) {
-        ui.set_cursor_pos(x, y);
-        ui.image_uv(self.tex, w, h, self.u0, self.v0, self.u1, self.v1);
+    fn paint(self: ref<Self>, rect: Rect, ui: box<radiance.IUiHost>, ctx: box<UiCtx>) {
+        ui.set_cursor_pos(rect.x, rect.y);
+        ui.image_uv(self.tex, rect.w, rect.h, self.u0, self.v0, self.u1, self.v1);
         if !self.interactive {
             return;
         }
 
         let hovered = ui.is_item_hovered();
         let held = ui.mouse_down(0);
-        let was = ctx.pressed;
+        let was = ctx.pressed(ui);
 
         // Overlay press/hover art. Press takes priority.
         if was == self.key && held && hovered {
             if self.press_tex != 0 {
-                ui.set_cursor_pos(x, y);
-                ui.image_uv(self.press_tex, w, h, self.pu0, self.pv0, self.pu1, self.pv1);
+                ui.set_cursor_pos(rect.x, rect.y);
+                ui.image_uv(self.press_tex, rect.w, rect.h,
+                            self.pu0, self.pv0, self.pu1, self.pv1);
             }
         } else {
             if hovered && self.hover_tex != 0 {
-                ui.set_cursor_pos(x, y);
-                ui.image_uv(self.hover_tex, w, h, self.hu0, self.hv0, self.hu1, self.hv1);
+                ui.set_cursor_pos(rect.x, rect.y);
+                ui.image_uv(self.hover_tex, rect.w, rect.h,
+                            self.hu0, self.hv0, self.hu1, self.hv1);
             }
         }
 
-        if hovered && held && was == NO_PRESS {
-            ctx.pressed = self.key;
-        }
-        if was == self.key && !held && hovered {
-            ctx.pressed = NO_PRESS;
-            let cb = self.on_click;
-            cb();
-        }
+        ctx.track_press(ui, self.key, hovered, held, self.on_click);
     }
 }
 
-// A clickable text row (no chrome): draws `label` in `(r,g,b,a)` at the
+// A 3-state sprite button: `normal` art always, `hover` art while the mouse
+// is over it, `pressed` art while held. Fires `on_click` on release inside
+// the rect, driven by the shared `ctx` press latch keyed by `key`.
+//
+// The three sprites are supplied already resolved rather than as an atlas
+// plus a base path, which keeps this widget game-agnostic: PAL3 resolves
+// `"<base>0.tga"` / `"1"` / `"2"` from its `IPal3UiAtlas`, PAL4 pulls them
+// from a CEGUI imageset, and both get the same interaction behaviour.
+// `hover` and `pressed` may be null — the widget falls back to `normal`.
+//
+// Collapses three previously separate implementations: PAL3's `paint_button`,
+// this module's `LayoutImage` interactive branch, and the manual hit-test in
+// PAL3's state menu.
+pub struct[Element] SpriteButton(
+    key: int,
+    normal: ?box<scripting_services.ISprite>,
+    on_click: fn(),
+    hover: ?box<scripting_services.ISprite> = null,
+    pressed: ?box<scripting_services.ISprite> = null,
+    enabled: bool = true,
+) {
+    fn measure(self: ref<Self>, avail: Size, ui: box<radiance.IUiHost>) -> Size {
+        if self.normal == null { return Size.ZERO; }
+        let s = self.normal!;
+        return Size(s.width() as float, s.height() as float);
+    }
+    fn paint(self: ref<Self>, rect: Rect, ui: box<radiance.IUiHost>, ctx: box<UiCtx>) {
+        if self.normal == null || rect.is_empty() { return; }
+
+        let hovered = rect.contains(ui.mouse_pos_x(), ui.mouse_pos_y());
+        let held = ui.mouse_down(0);
+        let was = ctx.pressed(ui);
+
+        // Choose the art for this frame: pressed > hover > normal, each
+        // falling back to `normal` when the alternate sprite is absent.
+        let mut art = self.normal!;
+        if self.enabled {
+            if was == self.key && held && hovered {
+                if self.pressed != null { art = self.pressed!; }
+            } else {
+                if hovered && self.hover != null { art = self.hover!; }
+            }
+        }
+        ui.image_rect(art.com_id(), rect.x, rect.y, rect.right(), rect.bottom(),
+                      art.u0(), art.v0(), art.u1(), art.v1());
+
+        if !self.enabled {
+            return;
+        }
+        ctx.track_press(ui, self.key, hovered, held, self.on_click);
+    }
+}
+
+// A clickable text row (no chrome): draws `label` in `color` at the
 // assigned position and, when `enabled`, hit-tests + fires `on_click` on
 // release (press latch keyed by `key`). Disabled rows render greyed and
 // inert. Used for synthetic lists (e.g. PAL4's save-slot overlay) that
@@ -246,20 +519,21 @@ pub struct[Element] TextButton(
     label: string,
     enabled: bool,
     on_click: fn(),
-    r: float = 1.0,
-    g: float = 1.0,
-    b: float = 1.0,
-    a: float = 1.0,
+    // NOTE: no default. Default-value expressions are spliced into the
+    // *call site's* scope, so only literals survive an import — a
+    // struct-typed default (`Color.WHITE`, `Color(...)`, or a module
+    // constant) fails to resolve in every consuming module. See
+    // `specs/language-gaps.md`. Pass `Color.WHITE` explicitly.
+    color: Color,
 ) {
-    fn measure(self: ref<Self>, avail_w: float, avail_h: float,
-               ui: box<radiance.IUiHost>) -> Size {
+    fn measure(self: ref<Self>, avail: Size, ui: box<radiance.IUiHost>) -> Size {
         return Size(ui.calc_text_size_x(self.label), ui.calc_text_size_y(self.label));
     }
-    fn paint(self: ref<Self>, x: float, y: float, w: float, h: float,
-             ui: box<radiance.IUiHost>, ctx: box<UiCtx>) {
-        ui.set_cursor_pos(x, y);
+    fn paint(self: ref<Self>, rect: Rect, ui: box<radiance.IUiHost>, ctx: box<UiCtx>) {
+        ui.set_cursor_pos(rect.x, rect.y);
         let lbl = self.label;
-        ui.style_color(0, self.r, self.g, self.b, self.a, () => {
+        let c = self.color;
+        ui.style_color(SC_TEXT, c.r, c.g, c.b, c.a, () => {
             ui.text(lbl);
         });
         if !self.enabled {
@@ -267,15 +541,7 @@ pub struct[Element] TextButton(
         }
         let hovered = ui.is_item_hovered();
         let held = ui.mouse_down(0);
-        let was = ctx.pressed;
-        if hovered && held && was == NO_PRESS {
-            ctx.pressed = self.key;
-        }
-        if was == self.key && !held && hovered {
-            ctx.pressed = NO_PRESS;
-            let cb = self.on_click;
-            cb();
-        }
+        ctx.track_press(ui, self.key, hovered, held, self.on_click);
     }
 }
 
@@ -290,36 +556,35 @@ pub struct[Element] Padding(
     right: float,
     bottom: float,
 ) {
-    fn measure(self: ref<Self>, avail_w: float, avail_h: float,
-               ui: box<radiance.IUiHost>) -> Size {
+    fn measure(self: ref<Self>, avail: Size, ui: box<radiance.IUiHost>) -> Size {
         let hpad = self.left + self.right;
         let vpad = self.top + self.bottom;
-        let inner = self.child.measure(avail_w - hpad, avail_h - vpad, ui);
-        return Size(inner.w + hpad, inner.h + vpad);
+        let inner = self.child.measure(avail.deflate(hpad, vpad), ui);
+        return inner.inflate(hpad, vpad);
     }
-    fn paint(self: ref<Self>, x: float, y: float, w: float, h: float,
-             ui: box<radiance.IUiHost>, ctx: box<UiCtx>) {
-        self.child.paint(
-            x + self.left, y + self.top,
-            w - self.left - self.right, h - self.top - self.bottom,
-            ui, ctx);
+    fn paint(self: ref<Self>, rect: Rect, ui: box<radiance.IUiHost>, ctx: box<UiCtx>) {
+        self.child.paint(rect.inset(self.left, self.top, self.right, self.bottom), ui, ctx);
     }
 }
 
 pub struct[Element] Center(child: box<Element>) {
-    fn measure(self: ref<Self>, avail_w: float, avail_h: float,
-               ui: box<radiance.IUiHost>) -> Size {
-        return self.child.measure(avail_w, avail_h, ui);
+    fn measure(self: ref<Self>, avail: Size, ui: box<radiance.IUiHost>) -> Size {
+        return self.child.measure(avail, ui);
     }
-    fn paint(self: ref<Self>, x: float, y: float, w: float, h: float,
-             ui: box<radiance.IUiHost>, ctx: box<UiCtx>) {
-        let s = self.child.measure(w, h, ui);
-        let cx = x + (w - s.w) * 0.5;
-        let cy = y + (h - s.h) * 0.5;
-        self.child.paint(cx, cy, s.w, s.h, ui, ctx);
+    fn paint(self: ref<Self>, rect: Rect, ui: box<radiance.IUiHost>, ctx: box<UiCtx>) {
+        let s = self.child.measure(rect.size(), ui);
+        self.child.paint(rect.center(s), ui, ctx);
     }
 }
 
+// Place `child` at a fixed offset *within the parent's rect*, at a fixed
+// size.
+//
+// NOTE: this is parent-RELATIVE. It used to paint at absolute screen
+// coordinates (ignoring the rect the parent handed it), which is why every
+// screen threaded `origin_x` / `origin_y` / `scale` by hand instead of
+// nesting containers. Anchoring to the parent is what makes `NativeCanvas`
+// (and nesting in general) work.
 pub struct[Element] Positioned(
     px: float,
     py: float,
@@ -327,13 +592,11 @@ pub struct[Element] Positioned(
     ph: float,
     child: box<Element>,
 ) {
-    fn measure(self: ref<Self>, avail_w: float, avail_h: float,
-               ui: box<radiance.IUiHost>) -> Size {
+    fn measure(self: ref<Self>, avail: Size, ui: box<radiance.IUiHost>) -> Size {
         return Size(self.pw, self.ph);
     }
-    fn paint(self: ref<Self>, x: float, y: float, w: float, h: float,
-             ui: box<radiance.IUiHost>, ctx: box<UiCtx>) {
-        self.child.paint(self.px, self.py, self.pw, self.ph, ui, ctx);
+    fn paint(self: ref<Self>, rect: Rect, ui: box<radiance.IUiHost>, ctx: box<UiCtx>) {
+        self.child.paint(Rect(rect.x + self.px, rect.y + self.py, self.pw, self.ph), ui, ctx);
     }
 }
 
@@ -347,32 +610,27 @@ pub struct[Element] Column(
     main: int = 0,   // ALIGN_START
     cross: int = 1,  // ALIGN_CENTER
 ) {
-    fn measure(self: ref<Self>, avail_w: float, avail_h: float,
-               ui: box<radiance.IUiHost>) -> Size {
+    fn measure(self: ref<Self>, avail: Size, ui: box<radiance.IUiHost>) -> Size {
         let mut total_h = 0.0;
         let mut max_w = 0.0;
         let mut first = true;
         for c in self.children {
-            let s = c.measure(avail_w, avail_h, ui);
-            if s.w > max_w { max_w = s.w; }
+            let s = c.measure(avail, ui);
+            max_w = max(max_w, s.w);
             if !first { total_h = total_h + self.spacing; }
             total_h = total_h + s.h;
             first = false;
         }
         return Size(max_w, total_h);
     }
-    fn paint(self: ref<Self>, x: float, y: float, w: float, h: float,
-             ui: box<radiance.IUiHost>, ctx: box<UiCtx>) {
-        let total = self.measure(w, h, ui).h;
-        let mut cy = y;
-        if self.main == ALIGN_CENTER { cy = y + (h - total) * 0.5; }
-        else { if self.main == ALIGN_END { cy = y + (h - total); } }
+    fn paint(self: ref<Self>, rect: Rect, ui: box<radiance.IUiHost>, ctx: box<UiCtx>) {
+        let total = self.measure(rect.size(), ui).h;
+        let cross_f = align_factor(self.cross);
+        let mut cy = rect.y + (rect.h - total) * align_factor(self.main);
         for c in self.children {
-            let s = c.measure(w, h, ui);
-            let mut cx = x + (w - s.w) * 0.5;
-            if self.cross == ALIGN_START { cx = x; }
-            else { if self.cross == ALIGN_END { cx = x + (w - s.w); } }
-            c.paint(cx, cy, s.w, s.h, ui, ctx);
+            let s = c.measure(rect.size(), ui);
+            let row = Rect(rect.x, cy, rect.w, s.h).align(s, cross_f, 0.0);
+            c.paint(row, ui, ctx);
             cy = cy + s.h + self.spacing;
         }
     }
@@ -384,46 +642,39 @@ pub struct[Element] Row(
     main: int = 0,   // ALIGN_START
     cross: int = 1,  // ALIGN_CENTER
 ) {
-    fn measure(self: ref<Self>, avail_w: float, avail_h: float,
-               ui: box<radiance.IUiHost>) -> Size {
+    fn measure(self: ref<Self>, avail: Size, ui: box<radiance.IUiHost>) -> Size {
         let mut total_w = 0.0;
         let mut max_h = 0.0;
         let mut first = true;
         for c in self.children {
-            let s = c.measure(avail_w, avail_h, ui);
-            if s.h > max_h { max_h = s.h; }
+            let s = c.measure(avail, ui);
+            max_h = max(max_h, s.h);
             if !first { total_w = total_w + self.spacing; }
             total_w = total_w + s.w;
             first = false;
         }
         return Size(total_w, max_h);
     }
-    fn paint(self: ref<Self>, x: float, y: float, w: float, h: float,
-             ui: box<radiance.IUiHost>, ctx: box<UiCtx>) {
-        let total = self.measure(w, h, ui).w;
-        let mut cx = x;
-        if self.main == ALIGN_CENTER { cx = x + (w - total) * 0.5; }
-        else { if self.main == ALIGN_END { cx = x + (w - total); } }
+    fn paint(self: ref<Self>, rect: Rect, ui: box<radiance.IUiHost>, ctx: box<UiCtx>) {
+        let total = self.measure(rect.size(), ui).w;
+        let cross_f = align_factor(self.cross);
+        let mut cx = rect.x + (rect.w - total) * align_factor(self.main);
         for c in self.children {
-            let s = c.measure(w, h, ui);
-            let mut cy = y + (h - s.h) * 0.5;
-            if self.cross == ALIGN_START { cy = y; }
-            else { if self.cross == ALIGN_END { cy = y + (h - s.h); } }
-            c.paint(cx, cy, s.w, s.h, ui, ctx);
+            let s = c.measure(rect.size(), ui);
+            let cell = Rect(cx, rect.y, s.w, rect.h).align(s, 0.0, cross_f);
+            c.paint(cell, ui, ctx);
             cx = cx + s.w + self.spacing;
         }
     }
 }
 
 pub struct[Element] Stack(children: array<box<Element>>) {
-    fn measure(self: ref<Self>, avail_w: float, avail_h: float,
-               ui: box<radiance.IUiHost>) -> Size {
-        return Size(avail_w, avail_h);
+    fn measure(self: ref<Self>, avail: Size, ui: box<radiance.IUiHost>) -> Size {
+        return avail;
     }
-    fn paint(self: ref<Self>, x: float, y: float, w: float, h: float,
-             ui: box<radiance.IUiHost>, ctx: box<UiCtx>) {
+    fn paint(self: ref<Self>, rect: Rect, ui: box<radiance.IUiHost>, ctx: box<UiCtx>) {
         for c in self.children {
-            c.paint(x, y, w, h, ui, ctx);
+            c.paint(rect, ui, ctx);
         }
     }
 }
@@ -440,44 +691,191 @@ pub struct[Element] Align(
     ax: float = 0.5,
     ay: float = 0.5,
 ) {
-    fn measure(self: ref<Self>, avail_w: float, avail_h: float,
-               ui: box<radiance.IUiHost>) -> Size {
-        return Size(avail_w, avail_h);
+    fn measure(self: ref<Self>, avail: Size, ui: box<radiance.IUiHost>) -> Size {
+        return avail;
     }
-    fn paint(self: ref<Self>, x: float, y: float, w: float, h: float,
-             ui: box<radiance.IUiHost>, ctx: box<UiCtx>) {
-        let s = self.child.measure(w, h, ui);
-        let cx = x + (w - s.w) * self.ax;
-        let cy = y + (h - s.h) * self.ay;
-        self.child.paint(cx, cy, s.w, s.h, ui, ctx);
+    fn paint(self: ref<Self>, rect: Rect, ui: box<radiance.IUiHost>, ctx: box<UiCtx>) {
+        let s = self.child.measure(rect.size(), ui);
+        self.child.paint(rect.align(s, self.ax, self.ay), ui, ctx);
     }
 }
 
-// Letterbox a `native_w x native_h` canvas into the assigned rect,
-// preserving aspect ratio (centred). The child is painted into the
-// fitted sub-rect — useful for fixed-resolution compositions (e.g. an
-// 800x600 game layout) that must scale to the viewport.
+// Letterbox a `native` canvas into the assigned rect, preserving aspect
+// ratio (centred). The child is painted into the fitted sub-rect — useful
+// for fixed-resolution compositions (e.g. an 800x600 game layout) that must
+// scale to the viewport.
+//
+// Prefer `NativeCanvas` when the children are authored in native pixel
+// coordinates; `FittedBox` just hands the fitted rect to a single child.
 pub struct[Element] FittedBox(
-    native_w: float,
-    native_h: float,
+    native: Size,
     child: box<Element>,
 ) {
-    fn measure(self: ref<Self>, avail_w: float, avail_h: float,
-               ui: box<radiance.IUiHost>) -> Size {
-        return Size(avail_w, avail_h);
+    fn measure(self: ref<Self>, avail: Size, ui: box<radiance.IUiHost>) -> Size {
+        return avail;
     }
-    fn paint(self: ref<Self>, x: float, y: float, w: float, h: float,
-             ui: box<radiance.IUiHost>, ctx: box<UiCtx>) {
-        if self.native_w <= 0.0 || self.native_h <= 0.0 || w <= 0.0 || h <= 0.0 {
+    fn paint(self: ref<Self>, rect: Rect, ui: box<radiance.IUiHost>, ctx: box<UiCtx>) {
+        let fitted = rect.fit(self.native);
+        if fitted.is_empty() { return; }
+        self.child.paint(fitted, ui, ctx);
+    }
+}
+
+// Letterbox-fit a fixed design canvas into the assigned rect and lay children
+// out in **native** canvas coordinates.
+//
+// This is the abstraction the screens were missing. Previously every screen
+// that hosted a fixed-resolution composition recomputed
+//
+//     let sx = avail_w / nat_w; let sy = avail_h / nat_h;
+//     let scale = if sx < sy { sx } else { sy };
+//     let origin_x = x + (w - nat_w * scale) * 0.5;
+//     let origin_y = y + (h - nat_h * scale) * 0.5;
+//
+// and then wrote `origin_x + nx * scale` at every single draw. `NativeCanvas`
+// does it once: children are wrapped in `Positioned` using plain native
+// coordinates and are scaled and centred automatically.
+//
+// `clip` (default true) additionally confines drawing to the fitted canvas so
+// art that slides past the canvas edge doesn't bleed into the letterbox bars.
+pub struct[Element] NativeCanvas(
+    native: Size,
+    children: array<box<Element>>,
+    clip: bool = true,
+) {
+    fn measure(self: ref<Self>, avail: Size, ui: box<radiance.IUiHost>) -> Size {
+        return avail;
+    }
+    fn paint(self: ref<Self>, rect: Rect, ui: box<radiance.IUiHost>, ctx: box<UiCtx>) {
+        let fitted = rect.fit(self.native);
+        if fitted.is_empty() { return; }
+        let scale = rect.fit_scale(self.native);
+        // Children are authored against the native canvas, so hand them a rect
+        // whose origin is the fitted top-left and whose extent is the native
+        // size scaled up — i.e. native coordinates multiplied through.
+        let canvas = Rect(fitted.x, fitted.y, self.native.w * scale, self.native.h * scale);
+        let kids = self.children;
+        if !self.clip {
+            for c in kids {
+                c.paint(canvas, ui, ctx);
+            }
             return;
         }
-        let sx = w / self.native_w;
-        let sy = h / self.native_h;
-        let scale = if sx < sy { sx } else { sy };
-        let dw = self.native_w * scale;
-        let dh = self.native_h * scale;
-        self.child.paint(x + (w - dw) * 0.5, y + (h - dh) * 0.5, dw, dh, ui, ctx);
+        ui.clip_rect(fitted.x, fitted.y, fitted.right(), fitted.bottom(), () => {
+            for c in kids {
+                c.paint(canvas, ui, ctx);
+            }
+        });
     }
+}
+
+// Place `child` at a native-pixel rect inside a `NativeCanvas`.
+//
+// `NativeCanvas` hands its children a rect whose origin is the fitted canvas
+// origin and whose extent is the native canvas size multiplied by the fit
+// scale, so `NativeRect` recovers the scale as `rect.w / canvas_w` and maps
+// native coordinates through it. `canvas_w` must match the enclosing
+// `NativeCanvas`'s `native.w`; screens typically wrap this in a one-line local
+// helper that closes over their canvas constant.
+pub struct[Element] NativeRect(
+    canvas_w: float,
+    nx: float,
+    ny: float,
+    nw: float,
+    nh: float,
+    child: box<Element>,
+) {
+    fn measure(self: ref<Self>, avail: Size, ui: box<radiance.IUiHost>) -> Size {
+        return Size(self.nw, self.nh);
+    }
+    fn paint(self: ref<Self>, rect: Rect, ui: box<radiance.IUiHost>, ctx: box<UiCtx>) {
+        if self.canvas_w <= 0.0 { return; }
+        let scale = rect.w / self.canvas_w;
+        self.child.paint(
+            Rect(rect.x + self.nx * scale, rect.y + self.ny * scale,
+                 self.nw * scale, self.nh * scale),
+            ui, ctx);
+    }
+}
+
+// Confine `child`'s drawing to the assigned rect. Backed by the host's
+// `clip_rect`, which pushes an imgui clip rect covering both the window and
+// the background draw lists — so it clips `Text` / `Image` / `Sprite`
+// (background list) as well as cursor-positioned widgets.
+//
+// This replaces the hand-rolled UV-trimming that PAL3's start menu used to do
+// for its drifting clouds and sliding taiji discs (~40 lines of per-edge trim
+// plus proportional UV adjustment).
+pub struct[Element] ClipRect(child: box<Element>) {
+    fn measure(self: ref<Self>, avail: Size, ui: box<radiance.IUiHost>) -> Size {
+        return self.child.measure(avail, ui);
+    }
+    fn paint(self: ref<Self>, rect: Rect, ui: box<radiance.IUiHost>, ctx: box<UiCtx>) {
+        if rect.is_empty() { return; }
+        let child = self.child;
+        ui.clip_rect(rect.x, rect.y, rect.right(), rect.bottom(), () => {
+            child.paint(rect, ui, ctx);
+        });
+    }
+}
+
+// Apply an imgui global-alpha multiplier to a whole subtree. Used for
+// fade-ins and cross-fades; composes with nested `style_color` pushes.
+pub struct[Element] Opacity(child: box<Element>, alpha: float) {
+    fn measure(self: ref<Self>, avail: Size, ui: box<radiance.IUiHost>) -> Size {
+        return self.child.measure(avail, ui);
+    }
+    fn paint(self: ref<Self>, rect: Rect, ui: box<radiance.IUiHost>, ctx: box<UiCtx>) {
+        let child = self.child;
+        ui.style_alpha(self.alpha, () => {
+            child.paint(rect, ui, ctx);
+        });
+    }
+}
+
+// Push one imgui style colour for the duration of a subtree.
+//
+// Nesting these replaces the closure pyramid screens used to write by hand —
+// PAL3's title page stacked *four* `ui.style_color(...)` callbacks just to
+// render one transparent-chrome button:
+//
+//     StyleColor(StyleColor(StyleColor(StyleColor(
+//         btn, SC_TEXT, tint),
+//         SC_BUTTON_ACTIVE, Color.TRANSPARENT),
+//         SC_BUTTON_HOVERED, Color.TRANSPARENT),
+//         SC_BUTTON, Color.TRANSPARENT)
+//
+// which `themed(btn, slots, colors)` below builds from parallel arrays.
+pub struct[Element] StyleColor(
+    child: box<Element>,
+    slot: int,
+    color: Color,
+) {
+    fn measure(self: ref<Self>, avail: Size, ui: box<radiance.IUiHost>) -> Size {
+        return self.child.measure(avail, ui);
+    }
+    fn paint(self: ref<Self>, rect: Rect, ui: box<radiance.IUiHost>, ctx: box<UiCtx>) {
+        let child = self.child;
+        let c = self.color;
+        ui.style_color(self.slot, c.r, c.g, c.b, c.a, () => {
+            child.paint(rect, ui, ctx);
+        });
+    }
+}
+
+// Fold parallel `slots` / `colors` arrays into a nest of `StyleColor`s around
+// `child`. Slot 0 ends up outermost, matching the order a hand-written nest
+// of `ui.style_color` callbacks would push them.
+pub fn themed(child: box<Element>, slots: array<int>, colors: array<Color>)
+    -> box<Element> {
+    let n = min(slots.len(), colors.len());
+    let mut node = child;
+    let mut i = n - 1;
+    while i >= 0 {
+        node = StyleColor(node, slots[i], colors[i]);
+        i = i - 1;
+    }
+    return node;
 }
 
 // A vertical list of `count` rows built lazily from an index closure.
@@ -490,22 +888,20 @@ pub struct[Element] ListView(
     item_builder: fn(int) -> box<Element>,
     spacing: float = 0.0,
 ) {
-    fn measure(self: ref<Self>, avail_w: float, avail_h: float,
-               ui: box<radiance.IUiHost>) -> Size {
-        return Size(avail_w, avail_h);
+    fn measure(self: ref<Self>, avail: Size, ui: box<radiance.IUiHost>) -> Size {
+        return avail;
     }
-    fn paint(self: ref<Self>, x: float, y: float, w: float, h: float,
-             ui: box<radiance.IUiHost>, ctx: box<UiCtx>) {
+    fn paint(self: ref<Self>, rect: Rect, ui: box<radiance.IUiHost>, ctx: box<UiCtx>) {
         if self.count <= 0 {
             return;
         }
         let n = self.count as float;
-        let row_h = (h - self.spacing * (n - 1.0)) / n;
+        let row_h = (rect.h - self.spacing * (n - 1.0)) / n;
         let build = self.item_builder;
         for i in Range(0, self.count) {
             let row = build(i);
-            let ry = y + (i as float) * (row_h + self.spacing);
-            row.paint(x, ry, w, row_h, ui, ctx);
+            let ry = rect.y + (i as float) * (row_h + self.spacing);
+            row.paint(Rect(rect.x, ry, rect.w, row_h), ui, ctx);
         }
     }
 }
@@ -525,23 +921,15 @@ pub struct[Element] UiLayout(
     handle: box<scripting_services.IUiLayoutHandle>,
     on_click: fn(string),
 ) {
-    fn measure(self: ref<Self>, avail_w: float, avail_h: float,
-               ui: box<radiance.IUiHost>) -> Size {
-        return Size(avail_w, avail_h);
+    fn measure(self: ref<Self>, avail: Size, ui: box<radiance.IUiHost>) -> Size {
+        return avail;
     }
-    fn paint(self: ref<Self>, x: float, y: float, w: float, h: float,
-             ui: box<radiance.IUiHost>, ctx: box<UiCtx>) {
+    fn paint(self: ref<Self>, rect: Rect, ui: box<radiance.IUiHost>, ctx: box<UiCtx>) {
         let h_ = self.handle;
-        let nw = h_.native_width() as float;
-        let nh = h_.native_height() as float;
-        if nw <= 0.0 || nh <= 0.0 || w <= 0.0 || h <= 0.0 {
-            return;
-        }
-        let sx = w / nw;
-        let sy = h / nh;
-        let scale = if sx < sy { sx } else { sy };
-        let ox = x + (w - nw * scale) * 0.5;
-        let oy = y + (h - nh * scale) * 0.5;
+        let native = Size(h_.native_width() as float, h_.native_height() as float);
+        let fitted = rect.fit(native);
+        if fitted.is_empty() { return; }
+        let scale = rect.fit_scale(native);
 
         let n = h_.draw_count();
         for i in Range(0, n) {
@@ -554,8 +942,8 @@ pub struct[Element] UiLayout(
             if tex == 0 {
                 continue;
             }
-            let cx = ox + h_.draw_x(i) * scale;
-            let cy = oy + h_.draw_y(i) * scale;
+            let cx = fitted.x + h_.draw_x(i) * scale;
+            let cy = fitted.y + h_.draw_y(i) * scale;
             ui.set_cursor_pos(cx, cy);
             ui.image_uv(tex, cw, ch, h_.draw_u0(i), h_.draw_v0(i), h_.draw_u1(i), h_.draw_v1(i));
             if !h_.draw_is_interactive(i) {
@@ -565,7 +953,7 @@ pub struct[Element] UiLayout(
             let wid = h_.draw_window_id(i);
             let hovered = ui.is_item_hovered();
             let held = ui.mouse_down(0);
-            let was = ctx.pressed;
+            let was = ctx.pressed(ui);
 
             if was == wid && held && hovered {
                 let pt = h_.draw_pressed_texture_com_id(i);
@@ -584,10 +972,10 @@ pub struct[Element] UiLayout(
             }
 
             if hovered && held && was == NO_PRESS {
-                ctx.pressed = wid;
+                ctx.set_pressed(ui, wid);
             }
             if was == wid && !held && hovered {
-                ctx.pressed = NO_PRESS;
+                ctx.set_pressed(ui, NO_PRESS);
                 let cb = self.on_click;
                 cb(h_.window_name(wid));
             }
@@ -605,39 +993,29 @@ pub struct[Element] LayoutAnchor(
     window_name: string,
     child: box<Element>,
 ) {
-    fn measure(self: ref<Self>, avail_w: float, avail_h: float,
-               ui: box<radiance.IUiHost>) -> Size {
-        return Size(0.0, 0.0);
+    fn measure(self: ref<Self>, avail: Size, ui: box<radiance.IUiHost>) -> Size {
+        return Size.ZERO;
     }
-    fn paint(self: ref<Self>, x: float, y: float, w: float, h: float,
-             ui: box<radiance.IUiHost>, ctx: box<UiCtx>) {
+    fn paint(self: ref<Self>, rect: Rect, ui: box<radiance.IUiHost>, ctx: box<UiCtx>) {
         let h_ = self.handle;
-        let nw = h_.native_width() as float;
-        let nh = h_.native_height() as float;
-        if nw <= 0.0 || nh <= 0.0 || w <= 0.0 || h <= 0.0 {
-            return;
-        }
-        let sx = w / nw;
-        let sy = h / nh;
-        let scale = if sx < sy { sx } else { sy };
-        let ox = x + (w - nw * scale) * 0.5;
-        let oy = y + (h - nh * scale) * 0.5;
+        let native = Size(h_.native_width() as float, h_.native_height() as float);
+        let fitted = rect.fit(native);
+        if fitted.is_empty() { return; }
+        let scale = rect.fit_scale(native);
 
-        let mut ax = nw * 0.25;
-        let mut ay = nh * 0.30;
-        let mut aw = nw * 0.50;
-        let mut ah = nh * 0.40;
+        // Default anchor: a centred region, used when the window is absent.
+        let mut anchor = Rect(native.w * 0.25, native.h * 0.30, native.w * 0.50, native.h * 0.40);
         let n = h_.draw_count();
         for i in Range(0, n) {
             let wid = h_.draw_window_id(i);
             if h_.window_name(wid) == self.window_name {
-                ax = h_.draw_x(i);
-                ay = h_.draw_y(i);
-                aw = h_.draw_w(i);
-                ah = h_.draw_h(i);
+                anchor = Rect(h_.draw_x(i), h_.draw_y(i), h_.draw_w(i), h_.draw_h(i));
             }
         }
-        self.child.paint(ox + ax * scale, oy + ay * scale, aw * scale, ah * scale, ui, ctx);
+        self.child.paint(
+            Rect(fitted.x + anchor.x * scale, fitted.y + anchor.y * scale,
+                 anchor.w * scale, anchor.h * scale),
+            ui, ctx);
     }
 }
 
@@ -649,10 +1027,9 @@ pub struct[Element] LayoutAnchor(
 // per frame from a screen's `render`. Returns 0 so it can be the tail of
 // an `IUiLayer.render` body.
 pub fn paint_root(root: box<Element>, ui: box<radiance.IUiHost>, ctx: box<UiCtx>) -> int {
-    let lw = ui.display_size_x() as float;
-    let lh = ui.display_size_y() as float;
-    if lw <= 0.0 || lh <= 0.0 { return 0; }
-    root.paint(0.0, 0.0, lw, lh, ui, ctx);
+    let viewport = Rect(0.0, 0.0, ui.display_size_x() as float, ui.display_size_y() as float);
+    if viewport.is_empty() { return 0; }
+    root.paint(viewport, ui, ctx);
     // Clear the press latch AFTER painting so widgets can detect a
     // release (`was == key && !held && hovered`) during this frame.
     ctx.end_frame(ui);

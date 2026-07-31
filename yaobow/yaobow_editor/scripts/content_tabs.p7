@@ -10,48 +10,65 @@ import yaobow_editor.yaobow_editor_services;
 import scripting_services;
 import radiance;
 import yaobow_editor.editor_consts;
+// Used for its geometry primitives (`Rect.fit`) only — the editor is still
+// painted imperatively rather than as an `Element` tree.
+import radiance_scripting.ui as gui;
 
+// A tab holds exactly one kind of content, so all but one of its payload
+// fields are null for any given tab. Defaulting them keeps each constructor
+// down to the fields it actually sets — the `make_*_tab` helpers below used to
+// spell out eight to eleven consecutive `null`s each.
+//
+// Construction must be ALL-named or ALL-positional (mixing is an error), so
+// the helpers use named arguments throughout.
 pub struct ContentTab(
     pub label: string,
     pub close_cmd: int,
     pub kind: editor_consts.ContentKind,
-    pub text_content: string,
-    pub image_handle: ?box<yaobow_editor_services.IImageHandle>,
-    pub audio_handle: ?box<yaobow_editor_services.IAudioHandle>,
-    pub video_handle: ?box<scripting_services.IVideoHandle>,
-    pub model_handle: ?box<yaobow_editor_services.IModelHandle>,
-    pub preview_session: ?box<yaobow_editor_services.IPreviewSession>,
-    pub scene_handle: ?box<yaobow_editor_services.ISceneHandle>,
-    pub scene_session: ?box<yaobow_editor_services.IScenePreviewSession>,
-    pub ui_layout_handle: ?box<scripting_services.IUiLayoutHandle>,
+    pub text_content: string = "",
+    pub image_handle: ?box<yaobow_editor_services.IImageHandle> = null,
+    pub audio_handle: ?box<yaobow_editor_services.IAudioHandle> = null,
+    pub video_handle: ?box<scripting_services.IVideoHandle> = null,
+    pub model_handle: ?box<yaobow_editor_services.IModelHandle> = null,
+    pub preview_session: ?box<yaobow_editor_services.IPreviewSession> = null,
+    pub scene_handle: ?box<yaobow_editor_services.ISceneHandle> = null,
+    pub scene_session: ?box<yaobow_editor_services.IScenePreviewSession> = null,
+    pub ui_layout_handle: ?box<scripting_services.IUiLayoutHandle> = null,
 );
 
 fn make_text_tab(label: string, close_cmd: int, content: string, kind: editor_consts.ContentKind) -> ContentTab {
-    ContentTab(label, close_cmd, kind, content, null, null, null, null, null, null, null, null)
+    ContentTab(label = label, close_cmd = close_cmd, kind = kind, text_content = content)
 }
 
 fn make_image_tab(label: string, close_cmd: int, handle: box<yaobow_editor_services.IImageHandle>) -> ContentTab {
-    ContentTab(label, close_cmd, editor_consts.ContentKind.Image, "", handle, null, null, null, null, null, null, null)
+    ContentTab(label = label, close_cmd = close_cmd,
+               kind = editor_consts.ContentKind.Image, image_handle = handle)
 }
 
 fn make_audio_tab(label: string, close_cmd: int, handle: box<yaobow_editor_services.IAudioHandle>) -> ContentTab {
-    ContentTab(label, close_cmd, editor_consts.ContentKind.Audio, "", null, handle, null, null, null, null, null, null)
+    ContentTab(label = label, close_cmd = close_cmd,
+               kind = editor_consts.ContentKind.Audio, audio_handle = handle)
 }
 
 fn make_video_tab(label: string, close_cmd: int, handle: box<scripting_services.IVideoHandle>) -> ContentTab {
-    ContentTab(label, close_cmd, editor_consts.ContentKind.Video, "", null, null, handle, null, null, null, null, null)
+    ContentTab(label = label, close_cmd = close_cmd,
+               kind = editor_consts.ContentKind.Video, video_handle = handle)
 }
 
 fn make_model_tab(label: string, close_cmd: int, content: string, handle: box<yaobow_editor_services.IModelHandle>) -> ContentTab {
-    ContentTab(label, close_cmd, editor_consts.ContentKind.Model, content, null, null, null, handle, null, null, null, null)
+    ContentTab(label = label, close_cmd = close_cmd,
+               kind = editor_consts.ContentKind.Model,
+               text_content = content, model_handle = handle)
 }
 
 pub fn make_scene_tab(label: string, close_cmd: int, handle: box<yaobow_editor_services.ISceneHandle>) -> ContentTab {
-    ContentTab(label, close_cmd, editor_consts.ContentKind.Scene, "", null, null, null, null, null, handle, null, null)
+    ContentTab(label = label, close_cmd = close_cmd,
+               kind = editor_consts.ContentKind.Scene, scene_handle = handle)
 }
 
 fn make_ui_layout_tab(label: string, close_cmd: int, handle: box<scripting_services.IUiLayoutHandle>) -> ContentTab {
-    ContentTab(label, close_cmd, editor_consts.ContentKind.UiLayout, "", null, null, null, null, null, null, null, handle)
+    ContentTab(label = label, close_cmd = close_cmd,
+               kind = editor_consts.ContentKind.UiLayout, ui_layout_handle = handle)
 }
 
 // Returns null if the path could not be opened (unsupported extension or
@@ -392,20 +409,18 @@ pub fn render_tab_body_im(
         editor_consts.ContentKind.UiLayout => {
             if tab.ui_layout_handle != null {
                 let h = tab.ui_layout_handle!;
-                let native_w = h.native_width() as float;
-                let native_h = h.native_height() as float;
-                let avail_w = ui.content_region_avail_x() as float;
-                let avail_h = ui.content_region_avail_y() as float;
-                if native_w > 0.0 && native_h > 0.0 && avail_w > 0.0 && avail_h > 0.0 {
-                    // Fit the native canvas into the available content
-                    // region preserving aspect ratio.
-                    let sx = avail_w / native_w;
-                    let sy = avail_h / native_h;
-                    let scale = if sx < sy { sx } else { sy };
-                    let drawn_w = native_w * scale;
-                    let drawn_h = native_h * scale;
-                    let origin_x = ui.cursor_pos_x() + (avail_w - drawn_w) * 0.5;
-                    let origin_y = ui.cursor_pos_y() + (avail_h - drawn_h) * 0.5;
+                let native = gui.Size(h.native_width() as float, h.native_height() as float);
+                let region = gui.Rect(
+                    ui.cursor_pos_x(), ui.cursor_pos_y(),
+                    ui.content_region_avail_x() as float,
+                    ui.content_region_avail_y() as float);
+                // Fit the native canvas into the available content region
+                // preserving aspect ratio.
+                let fitted = region.fit(native);
+                if !fitted.is_empty() {
+                    let scale = region.fit_scale(native);
+                    let origin_x = fitted.x;
+                    let origin_y = fitted.y;
 
                     let n = h.draw_count();
                     for i in Range(0, n) {

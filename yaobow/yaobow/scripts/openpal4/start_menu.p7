@@ -28,10 +28,16 @@ let BTN_EXIT: string      = "BtnExit";
 let BTN_LOAD_GAME: string = "BtnLoadGame";
 
 // Intent codes drained once per `update`.
-let INTENT_NONE: int      = 0;
-let INTENT_NEW_GAME: int  = 1;
-let INTENT_EXIT: int      = 2;
-let INTENT_LOAD: int      = 3;
+// What the user asked for on this frame, drained once per `update`.
+// A typed enum rather than the old untyped `int` codes: `match` on it is
+// exhaustiveness-checked, so adding a variant surfaces every site that has to
+// handle it instead of silently falling through.
+enum Intent(
+    None,
+    NewGame,
+    Exit,
+    Load,
+);
 
 // Which layout the menu is currently presenting.
 let MODE_MAIN: int        = 0;
@@ -103,7 +109,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal4StartMenuDirector(
     // the asset is missing — "Load Game" then stays inert.
     pub load_layout: ?box<scripting_services.IUiLayoutHandle>,
     pub bgm: ?box<scripting_services.IAudioSource>,
-    pub intent: int,
+    pub intent: Intent,
     // True once `activate()` has successfully pushed the ZJM
     // backdrop scene; `deactivate()` pops + unloads only when set
     // so a failure to load assets degrades to a still-functional
@@ -111,7 +117,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal4StartMenuDirector(
     pub scene_pushed: bool,
     // MODE_MAIN or MODE_LOAD — selects which layout is presented.
     pub mode: int,
-    // Save slot carried by a pending INTENT_LOAD, or NO_SLOT.
+    // Save slot carried by a pending Intent.Load, or NO_SLOT.
     pub load_slot: int,
     // Cross-frame press latch for the declarative widget tree (the
     // pressed widget's key, or NO_PRESS). Replaces the old
@@ -210,7 +216,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal4StartMenuDirector(
     }
 
     pub fn missing_widget(self: refmut<Self>, msg: string) -> box<gui.Element> {
-        return gui.Positioned(20.0, 20.0, 800.0, 40.0, gui.Text(msg));
+        return gui.Positioned(20.0, 20.0, 800.0, 40.0, gui.Text(msg, gui.Color.WHITE));
     }
 
     pub fn slot_count(self: refmut<Self>) -> int {
@@ -228,20 +234,20 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal4StartMenuDirector(
         let key = SLOT_KEY_BASE + slot;
         if exists {
             return gui.TextButton(key, label, true, () => { self.fire_load_slot(slot); },
-                1.0, 1.0, 1.0, 1.0);
+                gui.Color.WHITE);
         }
-        return gui.TextButton(key, label, false, () => {}, 0.5, 0.5, 0.5, 1.0);
+        return gui.TextButton(key, label, false, () => {}, gui.Color.gray(0.5));
     }
 
     // --- Click handlers (mutate intent/mode; drained in `update`) -------
 
     pub fn on_main_click(self: refmut<Self>, name: string) {
         if name == BTN_NEW_GAME {
-            self.intent = INTENT_NEW_GAME;
+            self.intent = Intent.NewGame;
             return;
         }
         if name == BTN_EXIT {
-            self.intent = INTENT_EXIT;
+            self.intent = Intent.Exit;
             return;
         }
         if name == BTN_LOAD_GAME {
@@ -267,7 +273,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal4StartMenuDirector(
 
     pub fn fire_load_slot(self: refmut<Self>, slot: int) {
         self.load_slot = slot;
-        self.intent = INTENT_LOAD;
+        self.intent = Intent.Load;
     }
 
     pub fn update(
@@ -275,22 +281,25 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal4StartMenuDirector(
         dt: float,
     ) -> ?box<radiance.IDirector> {
         let code = self.intent;
-        self.intent = INTENT_NONE;
-        if code == INTENT_NEW_GAME {
-            // Hand the engine the story director; the engine swaps
-            // us out and our `deactivate()` releases the BGM + layout
-            // (the latter unrefs its imageset atlases on drop).
-            return self.host.pal4().enter_new_game(self.asset_path);
-        }
-        if code == INTENT_LOAD {
-            // Boot the story director with the chosen save queued; it
-            // applies the load on its first advancing update.
-            return self.host.pal4().enter_load_game(
-                self.asset_path, self.load_slot,
-            );
-        }
-        if code == INTENT_EXIT {
-            self.host.app().exit();
+        self.intent = Intent.None;
+        match code {
+            Intent.NewGame => {
+                // Hand the engine the story director; the engine swaps us out
+                // and our `deactivate()` releases the BGM + layout (the latter
+                // unrefs its imageset atlases on drop).
+                return self.host.pal4().enter_new_game(self.asset_path);
+            },
+            Intent.Load => {
+                // Boot the story director with the chosen save queued; it
+                // applies the load on its first advancing update.
+                return self.host.pal4().enter_load_game(
+                    self.asset_path, self.load_slot,
+                );
+            },
+            Intent.Exit => {
+                self.host.app().exit();
+            },
+            Intent.None => {},
         }
         return null;
     }
@@ -311,6 +320,6 @@ pub fn make_pal4_start_menu(
     let bgm = host.pal4().load_music(MENU_BGM_NAME);
     return box(Pal4StartMenuDirector(
         host, asset_path, layout, load_layout, bgm,
-        INTENT_NONE, false, MODE_MAIN, NO_SLOT, gui.make_ctx(),
+        Intent.None, false, MODE_MAIN, NO_SLOT, gui.make_ctx(),
     )) as box<radiance.IDirector>;
 }

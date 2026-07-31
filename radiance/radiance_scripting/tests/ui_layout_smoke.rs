@@ -31,7 +31,7 @@ import radiance;
 import radiance_scripting.ui;
 
 fn row(i: int) -> box<ui.Element> {
-    return ui.Text("r");
+    return ui.Text("r", ui.Color.WHITE);
 }
 
 pub fn entry(host: box<radiance.IUiHost>) -> int {
@@ -73,8 +73,8 @@ import radiance_scripting.ui;
 
 pub fn entry(host: box<radiance.IUiHost>) -> int {
     let ctx = ui.make_ctx();
-    let inner: box<ui.Element> = ui.Align(ui.Text("x"), 0.0, 0.0);
-    let root: box<ui.Element> = ui.FittedBox(800.0, 600.0, inner);
+    let inner: box<ui.Element> = ui.Align(ui.Text("x", ui.Color.WHITE), 0.0, 0.0);
+    let root: box<ui.Element> = ui.FittedBox(ui.Size(800.0, 600.0), inner);
     ui.paint_root(root, host, ctx)
 }
 "#;
