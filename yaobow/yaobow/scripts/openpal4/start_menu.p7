@@ -216,7 +216,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal4StartMenuDirector(
     }
 
     pub fn missing_widget(self: refmut<Self>, msg: string) -> box<gui.Element> {
-        return gui.Positioned(20.0, 20.0, 800.0, 40.0, gui.Text(msg, gui.Color.WHITE));
+        return gui.Positioned(20.0, 20.0, 800.0, 40.0, gui.Text(msg));
     }
 
     pub fn slot_count(self: refmut<Self>) -> int {

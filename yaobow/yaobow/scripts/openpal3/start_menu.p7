@@ -423,11 +423,9 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal3StartMenuDirector(
     pub fn build_missing(self: refmut<Self>) -> box<gui.Element> {
         let lines: array<box<gui.Element>> = [
             gui.Positioned(20.0, 20.0, 760.0, 24.0,
-                gui.Text("PAL3 start menu: UI_opt.tli not found in basedata.cpk.",
-                         gui.Color.WHITE)),
+                gui.Text("PAL3 start menu: UI_opt.tli not found in basedata.cpk.")),
             gui.Positioned(20.0, 50.0, 760.0, 24.0,
-                gui.Text("Press the Exit hotkey (Esc / Alt+F4) to quit.",
-                         gui.Color.WHITE)),
+                gui.Text("Press the Exit hotkey (Esc / Alt+F4) to quit.")),
         ];
         return gui.Stack(lines);
     }

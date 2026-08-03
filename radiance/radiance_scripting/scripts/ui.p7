@@ -304,12 +304,7 @@ pub proto Element {
 
 pub struct[Element] Text(
     content: string,
-    // NOTE: no default. Default-value expressions are spliced into the
-    // *call site's* scope, so only literals survive an import — a
-    // struct-typed default (`Color.WHITE`, `Color(...)`, or a module
-    // constant) fails to resolve in every consuming module. See
-    // `specs/language-gaps.md`. Pass `Color.WHITE` explicitly.
-    color: Color,
+    color: Color = Color.WHITE,
 ) {
     fn measure(self: ref<Self>, avail: Size, ui: box<radiance.IUiHost>) -> Size {
         return Size(ui.calc_text_size_x(self.content), ui.calc_text_size_y(self.content));
@@ -519,12 +514,7 @@ pub struct[Element] TextButton(
     label: string,
     enabled: bool,
     on_click: fn(),
-    // NOTE: no default. Default-value expressions are spliced into the
-    // *call site's* scope, so only literals survive an import — a
-    // struct-typed default (`Color.WHITE`, `Color(...)`, or a module
-    // constant) fails to resolve in every consuming module. See
-    // `specs/language-gaps.md`. Pass `Color.WHITE` explicitly.
-    color: Color,
+    color: Color = Color.WHITE,
 ) {
     fn measure(self: ref<Self>, avail: Size, ui: box<radiance.IUiHost>) -> Size {
         return Size(ui.calc_text_size_x(self.label), ui.calc_text_size_y(self.label));
