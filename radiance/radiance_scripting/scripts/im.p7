@@ -39,10 +39,12 @@ pub fn grid(
 }
 
 // NOTE: an `array<fn()>` overload for heterogeneous cells is deliberately
-// absent — `array<fn()>` does not resolve today (`fn() -> unit` is not found
-// as an array element type, though `array<fn(int)>` works). See
-// `specs/language-gaps.md`. Heterogeneous rows keep using `ui.table` with
-// explicit `table_next_column()` calls.
+// absent — an array whose element type is a function type does not resolve
+// today, for any arity or return type (`array<fn()>`, `array<fn(int)>`,
+// `array<fn(int) -> int>` all fail with `TypeNotFound`). A bare `fn(int)`
+// parameter, as used above, is fine. See `specs/language-gaps.md` #27.
+// Heterogeneous rows keep using `ui.table` with explicit
+// `table_next_column()` calls.
 
 // Emit a table over an explicit list of *ordinals* rather than a dense
 // `0..count` range, advancing a column per entry.
