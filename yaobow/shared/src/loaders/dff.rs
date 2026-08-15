@@ -1196,25 +1196,39 @@ fn create_matrix(frame: &Frame) -> Mat44 {
     mat
 }
 
+/// Convert a RenderWare `RwMatrix` (as stored in `SkinPlugin.matrix`) into
+/// an engine `Mat44`.
+///
+/// `RwMatrix` is a 4x4 block laid out as four rows of `right / up / at /
+/// pos`, but only the first three floats of each row are meaningful: RW
+/// reuses the 4th slot of the `right`, `up` and `at` rows as internal
+/// scratch (matrix type/flags union) and never clears it. Shipped PAL4
+/// actors bear this out — e.g. `PALActor/279` has half of those padding
+/// slots filled with garbage as large as 35.0.
+///
+/// Our `Mat44` is column-vector/row-major, so those three padding floats
+/// would land in the bottom row `[3][0..2]`. `Vec3::crossed_mat` derives
+/// its perspective divisor from exactly that row, so leaking the padding
+/// turns a rigid bind pose into a projective transform and blows the
+/// skinned mesh apart. Always write an affine bottom row of `(0,0,0,1)`.
 fn create_mat44_from_matrix44f(m: &Matrix44f) -> Mat44 {
     let mut mat = Mat44::new_identity();
     mat.floats_mut()[0][0] = m.0[0];
     mat.floats_mut()[1][0] = m.0[1];
     mat.floats_mut()[2][0] = m.0[2];
-    mat.floats_mut()[3][0] = m.0[3];
     mat.floats_mut()[0][1] = m.0[4];
     mat.floats_mut()[1][1] = m.0[5];
     mat.floats_mut()[2][1] = m.0[6];
-    mat.floats_mut()[3][1] = m.0[7];
     mat.floats_mut()[0][2] = m.0[8];
     mat.floats_mut()[1][2] = m.0[9];
     mat.floats_mut()[2][2] = m.0[10];
-    mat.floats_mut()[3][2] = m.0[11];
     mat.floats_mut()[0][3] = m.0[12];
     mat.floats_mut()[1][3] = m.0[13];
     mat.floats_mut()[2][3] = m.0[14];
-    mat.floats_mut()[3][3] = 1.; //m.0[15];
 
+    // Bottom row stays (0, 0, 0, 1) from `new_identity()` — see the doc
+    // comment: `m.0[3]`, `m.0[7]`, `m.0[11]` and `m.0[15]` are RW padding,
+    // not matrix coefficients.
     mat
 }
 
@@ -1923,6 +1937,47 @@ mod hierarchy_tests {
         let plain_frame = make_test_frame(0, 0);
         assert!(bone_frame.is_hanim_bone());
         assert!(!plain_frame.is_hanim_bone());
+    }
+}
+
+#[cfg(test)]
+mod bond_pose_tests {
+    use super::*;
+
+    /// A rigid RW bind matrix whose `right`/`up`/`at` rows carry non-zero
+    /// padding in their 4th slot — the shape shipped by `PALActor/279`.
+    fn matrix_with_padding() -> Matrix44f {
+        Matrix44f([
+            1.0, 0.0, 0.0, 35.0, // right + padding
+            0.0, 1.0, 0.0, -12.5, // up + padding
+            0.0, 0.0, 1.0, 7.25, // at + padding
+            3.0, 4.0, 5.0, 0.0, // pos + padding
+        ])
+    }
+
+    #[test]
+    fn bond_pose_ignores_rw_matrix_padding() {
+        let mat = create_mat44_from_matrix44f(&matrix_with_padding());
+        let f = mat.floats();
+
+        // Bottom row must stay affine, not pick up the RW scratch floats.
+        assert_eq!([f[3][0], f[3][1], f[3][2], f[3][3]], [0., 0., 0., 1.]);
+
+        // Rotation / translation still land where they should.
+        assert_eq!([f[0][0], f[1][1], f[2][2]], [1., 1., 1.]);
+        assert_eq!([f[0][3], f[1][3], f[2][3]], [3., 4., 5.]);
+    }
+
+    #[test]
+    fn bond_pose_with_padding_transforms_points_rigidly() {
+        let mat = create_mat44_from_matrix44f(&matrix_with_padding());
+        let v = Vec3::crossed_mat(&Vec3::new(1., 2., 3.), &mat);
+
+        // Without the fix the perspective divisor would be
+        // 1 + 35.0 - 12.5 + 7.25, shrinking the point by ~30x.
+        assert!((v.x - 4.).abs() < 1e-5, "x = {}", v.x);
+        assert!((v.y - 6.).abs() < 1e-5, "y = {}", v.y);
+        assert!((v.z - 8.).abs() < 1e-5, "z = {}", v.z);
     }
 }
 
