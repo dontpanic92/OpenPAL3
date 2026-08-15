@@ -235,6 +235,71 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
         }
     }
 
+    /// Reads the 4-byte word at an absolute operand-stack address.
+    /// `None` when the address is out of range.
+    ///
+    /// AngelScript passes object arguments as *stack addresses*: the
+    /// slot at that address holds the object's heap index. Sysfn
+    /// handlers that implement object methods (see the `string.*`
+    /// operators in `global_context`) need to follow that indirection.
+    pub fn stack_word_at(&self, addr: u32) -> Option<u32> {
+        let addr = addr as usize;
+        if addr + 4 <= self.stack.len() {
+            Some(unsafe { self.read_stack(addr) })
+        } else {
+            None
+        }
+    }
+
+    /// Writes the 4-byte word at an absolute operand-stack address.
+    /// Returns `false` when the address is out of range.
+    pub fn set_stack_word_at(&mut self, addr: u32, value: u32) -> bool {
+        let addr = addr as usize;
+        if addr + 4 <= self.stack.len() {
+            unsafe { self.write_stack(addr, value) };
+            true
+        } else {
+            false
+        }
+    }
+
+    /// True when `addr` looks like a live operand-stack address (used
+    /// to tell an object argument apart from an immediate value).
+    pub fn is_stack_address(&self, addr: u32) -> bool {
+        let addr = addr as usize;
+        addr >= self.sp.min(self.fp) && addr + 4 <= self.stack.len()
+    }
+
+    /// The heap slot backing a `string` object, given the raw word the
+    /// script pushed for it — either the heap index itself or the
+    /// address of a stack slot holding it.
+    pub fn resolve_object_index(&self, word: u32) -> Option<usize> {
+        if self.is_stack_address(word) {
+            let index = self.stack_word_at(word)? as usize;
+            if index < self.heap.len() {
+                return Some(index);
+            }
+        }
+
+        if (word as usize) < self.heap.len() {
+            return Some(word as usize);
+        }
+
+        None
+    }
+
+    /// Reads a heap-resident string object.
+    pub fn get_object(&self, index: usize) -> Option<&String> {
+        self.heap.get(index).and_then(|o| o.as_ref())
+    }
+
+    /// Overwrites a heap-resident string object.
+    pub fn set_object(&mut self, index: usize, value: String) {
+        if let Some(slot) = self.heap.get_mut(index) {
+            *slot = Some(value);
+        }
+    }
+
     pub fn stack_pop<T: std::marker::Copy>(&mut self) -> T {
         let ret: T = unsafe { self.read_stack(self.sp) };
         self.sp += std::mem::size_of::<T>();
@@ -850,8 +915,35 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
         }
     }
 
-    fn alloc(&mut self, this: i32, function: i32) {
-        println!("Unimplemented: call global2: {} {}", this, function);
+    /// `ALLOC` — constructs a heap object and stores its handle in the
+    /// variable whose address is on top of the operand stack (the
+    /// stack pointer is left alone; AngelScript keeps that pointer for
+    /// the constructor call that may follow).
+    ///
+    /// The only object type PAL4's bytecode allocates is `string`, so
+    /// this creates an empty string. Without it, a script-local
+    /// `string` never gets an object and every later `string.operator=`
+    /// silently writes into whatever heap slot the uninitialised
+    /// variable happened to name — which is how `M06`'s periodic
+    /// `func9001` ended up querying garbage object names instead of
+    /// `"item<N>"`.
+    fn alloc(&mut self, _this: i32, _function: i32) {
+        let Some(dest) = self.stack_word_at(self.sp as u32) else {
+            log::debug!(
+                "[as] alloc: operand stack empty in {}",
+                self.current_fn_name()
+            );
+            return;
+        };
+
+        let index = self.push_object(String::new());
+        if !self.set_stack_word_at(dest, index as u32) {
+            log::debug!(
+                "[as] alloc: destination {:#x} out of range in {}",
+                dest,
+                self.current_fn_name()
+            );
+        }
     }
 
     fn storeobj(&mut self, param_index: i16) {
@@ -863,11 +955,37 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
         }
     }
 
+    /// `FREE` — releases the heap object referenced by the top stack
+    /// slot. The slot holds the *address* of the variable that holds
+    /// the heap index.
+    ///
+    /// Defensive on both indirections: PAL4's bytecode plus our
+    /// partially-implemented sysfn table occasionally leave a slot
+    /// holding something that isn't a live object reference, and an
+    /// out-of-bounds index here used to abort the whole process.
     fn free(&mut self, _obj_type: u32) {
         let obj_ref: u32 = unsafe { self.read_stack(self.sp) };
-        let obj_index: u32 = unsafe { self.read_stack(obj_ref as usize) };
         self.sp += 4;
-        self.heap[obj_index as usize] = None;
+
+        let Some(obj_index) = self.stack_word_at(obj_ref) else {
+            log::debug!(
+                "[as] free: stale object reference {:#x} in {} (sp={:#x})",
+                obj_ref,
+                self.current_fn_name(),
+                self.sp
+            );
+            return;
+        };
+
+        match self.heap.get_mut(obj_index as usize) {
+            Some(slot) => *slot = None,
+            None => log::debug!(
+                "[as] free: object index {} out of range (heap len {}) in {}",
+                obj_index,
+                self.heap.len(),
+                self.current_fn_name()
+            ),
+        }
     }
 
     fn checkref(&mut self) {}
@@ -1133,12 +1251,33 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
         self.unary_op::<u32, _, _>(|a| (a as u16) as u32);
     }
 
+    /// `Wrt1` / `Wrt2` — the 1/2-byte counterparts of `Wrt4`: the top
+    /// stack slot holds the destination *address*, the slot below holds
+    /// the value. The address is popped, the value stays (a following
+    /// `Pop` discards it), exactly like `Wrt4`.
+    ///
+    /// These used to be implemented as pure value-stack arithmetic,
+    /// which never touched the destination variable at all. PAL4 stores
+    /// every `bool` that way — e.g. `bool b = giGetVisibleObject(...)`
+    /// compiles to `psf b; Wrt1; Pop` — so the subsequent `Rd1` read
+    /// back whatever stale garbage the slot happened to hold and the
+    /// M06 hole-cover guards branched at random.
     fn wrt1(&mut self) {
-        self.binary_op::<u32, _, _>(|a, b| (b & 0xFFFFFF00) + (a & 0xFF));
+        unsafe {
+            let pos: u32 = self.read_stack(self.sp);
+            self.sp += 4;
+            let data: u32 = self.read_stack(self.sp);
+            self.write_stack(pos as usize, data as u8);
+        }
     }
 
     fn wrt2(&mut self) {
-        self.binary_op::<u32, _, _>(|a, b| (b & 0xFFFF0000) + (a & 0xFFFF));
+        unsafe {
+            let pos: u32 = self.read_stack(self.sp);
+            self.sp += 4;
+            let data: u32 = self.read_stack(self.sp);
+            self.write_stack(pos as usize, data as u16);
+        }
     }
 
     fn push_zero(&mut self) {
@@ -1168,21 +1307,25 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
         }
     }
 
+    /// `Rd8` — dereferences the address on top of the stack and
+    /// replaces it with the 8-byte value read from there.
     fn rd8(&mut self) {
-        unsafe {
-            let pos: u32 = self.read_stack(self.sp);
-            self.sp += 4;
-            let data: u64 = self.read_stack(self.sp);
-            self.write_stack(pos as usize, data);
-        }
-    }
-
-    fn wrt8(&mut self) {
         unsafe {
             let pos: u32 = self.read_stack(self.sp);
             self.sp -= 4;
             let data: u64 = self.read_stack(pos as usize);
             self.write_stack(self.sp, data);
+        }
+    }
+
+    /// `Wrt8` — writes the 8-byte value below the top of the stack to
+    /// the address on top of it (`Wrt4`'s 8-byte counterpart).
+    fn wrt8(&mut self) {
+        unsafe {
+            let pos: u32 = self.read_stack(self.sp);
+            self.sp += 4;
+            let data: u64 = self.read_stack(self.sp);
+            self.write_stack(pos as usize, data);
         }
     }
 
@@ -1669,7 +1812,49 @@ mod tests {
         ScriptVm::new(g, Rc::new(RefCell::new(module)), 0, ())
     }
 
-    /// Regression for the Q03/XN03Y crash: a sysfn continuation that
+    /// `Wrt1` must store into the *variable* addressed by the top
+    /// stack slot, not fold two stack words together. PAL4 compiles
+    /// every `bool b = <sysfn>();` to `PshRet4 ; uTOB ; Psf b ;
+    /// Wrt1 ; Pop 1`, and reads it back later with `Psf b ; Rd1`.
+    /// With the old arithmetic implementation the variable slot was
+    /// never written, so the read returned stale stack garbage --
+    /// which made M06's hole-cover guards (`giGetVisibleObject`)
+    /// branch at random.
+    #[test]
+    fn wrt1_stores_a_byte_into_the_addressed_variable() {
+        // Push{4} ; Set4{1} ; uTOB ; Psf{1} ; Wrt1 ; Pop{1} ;
+        // Psf{1} ; Rd1 ; Ret{0}
+        let inst = assemble(&[
+            &op(1),
+            &4u16.to_le_bytes(),
+            &op(2),
+            &1u32.to_le_bytes(),
+            &op(55),
+            &op(7),
+            &1u16.to_le_bytes(),
+            &op(57),
+            &op(0),
+            &1u16.to_le_bytes(),
+            &op(7),
+            &1u16.to_le_bytes(),
+            &op(116),
+            &op(13),
+            &0u16.to_le_bytes(),
+        ]);
+
+        let mut vm = build_vm(inst);
+        // Poison the local so a missing store cannot pass by accident.
+        let slot = (vm.fp - 4) as u32;
+        vm.set_stack_word_at(slot, 0xDEAD_BEEF);
+        vm.execute(0.0);
+
+        assert_eq!(
+            vm.stack_word_at(vm.sp as u32),
+            Some(1),
+            "Rd1 must read back the byte Wrt1 stored"
+        );
+    }
+
     /// switches the active function (what `giArenaLoad` does when it
     /// enters `<scene>_<block>_init`) must not leave `execute()`
     /// decoding one more instruction out of the *previous* function's

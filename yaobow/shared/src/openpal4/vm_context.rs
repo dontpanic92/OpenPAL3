@@ -183,6 +183,23 @@ pub struct Pal4VmContext {
     /// dispatcher). Accessors below hand out `Ref`/`RefMut` guards
     /// over it.
     session: Rc<RefCell<Pal4Session>>,
+
+    /// Periodic block script registered by `giTimeScript(period, fn)`
+    /// and cleared by `giTimeScriptTerminate` / a scene change. PAL4
+    /// block inits use it for ambient world logic — most notably
+    /// `M06`'s `func9001`, which reshuffles which floor "cover" hides
+    /// a hole, so the dungeon's routes literally do not open without
+    /// it. The period is expressed in frames (60 FPS), matching the
+    /// values the scripts pass (`giTimeScript(180, "func9001")` =
+    /// every 3 seconds).
+    time_script: Option<TimeScript>,
+}
+
+/// Registration for a periodic block script (`giTimeScript`).
+struct TimeScript {
+    function: String,
+    period_sec: f32,
+    elapsed_sec: f32,
 }
 
 impl Pal4VmContext {
@@ -229,6 +246,7 @@ impl Pal4VmContext {
             moving_entities,
             rotating_entities,
             session,
+            time_script: None,
         }
     }
 
@@ -306,13 +324,76 @@ impl Pal4VmContext {
             .contains_key(&ActorId::Npc(name.to_string()))
     }
 
-    pub fn event_triggered(&mut self, _delta_sec: f32) -> Option<String> {
+    pub fn event_triggered(&mut self, delta_sec: f32) -> Option<String> {
         let leader = self.session.borrow().state().leader();
         let scene = self.scene.borrow();
         let from_trigger = scene
             .test_event_triggers()
             .and_then(|event| event.function.function.to_string().ok());
-        from_trigger.or_else(|| scene.test_interaction(self.input.clone(), leader))
+        let from_scene =
+            from_trigger.or_else(|| scene.test_interaction(self.input.clone(), leader));
+        drop(scene);
+
+        // Player-driven events win over the ambient periodic script;
+        // the timer keeps accumulating so the block script fires on
+        // the next idle frame instead of being skipped.
+        from_scene.or_else(|| self.poll_time_script(delta_sec))
+    }
+
+    /// Registers the periodic block script (`giTimeScript`). `period`
+    /// is in frames at 60 FPS, as the compiled scripts express it.
+    ///
+    /// Dispatch is opt-in via `YAOBOW_PAL4_TIME_SCRIPT=1`. PAL4's
+    /// periodic scripts (e.g. `M06`'s `func9001`) are built entirely
+    /// out of AngelScript `string` member operators whose calling
+    /// convention we only partly recovered, so running them by default
+    /// can rewrite world state (object visibility) from mis-assembled
+    /// object names.
+    pub fn set_time_script(&mut self, period_frames: f32, function: &str) {
+        if !Self::time_scripts_enabled() {
+            log::debug!(
+                "giTimeScript('{}'): periodic block scripts are disabled \
+                 (set YAOBOW_PAL4_TIME_SCRIPT=1 to enable)",
+                function
+            );
+            return;
+        }
+
+        self.time_script = Some(TimeScript {
+            function: function.to_string(),
+            period_sec: (period_frames / 60.).max(0.1),
+            elapsed_sec: 0.,
+        });
+    }
+
+    fn time_scripts_enabled() -> bool {
+        static FLAG: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+        *FLAG.get_or_init(|| {
+            std::env::var("YAOBOW_PAL4_TIME_SCRIPT")
+                .map(|v| !v.is_empty() && v != "0")
+                .unwrap_or(false)
+        })
+    }
+
+    /// Cancels the periodic block script (`giTimeScriptTerminate`, or
+    /// a scene/block change — the incoming block init re-registers its
+    /// own).
+    pub fn clear_time_script(&mut self) {
+        self.time_script = None;
+    }
+
+    /// Advances the periodic script timer and returns its function
+    /// name on the frame the period elapses. Only called while the VM
+    /// is idle, so the returned function can be scheduled directly.
+    fn poll_time_script(&mut self, delta_sec: f32) -> Option<String> {
+        let script = self.time_script.as_mut()?;
+        script.elapsed_sec += delta_sec;
+        if script.elapsed_sec < script.period_sec {
+            return None;
+        }
+
+        script.elapsed_sec = 0.;
+        Some(script.function.clone())
     }
 
     pub fn set_actdrop(&mut self, darkness: InterpValue<f32>) {

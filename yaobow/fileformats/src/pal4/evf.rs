@@ -6,7 +6,7 @@ use crate::{
     utils::SizedString,
 };
 
-#[derive(Debug, BinRead, Serialize)]
+#[derive(Debug, BinRead, Serialize, Default)]
 #[brw(little)]
 pub struct EvfFile {
     pub count: u32,

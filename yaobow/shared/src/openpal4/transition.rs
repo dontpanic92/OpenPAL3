@@ -92,7 +92,11 @@ pub enum Pal4TransitionAction {
     /// when the transition is constructed; `Loading` calls
     /// `take_pending_scene_load` + `load_scene` + bumps the
     /// `deferred_load_generation` so VM continuations resume.
-    ChangeScene { scene: String, block: String },
+    ChangeScene {
+        scene: String,
+        block: String,
+        sub_block: String,
+    },
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
@@ -209,6 +213,8 @@ pub(crate) struct Pal4SceneSwap {
     vm: Rc<RefCell<ScriptVm<Pal4VmContext>>>,
     scene_name: String,
     block_name: String,
+    /// Gameplay-data sub-block; empty ≡ same as `block_name`.
+    sub_block_name: String,
     // Lazily built on the first `step()` (after the pre-load
     // pop-scene), then stepped to completion. Reset to `None` after
     // the final install + fan-out.
@@ -235,12 +241,14 @@ impl Pal4SceneSwap {
         vm: Rc<RefCell<ScriptVm<Pal4VmContext>>>,
         scene_name: String,
         block_name: String,
+        sub_block_name: String,
         factory: Option<ComRc<IPal4ScriptFactory>>,
     ) -> Self {
         Self {
             vm,
             scene_name,
             block_name,
+            sub_block_name,
             loader: None,
             error: None,
             had_error: false,
@@ -269,6 +277,18 @@ impl Pal4SceneSwap {
                 self.block_name,
                 err
             );
+            // The outgoing scene was popped before the (now failed)
+            // load, and `scene_cell` still holds it because we only
+            // overwrite on success. Push it back so the player keeps a
+            // playable world instead of an empty one with no NPCs,
+            // objects or collision.
+            let (scene_manager, scene_cell) = {
+                let vm = self.vm.borrow();
+                let app = vm.vm_context();
+                (app.scene_manager.clone(), app.scene.clone())
+            };
+            let previous = scene_cell.borrow().scene.clone();
+            scene_manager.push_scene(previous);
             self.finished = true;
             return (1.0, true);
         }
@@ -292,6 +312,7 @@ impl Pal4SceneSwap {
                 input,
                 self.scene_name.clone(),
                 self.block_name.clone(),
+                self.sub_block_name.clone(),
                 self.factory.clone(),
             ));
             // Report a small fraction so the bar moves immediately.
@@ -325,10 +346,11 @@ impl Pal4SceneSwap {
                 *scene_cell.borrow_mut() = scene;
                 scene_manager.push_scene(scene_root);
 
-                session
-                    .borrow_mut()
-                    .state_mut()
-                    .set_scene(self.scene_name.clone(), self.block_name.clone());
+                session.borrow_mut().state_mut().set_scene_with_sub_block(
+                    self.scene_name.clone(),
+                    self.block_name.clone(),
+                    self.sub_block_name.clone(),
+                );
 
                 let (leader, player_locked) = {
                     let session = session.borrow();
@@ -426,10 +448,12 @@ impl Pal4TransitionDirector {
 
                 let scene_name = snapshot.scene_name.clone();
                 let block_name = snapshot.block_name.clone();
+                let sub_block_name = snapshot.sub_block_name.clone();
                 *self.swap.borrow_mut() = Some(Pal4SceneSwap::new(
                     self.vm.clone(),
                     scene_name,
                     block_name,
+                    sub_block_name,
                     self.factory.clone(),
                 ));
                 *self.post_load.borrow_mut() = PostLoadFanout::ApplySnapshot {
@@ -437,7 +461,11 @@ impl Pal4TransitionDirector {
                     slot,
                 };
             }
-            Pal4TransitionAction::ChangeScene { scene, block } => {
+            Pal4TransitionAction::ChangeScene {
+                scene,
+                block,
+                sub_block,
+            } => {
                 let _ = self
                     .vm
                     .borrow()
@@ -448,6 +476,7 @@ impl Pal4TransitionDirector {
                     self.vm.clone(),
                     scene,
                     block,
+                    sub_block,
                     self.factory.clone(),
                 ));
                 *self.post_load.borrow_mut() = PostLoadFanout::BumpDeferredLoad;
@@ -532,7 +561,11 @@ impl Pal4TransitionDirector {
                     return;
                 }
 
-                match self.swap_scene(&snapshot.scene_name, &snapshot.block_name) {
+                match self.swap_scene(
+                    &snapshot.scene_name,
+                    &snapshot.block_name,
+                    &snapshot.sub_block_name,
+                ) {
                     Ok(()) => {
                         let mut vm = self.vm.borrow_mut();
                         OpenPAL4Director::apply_snapshot(vm.vm_context_mut(), &snapshot);
@@ -551,7 +584,11 @@ impl Pal4TransitionDirector {
                 }
             }
 
-            Pal4TransitionAction::ChangeScene { scene, block } => {
+            Pal4TransitionAction::ChangeScene {
+                scene,
+                block,
+                sub_block,
+            } => {
                 // Drain the session-side request so a continuation
                 // observing `peek_pending_scene_load` sees the load
                 // has been consumed.
@@ -561,7 +598,7 @@ impl Pal4TransitionDirector {
                     .vm_context
                     .session()
                     .take_pending_scene_load();
-                let succeeded = match self.swap_scene(&scene, &block) {
+                let succeeded = match self.swap_scene(&scene, &block, &sub_block) {
                     Ok(()) => true,
                     Err(err) => {
                         log::error!(
@@ -594,8 +631,19 @@ impl Pal4TransitionDirector {
     /// session's saved leader + player-lock to the freshly loaded
     /// scene. Replaces what was once `Pal4VmContext::load_scene` —
     /// the responsibility now lives at this director.
-    fn swap_scene(&self, scene_name: &str, block_name: &str) -> anyhow::Result<()> {
-        swap_pal4_scene(&self.vm, scene_name, block_name, self.factory.clone())
+    fn swap_scene(
+        &self,
+        scene_name: &str,
+        block_name: &str,
+        sub_block_name: &str,
+    ) -> anyhow::Result<()> {
+        swap_pal4_scene(
+            &self.vm,
+            scene_name,
+            block_name,
+            sub_block_name,
+            self.factory.clone(),
+        )
     }
 }
 
@@ -616,6 +664,7 @@ pub(crate) fn swap_pal4_scene(
     vm: &Rc<RefCell<ScriptVm<Pal4VmContext>>>,
     scene_name: &str,
     block_name: &str,
+    sub_block_name: &str,
     factory: Option<ComRc<IPal4ScriptFactory>>,
 ) -> anyhow::Result<()> {
     // Collect the handles we need from the VM context. Each is
@@ -633,6 +682,20 @@ pub(crate) fn swap_pal4_scene(
         )
     };
 
+    // Load the incoming scene *before* tearing down the outgoing one.
+    // `Pal4Scene::load` can fail (missing / malformed block assets), and
+    // popping first would leave the game with no scene at all — the
+    // player ends up in an empty world with no NPCs or objects and no
+    // way back. Building first makes a failed swap a no-op.
+    let scene = Pal4Scene::load(
+        &loader,
+        input,
+        scene_name,
+        block_name,
+        sub_block_name,
+        factory.as_ref(),
+    )?;
+
     let _ = scene_manager.pop_scene();
 
     // The outgoing scene's ambient audio nodes (river / waterfall loops
@@ -642,15 +705,15 @@ pub(crate) fn swap_pal4_scene(
     // `on_unloading` — so looping beds tear down automatically with the
     // scene, no manual stop pass required.
 
-    let scene = Pal4Scene::load(&loader, input, scene_name, block_name, factory.as_ref())?;
     let scene_root = scene.scene.clone();
     *scene_cell.borrow_mut() = scene;
     scene_manager.push_scene(scene_root);
 
-    session
-        .borrow_mut()
-        .state_mut()
-        .set_scene(scene_name.to_string(), block_name.to_string());
+    session.borrow_mut().state_mut().set_scene_with_sub_block(
+        scene_name.to_string(),
+        block_name.to_string(),
+        sub_block_name.to_string(),
+    );
 
     // Re-apply the leader / lock state to the freshly loaded
     // scene (the previous scene's player entities are gone).
@@ -680,7 +743,7 @@ impl IDirectorImpl for Pal4TransitionDirector {
             Some(Pal4TransitionAction::EnterStoryFromSave { snapshot, .. }) => {
                 (snapshot.scene_name.clone(), snapshot.block_name.clone())
             }
-            Some(Pal4TransitionAction::ChangeScene { scene, block }) => {
+            Some(Pal4TransitionAction::ChangeScene { scene, block, .. }) => {
                 (scene.clone(), block.clone())
             }
             _ => (String::new(), String::new()),
@@ -842,11 +905,12 @@ pub fn build_in_game_transition(story: &OpenPAL4Director) -> ComRc<IDirector> {
             // case). This matches the legacy synchronous path.
             let vm = story.vm_handle();
             let pending = vm.borrow().vm_context.session().take_pending_scene_load();
-            if let Some((scene, block)) = pending {
+            if let Some((scene, block, sub_block)) = pending {
                 let succeeded = swap_pal4_scene(
                     &vm,
                     &scene,
                     &block,
+                    &sub_block,
                     story.actor_controller_factory_template(),
                 )
                 .is_ok();
@@ -868,13 +932,17 @@ pub fn build_in_game_transition(story: &OpenPAL4Director) -> ComRc<IDirector> {
             session.pending_scene_load_silent(),
         )
     };
-    let (scene, block) = pending;
+    let (scene, block, sub_block) = pending;
 
     let transition = Pal4TransitionDirector::new(
         overlay,
         story.vm_handle(),
         self_rc,
-        Pal4TransitionAction::ChangeScene { scene, block },
+        Pal4TransitionAction::ChangeScene {
+            scene,
+            block,
+            sub_block,
+        },
         story.actor_controller_factory_template(),
     );
     transition.set_silent(silent);

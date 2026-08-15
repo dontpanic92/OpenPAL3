@@ -3,7 +3,7 @@ use std::{cell::RefCell, rc::Rc};
 use crosscom::ComRc;
 use fileformats::npc::NpcInfoFile;
 use fileformats::pal4::{
-    evf::EvfEvent,
+    evf::{EvfEvent, EvfFile},
     gob::{GobCommonProperties, GobObjectType},
 };
 use radiance::{
@@ -141,6 +141,7 @@ impl Pal4Scene {
         input: Rc<RefCell<dyn InputEngine>>,
         scene_name: &str,
         block_name: &str,
+        sub_block_name: &str,
         actor_controller_factory: Option<&ComRc<IPal4ScriptFactory>>,
     ) -> anyhow::Result<Self> {
         let mut loader = Pal4SceneLoader::new(
@@ -148,6 +149,7 @@ impl Pal4Scene {
             input,
             scene_name.to_string(),
             block_name.to_string(),
+            sub_block_name.to_string(),
             actor_controller_factory.cloned(),
         );
         loop {
@@ -182,6 +184,12 @@ pub struct Pal4SceneLoader {
     input: Rc<RefCell<dyn InputEngine>>,
     scene_name: String,
     block_name: String,
+    /// Gameplay-data sub-block (PAL4 `giArenaLoad`'s third argument).
+    /// Empty ≡ "same as `block_name`". Some blocks (e.g. `M06/1`) ship
+    /// only geometry and keep their events / objects / NPCs in lettered
+    /// sibling folders (`M06/1A` … `M06/1E`) that the script selects by
+    /// plot state.
+    sub_block_name: String,
     actor_controller_factory: Option<ComRc<IPal4ScriptFactory>>,
 
     // Stage cursor: index of the next stage to run. 0..=6 = pending,
@@ -214,6 +222,7 @@ impl Pal4SceneLoader {
         input: Rc<RefCell<dyn InputEngine>>,
         scene_name: String,
         block_name: String,
+        sub_block_name: String,
         actor_controller_factory: Option<ComRc<IPal4ScriptFactory>>,
     ) -> Self {
         Self {
@@ -221,6 +230,7 @@ impl Pal4SceneLoader {
             input,
             scene_name,
             block_name,
+            sub_block_name,
             actor_controller_factory,
             next_stage: 0,
             scene: None,
@@ -287,6 +297,17 @@ impl Pal4SceneLoader {
         StageProgress {
             fraction,
             done: None,
+        }
+    }
+
+    /// The block folder that carries the gameplay data (EVF events,
+    /// `GameObjs.gob`, `npcInfo.npc`). Falls back to the geometry block
+    /// when the script did not name a sub-block.
+    fn data_block(&self) -> &str {
+        if self.sub_block_name.is_empty() {
+            &self.block_name
+        } else {
+            &self.sub_block_name
         }
     }
 
@@ -447,9 +468,27 @@ impl Pal4SceneLoader {
             load_player(&self.asset_loader, Player::MurongZiying),
         ];
 
-        let events = self
+        // `<block>.evf` is optional on disk: several PAL4 blocks ship
+        // none at all (e.g. `scenedata/M06/3A`, `M06/1E`). Treat a
+        // missing / unreadable file as "no event volumes" rather than
+        // failing the whole scene load, which would abort the
+        // surrounding `giArenaLoad` and strand the player.
+        let events = match self
             .asset_loader
-            .load_evf(&self.scene_name, &self.block_name)?;
+            .load_evf(&self.scene_name, self.data_block())
+        {
+            Ok(events) => events,
+            Err(e) => {
+                log::warn!(
+                    "Pal4Scene::load: EVF missing/unreadable for scene='{}' \
+                     block='{}' ({:#}); proceeding with no event volumes",
+                    self.scene_name,
+                    self.data_block(),
+                    e
+                );
+                EvfFile::default()
+            }
+        };
 
         // Register each EVF event region with the scene collision world
         // as a segment-crossing trigger carrying the event index as its
@@ -554,7 +593,7 @@ impl Pal4SceneLoader {
         // `giArenaLoad` and abort the surrounding cutscene.
         let npc_info = match self
             .asset_loader
-            .load_npc_info(&self.scene_name, &self.block_name)
+            .load_npc_info(&self.scene_name, self.data_block())
         {
             Ok(info) => info,
             Err(e) => {
@@ -616,7 +655,7 @@ impl Pal4SceneLoader {
         let mut objects = vec![];
         let gob = self
             .asset_loader
-            .load_gob(&self.scene_name, &self.block_name)?;
+            .load_gob(&self.scene_name, self.data_block())?;
 
         for (i, entry) in gob.entries.iter().enumerate() {
             let object_type = gob.header.object_types[i];

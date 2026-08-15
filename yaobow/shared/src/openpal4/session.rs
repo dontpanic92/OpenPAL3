@@ -35,6 +35,8 @@ use super::states::persistent_state::{PAL4_APP_NAME, Pal4PersistentState};
 pub struct RuntimeSnapshot {
     pub scene_name: String,
     pub block_name: String,
+    /// Gameplay-data sub-block for `block_name`; empty ≡ same folder.
+    pub sub_block_name: String,
     pub leader: usize,
     pub position: Option<Vec3>,
     pub direction: Option<f32>,
@@ -86,8 +88,10 @@ pub struct Pal4SessionTransient {
     /// the loading overlay to cover the synchronous `load_scene`
     /// rather than blocking the game thread mid-frame.
     /// [`OpenPAL4Director::drive_loading_overlay`] drains this on
-    /// LOAD_READY. `None` ≡ no transition in flight.
-    pending_scene_load: RefCell<Option<(String, String)>>,
+    /// LOAD_READY. `None` ≡ no transition in flight. The tuple is
+    /// `(scene, block, sub_block)`; `sub_block` is empty when the
+    /// script did not name one.
+    pending_scene_load: RefCell<Option<(String, String, String)>>,
     /// `true` if the most recent [`request_scene_load`] was tagged
     /// silent (`giArenaLoad show_loading = 0` and similar). The
     /// transition director reads this when minting the in-game
@@ -236,9 +240,18 @@ impl Pal4Session {
     /// atomically), but no loading layout is rendered. Used by
     /// `giArenaLoad show_loading = 0`, where the original game
     /// intends an instant swap.
-    pub fn request_scene_load(&self, scene_name: &str, block_name: &str, silent: bool) {
-        *self.transient.pending_scene_load.borrow_mut() =
-            Some((scene_name.to_string(), block_name.to_string()));
+    pub fn request_scene_load(
+        &self,
+        scene_name: &str,
+        block_name: &str,
+        sub_block_name: &str,
+        silent: bool,
+    ) {
+        *self.transient.pending_scene_load.borrow_mut() = Some((
+            scene_name.to_string(),
+            block_name.to_string(),
+            sub_block_name.to_string(),
+        ));
         self.transient.pending_scene_load_silent.set(silent);
     }
 
@@ -258,11 +271,11 @@ impl Pal4Session {
     /// machine with the same names the continuation will see; the
     /// actual drain still happens via [`take_pending_scene_load`]
     /// when the overlay flips to LOAD_READY.
-    pub fn peek_pending_scene_load(&self) -> Option<(String, String)> {
+    pub fn peek_pending_scene_load(&self) -> Option<(String, String, String)> {
         self.transient.pending_scene_load.borrow().clone()
     }
 
-    pub fn take_pending_scene_load(&self) -> Option<(String, String)> {
+    pub fn take_pending_scene_load(&self) -> Option<(String, String, String)> {
         let drained = self.transient.pending_scene_load.borrow_mut().take();
         if drained.is_some() {
             self.transient.pending_scene_load_silent.set(false);
@@ -339,6 +352,7 @@ impl Pal4Session {
         let snapshot = RuntimeSnapshot {
             scene_name: state.scene_name().to_string(),
             block_name: state.block_name().to_string(),
+            sub_block_name: state.sub_block_name().to_string(),
             leader: state.leader(),
             position: state.position(),
             direction: state.direction(),
@@ -507,14 +521,17 @@ mod tests {
         // Deferred scene load.
         let gen0 = session.deferred_load_generation();
         assert!(!session.has_pending_scene_load());
-        session.request_scene_load("Q01", "N01", false);
+        session.request_scene_load("Q01", "N01", "", false);
         assert!(session.has_pending_scene_load());
         assert_eq!(
             session.peek_pending_scene_load(),
-            Some(("Q01".to_string(), "N01".to_string()))
+            Some(("Q01".to_string(), "N01".to_string(), String::new()))
         );
         let drained = session.take_pending_scene_load();
-        assert_eq!(drained, Some(("Q01".to_string(), "N01".to_string())));
+        assert_eq!(
+            drained,
+            Some(("Q01".to_string(), "N01".to_string(), String::new()))
+        );
         assert!(!session.has_pending_scene_load());
         session.note_deferred_load_finished(true);
         assert!(session.last_deferred_load_succeeded());
@@ -538,7 +555,7 @@ mod tests {
         let mut session = Pal4Session::new();
         session.open_world_map();
         session.buffer_dialog_choice(3);
-        session.request_scene_load("m07", "1", false);
+        session.request_scene_load("m07", "1", "", false);
         session.note_deferred_load_finished(true);
         let gen_before = session.deferred_load_generation();
 

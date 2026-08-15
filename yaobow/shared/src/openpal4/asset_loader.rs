@@ -5,6 +5,7 @@ use std::{
     rc::Rc,
 };
 
+use anyhow::Context;
 use common::store_ext::StoreExt2;
 use crosscom::ComRc;
 use fileformats::{
@@ -334,8 +335,12 @@ impl AssetLoader {
             scene_name, block_name, block_name,
         );
 
-        let mut reader = BufReader::new(self.vfs.open(&path)?);
-        Ok(EvfFile::read(&mut reader)?)
+        let mut reader = BufReader::new(
+            self.vfs
+                .open(&path)
+                .with_context(|| format!("opening EVF {}", path))?,
+        );
+        Ok(EvfFile::read(&mut reader).with_context(|| format!("parsing EVF {}", path))?)
     }
 
     pub fn load_run_animation(&self, actor_name: &str) -> anyhow::Result<Animation> {
@@ -396,8 +401,12 @@ impl AssetLoader {
             scene_name, block_name,
         );
 
-        let mut reader = BufReader::new(self.vfs.open(&path)?);
-        Ok(GobFile::read(&mut reader)?)
+        let mut reader = BufReader::new(
+            self.vfs
+                .open(&path)
+                .with_context(|| format!("opening GOB {}", path))?,
+        );
+        Ok(GobFile::read(&mut reader).with_context(|| format!("parsing GOB {}", path))?)
     }
 
     pub fn load_scene(
@@ -732,9 +741,12 @@ impl AssetLoader {
             scene_name, block_name,
         );
 
-        let data = self.vfs.read_to_end(&path)?;
+        let data = self
+            .vfs
+            .read_to_end(&path)
+            .with_context(|| format!("opening npcInfo {}", path))?;
         let mut cursor = Cursor::new(data);
-        Ok(NpcInfoFile::read(&mut cursor)?)
+        Ok(NpcInfoFile::read(&mut cursor).with_context(|| format!("parsing npcInfo {}", path))?)
     }
 
     pub fn load_video(&self, video_name: &str) -> anyhow::Result<Box<dyn SeekRead>> {

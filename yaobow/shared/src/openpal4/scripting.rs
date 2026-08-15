@@ -7,7 +7,7 @@ use crate::{
     as_params,
     scripting::angelscript::{
         ContinuationState, GlobalFunctionState, ScriptGlobalContext, ScriptGlobalFunction,
-        ScriptVm, not_implemented,
+        ScriptModule, ScriptVm, not_implemented,
     },
     ui::dialog_box::DialogBoxPresenter,
     utils,
@@ -1133,6 +1133,10 @@ fn arena_load(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
     let scn = get_str(vm, scn_str as usize).unwrap();
     let block = get_str(vm, block_str as usize).unwrap();
 
+    // The outgoing block's periodic script (`giTimeScript`) dies with
+    // its block; the incoming block's init registers its own.
+    vm.vm_context.clear_time_script();
+
     // All scene swaps route through the deferred path so the
     // engine maintains a single invariant: pending_scene_load is
     // armed → director observes it in `update()` → spawns a
@@ -1145,11 +1149,20 @@ fn arena_load(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
     // transition's Loading phase).
     let silent = show_loading == 0;
     let baseline = vm.vm_context.session().deferred_load_generation();
+    let sub_block = get_str(vm, _data_str as usize).unwrap_or_default();
+    log::info!(
+        "giArenaLoad: scene='{}' block='{}' sub_block='{}' silent={}",
+        scn,
+        block,
+        sub_block,
+        silent
+    );
     vm.vm_context
         .session()
-        .request_scene_load(&scn, &block, silent);
+        .request_scene_load(&scn, &block, &sub_block, silent);
     let scn_owned = scn.clone();
     let block_owned = block.clone();
+    let sub_owned = sub_block.clone();
     Pal4FunctionState::Yield(Box::new(move |vm, _delta_sec| {
         if vm.vm_context.session().deferred_load_generation() == baseline {
             return ContinuationState::Loop;
@@ -1169,9 +1182,53 @@ fn arena_load(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
             return ContinuationState::Completed;
         }
         let module = vm.vm_context.scene.borrow().module.clone().unwrap();
-        vm.set_function_by_name2(module, &format!("{}_{}_init", scn_owned, block_owned));
+        set_block_init_function(vm, module, &scn_owned, &block_owned, &sub_owned);
         ContinuationState::Completed
     }))
+}
+
+/// Wire the VM to a freshly loaded block's `<scene>_<block>_init`
+/// entry function.
+///
+/// When `giArenaLoad` named a gameplay-data sub-block (e.g. `M06/1`
+/// with data `1a`), the init function belongs to the *sub-block*
+/// (`M06_1A_init`) — the geometry block itself often has none. The
+/// script spells sub-blocks in lower case while the compiled function
+/// names keep the original case, so the lookup is case-insensitive.
+fn set_block_init_function(
+    vm: &mut ScriptVm<Pal4VmContext>,
+    module: Rc<RefCell<ScriptModule>>,
+    scene: &str,
+    block: &str,
+    sub_block: &str,
+) {
+    let mut candidates: Vec<String> = vec![];
+    if !sub_block.is_empty() {
+        candidates.push(format!("{}_{}_init", scene, sub_block));
+    }
+    candidates.push(format!("{}_{}_init", scene, block));
+
+    for candidate in &candidates {
+        let resolved = module
+            .borrow()
+            .functions
+            .iter()
+            .find(|f| f.name.eq_ignore_ascii_case(candidate))
+            .map(|f| f.name.clone());
+        if let Some(name) = resolved {
+            vm.set_function_by_name2(module, &name);
+            return;
+        }
+    }
+
+    log::warn!(
+        "No block init function found for scene='{}' block='{}' sub_block='{}' \
+         (tried {:?})",
+        scene,
+        block,
+        sub_block,
+        candidates
+    );
 }
 
 fn arena_ready(_: &str, _vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
@@ -1715,6 +1772,7 @@ fn get_visible_object(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4Function
         .map(|e| e.visible())
         .unwrap_or(false);
     vm.set_ret_value(if visible { 1 } else { 0 });
+    log::debug!("giGetVisibleObject '{}' -> {}", name, visible);
     Pal4FunctionState::Completed
 }
 
@@ -2085,11 +2143,18 @@ fn add_round_times(_: &str, _vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionSt
 }
 
 fn time_script(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
-    as_params!(vm,_time:f32,_script_file_str:i32);
+    as_params!(vm, time: f32, script_file_str: i32);
+    let function = get_str(vm, script_file_str as usize);
+    match function {
+        Some(function) => vm.vm_context.set_time_script(time, &function),
+        None => vm.vm_context.clear_time_script(),
+    }
+
     Pal4FunctionState::Completed
 }
 
-fn time_script_terminate(_: &str, _vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
+fn time_script_terminate(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
+    vm.vm_context.clear_time_script();
     Pal4FunctionState::Completed
 }
 
@@ -2327,11 +2392,16 @@ fn player_current_do_action(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4Fu
     Pal4FunctionState::Completed
 }
 
-fn player_current_end_action(_: &str, _vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
+fn player_current_end_action(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
+    // Mirror `player_end_action`'s implicit unhold for the current
+    // leader — **once**, before yielding. Re-issuing it from inside
+    // the continuation re-`play()`s the armature every frame, so the
+    // moment playback reaches `Stopped` it is flipped straight back
+    // to `Playing` and `player_act_completed` never observes the end:
+    // the script wedges forever (M06's `func7002` lamp puzzle).
+    vm.vm_context.player_unhold_act(-1);
+
     Pal4FunctionState::Yield(Box::new(move |vm, _delta_sec| {
-        // Mirror `player_end_action`'s implicit unhold for the
-        // current leader. See that function for the rationale.
-        vm.vm_context.player_unhold_act(-1);
         if vm.vm_context.player_act_completed(-1) {
             ContinuationState::Completed
         } else {
@@ -2931,13 +3001,28 @@ fn start_jigsaw_game(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionS
     Pal4FunctionState::Completed
 }
 
+/// `giOBJBlendOut(name, seconds, wait)` — fade a GOB out until it is
+/// gone. V1 snaps to hidden: the puzzle logic the scripts build on top
+/// (`giGetVisibleObject`) only observes the end state, and every call
+/// site brackets the blend with `giWait`, so the missing tween reads as
+/// "the prop vanished during the wait". Notably this is how M06's cover
+/// / hole maze opens a route, so treating it as a no-op strands the
+/// player.
 fn obj_blend_out(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
-    as_params!(vm,_obj_file_str:i32,_blend_out_time:f32,_blend_out :i32);
+    as_params!(vm, obj_file_str: i32, _blend_out_time: f32, _blend_out: i32);
+    let name = get_str(vm, obj_file_str as usize).unwrap_or_default();
+    log::debug!("giOBJBlendOut '{}'", name);
+    vm.vm_context.enable_object(&name, false);
     Pal4FunctionState::Completed
 }
 
+/// `giOBJBlendIn(name, seconds, wait)` — the inverse of
+/// [`obj_blend_out`]; fades a hidden GOB back in.
 fn obj_blend_in(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
-    as_params!(vm,_obj_file_str:i32,_blend_in_time:f32,_blend_in :i32);
+    as_params!(vm, obj_file_str: i32, _blend_in_time: f32, _blend_in: i32);
+    let name = get_str(vm, obj_file_str as usize).unwrap_or_default();
+    log::debug!("giOBJBlendIn '{}'", name);
+    vm.vm_context.enable_object(&name, true);
     Pal4FunctionState::Completed
 }
 
@@ -3032,7 +3117,7 @@ fn show_world_map(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionStat
                     let baseline = vm.vm_context.session().deferred_load_generation();
                     vm.vm_context
                         .session()
-                        .request_scene_load(&scene, &block, false);
+                        .request_scene_load(&scene, &block, "", false);
                     phase = WorldMapPhase::WaitLoad {
                         baseline,
                         scene,
@@ -3062,8 +3147,7 @@ fn show_world_map(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionStat
                         return ContinuationState::Completed;
                     }
                     let module = vm.vm_context.scene.borrow().module.clone().unwrap();
-                    let next_fn = format!("{}_{}_init", scene, block);
-                    vm.set_function_by_name2(module, &next_fn);
+                    set_block_init_function(vm, module, scene, block, "");
                     return ContinuationState::Completed;
                 }
             }
@@ -3132,6 +3216,14 @@ fn unknown(_: &str, _vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
     Pal4FunctionState::Completed
 }
 
+/// Resolves a script string argument.
+///
+/// PAL4 passes strings either as a bare heap index or as the address
+/// of a stack slot holding that index (the latter shows up whenever
+/// the value came from a `string` variable that a member operator
+/// left a reference to). [`ScriptVm::resolve_object_index`] accepts
+/// both forms; anything else yields `None` instead of panicking.
 fn get_str(vm: &mut ScriptVm<Pal4VmContext>, index: usize) -> Option<String> {
-    vm.heap[index].clone()
+    let index = vm.resolve_object_index(index as u32)?;
+    vm.get_object(index).cloned()
 }

@@ -554,6 +554,7 @@ impl OpenPAL4Director {
             &self.vm,
             &snapshot.scene_name,
             &snapshot.block_name,
+            &snapshot.sub_block_name,
             self.actor_controller_factory_template(),
         ) {
             log::error!(

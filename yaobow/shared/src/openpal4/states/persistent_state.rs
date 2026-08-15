@@ -72,6 +72,12 @@ pub struct Pal4PersistentState {
     scene_name: String,
     #[serde(default)]
     block_name: String,
+    /// PAL4 `giArenaLoad`'s third argument: the lettered sibling folder
+    /// (e.g. `M06/1A`) that carries the block's gameplay data when the
+    /// geometry block ships none. Empty ≡ "same folder as `block_name`".
+    /// Absent in older saves.
+    #[serde(default)]
+    sub_block_name: String,
     #[serde(default)]
     position: Option<Vec3>,
     /// Leader facing direction (degrees, yaw about world-up) at save
@@ -125,6 +131,7 @@ impl Pal4PersistentState {
             leader: 0,
             scene_name: String::new(),
             block_name: String::new(),
+            sub_block_name: String::new(),
             position: None,
             camera: None,
             direction: None,
@@ -334,9 +341,27 @@ impl Pal4PersistentState {
         &self.block_name
     }
 
+    pub fn sub_block_name(&self) -> &str {
+        &self.sub_block_name
+    }
+
     pub fn set_scene(&mut self, scene_name: String, block_name: String) {
         self.scene_name = scene_name;
         self.block_name = block_name;
+        self.sub_block_name = String::new();
+    }
+
+    /// Same as [`Self::set_scene`] but records the gameplay-data
+    /// sub-block so a later reload re-enters the same block variant.
+    pub fn set_scene_with_sub_block(
+        &mut self,
+        scene_name: String,
+        block_name: String,
+        sub_block_name: String,
+    ) {
+        self.scene_name = scene_name;
+        self.block_name = block_name;
+        self.sub_block_name = sub_block_name;
     }
 
     pub fn position(&self) -> Option<Vec3> {
