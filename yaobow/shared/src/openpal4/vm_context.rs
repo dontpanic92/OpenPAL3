@@ -337,8 +337,16 @@ impl Pal4VmContext {
 
     pub fn set_player_pos(&mut self, player: i32, pos: &Vec3) {
         let player = self.map_player(player);
-        self.enable_player(player, true);
 
+        // NOTE: do *not* force the player visible here. Positioning and
+        // visibility are independent in the original ABI: cutscenes
+        // routinely hide the leader (`giPlayerCurrentSetVisible(0)`),
+        // then park his entity somewhere out of the way with
+        // `giPlayerCurrentSetPos` while a scripted stand-in NPC plays
+        // the scene. Re-enabling here made the hidden leader pop back
+        // in — visible as a duplicate protagonist during e.g. Q03/XN03Y.
+        // The leader is made visible on block entry instead, by
+        // `swap_pal4_scene` -> `set_leader`.
         self.scene
             .borrow()
             .get_player(player)

@@ -89,6 +89,15 @@ pub struct OpenPAL4Director {
     /// Always empty when no agent bridge is installed.
     pending_fires: RefCell<Vec<PendingFire>>,
 
+    /// Set when `update` hands control to an in-game
+    /// [`Pal4TransitionDirector`] (scripted `giArenaLoad` /
+    /// `giShowWorldMap`). Such a handoff calls `deactivate` on us even
+    /// though the transition returns control to *this same* director,
+    /// so `deactivate` must not fail the in-flight `pending_fires` —
+    /// they keep waiting and settle normally once we are reactivated.
+    /// Cleared by `activate`.
+    transition_handoff: Cell<bool>,
+
     /// Script-built loading overlay template, handed to each
     /// in-game `Pal4TransitionDirector` we mint from `update`. The
     /// overlay's `request()` resets its internal state, so the same
@@ -133,15 +142,6 @@ const DEBUG_METRIC_INTERVAL_SEC: f32 = 0.5;
 /// momentary blip between two scripted continuations (e.g. talk →
 /// camera pan → NPC walk) so the planner sees a truly quiescent VM.
 const IDLE_SETTLE_FRAMES: u32 = 2;
-/// Default timeout (ms) for a `fire_trigger { wait_until_idle }` call.
-const DEFAULT_FIRE_TIMEOUT_MS: u64 = 5_000;
-/// Hard cap (ms) on the same — prevents a buggy planner from pinning
-/// game-thread memory for the full agent reply window. PAL4 cutscenes
-/// in M01/Q01 routinely chain 30+ `giPlayerDoAction` /
-/// `giPlayerEndAction` pairs; with multiple actors each running 4-8s
-/// animations the total cutscene length can exceed 2 minutes even
-/// with fast-forward (`giWait` is the only sysfn fast-forward affects).
-const MAX_FIRE_TIMEOUT_MS: u64 = 180_000;
 
 /// One in-flight `fire_trigger { wait_until_idle: true }` request.
 /// Held in [`OpenPAL4Director::pending_fires`] until the VM settles
@@ -206,6 +206,7 @@ impl OpenPAL4Director {
             dt_display: Cell::new(0.0),
             agent: RefCell::new(None),
             pending_fires: RefCell::new(Vec::new()),
+            transition_handoff: Cell::new(false),
             loading_overlay: RefCell::new(None),
             actor_controller_factory: RefCell::new(None),
             scene,
@@ -645,6 +646,8 @@ impl OpenPAL4Director {
 
 impl IDirectorImpl for OpenPAL4Director {
     fn activate(&self) {
+        self.transition_handoff.set(false);
+
         // Idempotent: only push the placeholder Core scene if the
         // scene stack is empty. When the transition director hands
         // control back after an in-game `giArenaLoad`, the scene
@@ -787,6 +790,7 @@ impl IDirectorImpl for OpenPAL4Director {
             .session()
             .has_pending_scene_load()
         {
+            self.transition_handoff.set(true);
             return Some(super::transition::build_in_game_transition(self));
         }
 
@@ -794,6 +798,15 @@ impl IDirectorImpl for OpenPAL4Director {
     }
 
     fn deactivate(&self) {
+        // An in-game transition handoff (`giArenaLoad` / world map) also
+        // routes through `deactivate`, but the transition director hands
+        // control back to *this* director, so the pending fires will still
+        // settle. Only a genuine teardown (agent `new_game` / `load`, exit
+        // to menu) invalidates them.
+        if self.transition_handoff.get() {
+            return;
+        }
+
         // Fail any in-flight deferred `fire_trigger { wait_until_idle }`
         // replies: this director is being torn down (e.g. an agent
         // `new_game` / `load`), so their VM will never settle. Reply each
@@ -966,9 +979,8 @@ impl OpenPAL4Director {
             }
         }
         let timeout = params
-            .timeout_ms
-            .map(|ms| ms.min(MAX_FIRE_TIMEOUT_MS))
-            .unwrap_or(DEFAULT_FIRE_TIMEOUT_MS);
+            .settle_timeout_ms()
+            .unwrap_or(agent_server::protocol::DEFAULT_FIRE_TIMEOUT_MS);
         // Convert ms to frames at the engine's nominal tick rate so
         // the deadline travels in lockstep with `update`. Round up.
         let max_frames = (timeout.saturating_mul(60) + 999) / 1000;

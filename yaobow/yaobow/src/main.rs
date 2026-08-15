@@ -120,10 +120,13 @@ fn parse_agent_args(extra: &[String]) -> Option<Pal4AgentBootOptions> {
                 reply_timeout = iter
                     .next()
                     .and_then(|s| s.parse::<u64>().ok())
-                    // Cap at 60 s — beyond that something is wrong on
-                    // the game side and we want to surface a 500
-                    // rather than hold the HTTP connection forever.
-                    .map(|secs| std::time::Duration::from_secs(secs.min(60)));
+                    // Cap at 300 s. This only sets the *floor* applied
+                    // to ordinary one-frame commands; deferred
+                    // `fire_trigger { wait_until_idle }` calls already
+                    // derive their own (longer) deadline from
+                    // `timeout_ms`, so there is rarely a reason to
+                    // raise this at all.
+                    .map(|secs| std::time::Duration::from_secs(secs.min(300)));
             }
             _ => {}
         }

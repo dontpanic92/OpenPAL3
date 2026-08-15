@@ -160,6 +160,10 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
     pub fn set_function(&mut self, module: Rc<RefCell<ScriptModule>>, index: usize) {
         if self.context.is_some() {
             self.call_stack.push(self.context.clone().unwrap());
+        } else if self.call_stack.is_empty() {
+            // Fresh top-level entry: nothing can still be live on the
+            // operand stack, so re-base it. See `rebase_stack`.
+            self.rebase_stack("set_function");
         }
 
         self.context = Some(ScriptFunctionContext::new(module, index));
@@ -278,6 +282,38 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
         self.r1 = buf;
     }
 
+    /// Restore `sp` / `fp` to the empty-stack base.
+    ///
+    /// PAL4's bytecode plus our sysfn table are not perfectly
+    /// stack-balanced: a handful of `gi*` handlers and the odd
+    /// `Ret`/`Pop` pairing leave `sp` a few slots off where it
+    /// started. Nothing resets it, so the drift is *cumulative* —
+    /// over a long session `sp` walks out of `stack` entirely and
+    /// every subsequent script dies with
+    /// "stack out-of-bounds during read_stack" (observed at
+    /// `Q03/XN03Y` with `sp=327404` against a 65536-byte stack,
+    /// which then poisoned `Q03_MUSIC` and every later script too).
+    ///
+    /// Re-basing is only safe when no frame is live, i.e. when the
+    /// VM is idle or has just been reset by a fault. Callers must
+    /// establish that; this only performs the write (and logs, so a
+    /// genuinely leaking sysfn is still discoverable).
+    fn rebase_stack(&mut self, reason: &str) {
+        if self.sp != Self::DEFAULT_STACK_SIZE || self.fp != Self::DEFAULT_STACK_SIZE {
+            log::debug!(
+                "AngelScript VM re-basing operand stack at {reason}: sp {} -> {}, fp {} -> {} \
+                 (drift {} bytes)",
+                self.sp,
+                Self::DEFAULT_STACK_SIZE,
+                self.fp,
+                Self::DEFAULT_STACK_SIZE,
+                self.sp as i64 - Self::DEFAULT_STACK_SIZE as i64,
+            );
+        }
+        self.sp = Self::DEFAULT_STACK_SIZE;
+        self.fp = Self::DEFAULT_STACK_SIZE;
+    }
+
     /// Aborts the currently-executing script by clearing the
     /// execution context and call stack, the same way the stack-fault
     /// recovery path does in `execute()`. Use this from a sysfn
@@ -297,6 +333,7 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
         self.context = None;
         self.call_stack.clear();
         self.yield_func.clear();
+        self.rebase_stack("abort_script");
     }
 
     pub fn push_object(&mut self, object: String) -> usize {
@@ -329,13 +366,14 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
                 self.context = None;
                 self.call_stack.clear();
                 self.yield_func.clear();
+                self.rebase_stack("stack fault recovery");
                 return;
             }
 
             let module = self.context.as_ref().unwrap().module.clone();
             let module_ref = module.borrow();
-            let function =
-                module_ref.functions[self.context.as_ref().unwrap().function_index].clone();
+            let function_index = self.context.as_ref().unwrap().function_index;
+            let function = module_ref.functions[function_index].clone();
             let mut reg: u32 = 0;
 
             self.debug_update_context();
@@ -360,6 +398,28 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
 
             if wait {
                 return;
+            }
+
+            // A continuation may have switched the active function
+            // out from under us — `giArenaLoad`'s deferred
+            // continuation enters `<scene>_<block>_init` (and
+            // `abort_script` clears the context entirely). `function`
+            // was cloned *before* the continuations ran, so decoding
+            // the next instruction from it would read the previous
+            // function's bytes at the new function's `pc`. That
+            // silently executes a garbage opcode: at Q03/XN03Y the
+            // stray decode produced `Pop { 65535 }`, adding 262140 to
+            // `sp` and killing the scene's `_init` script (and, before
+            // the stack re-base below, every script after it). Restart
+            // the loop so the fresh context is re-read instead.
+            let context_switched = match self.context.as_ref() {
+                None => true,
+                Some(ctx) => {
+                    ctx.function_index != function_index || !Rc::ptr_eq(&ctx.module, &module)
+                }
+            };
+            if context_switched {
+                continue;
             }
 
             let inst = self.read_inst(&function);
@@ -1607,6 +1667,124 @@ mod tests {
         let module = ScriptModule::test_module(vec![function]);
         let g = Rc::new(RefCell::new(ScriptGlobalContext::<()>::new()));
         ScriptVm::new(g, Rc::new(RefCell::new(module)), 0, ())
+    }
+
+    /// Regression for the Q03/XN03Y crash: a sysfn continuation that
+    /// switches the active function (what `giArenaLoad` does when it
+    /// enters `<scene>_<block>_init`) must not leave `execute()`
+    /// decoding one more instruction out of the *previous* function's
+    /// byte stream.
+    ///
+    /// The layout below reproduces the shipped bytecode exactly:
+    /// `func2005` starts with `Push { 3 }` and `Q03_XN03Y_init` starts
+    /// with `Suspend ; Rdga4 { -1 }`. Executing `func2005`'s 6-byte
+    /// `Push` against the new context left `pc = 6`, i.e. inside
+    /// `Rdga4`'s `0xFFFFFFFF` operand, which decodes as
+    /// `Pop { 65535 }` and adds 262 140 to `sp`.
+    #[test]
+    fn continuation_switching_function_does_not_execute_stale_bytecode() {
+        // fn 0 — "test_main": Push{3} ; CallSys{switcher} ; Suspend.
+        // fn 1 — "target":  Suspend ; Rdga4{-1} ; Set4 7 ; Movga4 -2 ; Suspend.
+        let g = Rc::new(RefCell::new(ScriptGlobalContext::<()>::new()));
+        let sysfn_index = g.borrow().functions().len();
+        let switcher_operand = -(sysfn_index as i32) - 1;
+
+        let main_inst = assemble(&[
+            &op(1),
+            &3u16.to_le_bytes(),
+            &op(97),
+            &switcher_operand.to_le_bytes(),
+            &op(13),
+            &0u16.to_le_bytes(),
+        ]);
+        let target_inst = assemble(&[
+            &op(108),
+            &op(99),
+            &(-1i32).to_le_bytes(),
+            &op(2),
+            &7u32.to_le_bytes(),
+            &op(100),
+            &(-2i32).to_le_bytes(),
+            &op(13),
+            &0u16.to_le_bytes(),
+        ]);
+        // The stale-decode path depends on these exact offsets.
+        assert_eq!(main_inst[0], 1, "test_main must start with Push");
+        assert_eq!(
+            &target_inst[8..12],
+            &[0xFF, 0xFF, 0xFF, 0xFF],
+            "target's Rdga4 operand must be all-ones for the stray Pop decode"
+        );
+
+        let module = Rc::new(RefCell::new(ScriptModule::test_module(vec![
+            ScriptFunction::test_function("test_main", main_inst),
+            ScriptFunction::test_function("target", target_inst),
+        ])));
+
+        g.borrow_mut()
+            .register_function(super::super::global_context::ScriptGlobalFunction::new(
+                "switcher",
+                Box::new(|_name, _vm: &mut ScriptVm<()>| {
+                    super::super::GlobalFunctionState::Yield(Box::new(
+                        |vm: &mut ScriptVm<()>, _| {
+                            let module = vm.context.as_ref().unwrap().module.clone();
+                            vm.set_function_by_name2(module, "target");
+                            super::super::ContinuationState::Completed
+                        },
+                    ))
+                }),
+            ));
+
+        let mut vm = ScriptVm::new(g, module, 0, ());
+        let base_sp = vm.sp;
+        for _ in 0..16 {
+            vm.execute(0.0);
+            assert!(
+                vm.sp <= base_sp,
+                "sp escaped the stack: {} (base {})",
+                vm.sp,
+                base_sp
+            );
+        }
+
+        assert_eq!(
+            vm.g.borrow().get_global(1),
+            7,
+            "target's Movga4 must have run; a stale decode aborts it instead"
+        );
+    }
+
+    /// The operand stack must be re-based when the VM starts a fresh
+    /// top-level script, so drift left behind by a previous (possibly
+    /// aborted) script can't accumulate until `sp` walks off the end.
+    #[test]
+    fn stack_is_rebased_for_fresh_top_level_entry() {
+        let inst = assemble(&[&op(108)]);
+        let function = ScriptFunction::test_function("test_main", inst);
+        let module = Rc::new(RefCell::new(ScriptModule::test_module(vec![function])));
+        let g = Rc::new(RefCell::new(ScriptGlobalContext::<()>::new()));
+        let mut vm = ScriptVm::new(g, module.clone(), 0, ());
+
+        // Simulate a script that returned with a leaked operand stack.
+        vm.context = None;
+        vm.call_stack.clear();
+        vm.sp = 12_345;
+
+        vm.set_function(module, 0);
+        assert_eq!(vm.sp, ScriptVm::<()>::DEFAULT_STACK_SIZE);
+        assert_eq!(vm.fp, ScriptVm::<()>::DEFAULT_STACK_SIZE);
+    }
+
+    /// `abort_script` leaves the VM ready for the next entry, which
+    /// includes a sane operand stack.
+    #[test]
+    fn abort_script_rebases_the_stack() {
+        let mut vm = build_vm(assemble(&[&op(108)]));
+        vm.sp = 999;
+        vm.abort_script();
+        assert_eq!(vm.sp, ScriptVm::<()>::DEFAULT_STACK_SIZE);
+        assert_eq!(vm.fp, ScriptVm::<()>::DEFAULT_STACK_SIZE);
+        assert!(vm.is_idle());
     }
 
     #[test]

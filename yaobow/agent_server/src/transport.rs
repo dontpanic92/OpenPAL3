@@ -87,15 +87,15 @@ impl AgentServerConfig {
 
     /// Override the per-request reply timeout. The transport returns
     /// HTTP 500 with `"game thread did not reply within {dur:?}"` if
-    /// the game-side handler doesn't reply in time. Bumping this past
-    /// the default 5 s is needed for long fires (e.g. PAL4 dialog +
-    /// camera cutscenes routinely take 6–10 s of game-clock even with
-    /// fast-forward). The cap is intentionally permissive — the
-    /// per-fire side has its own
-    /// [`FireTriggerParams::timeout_ms`] (`director.rs::MAX_FIRE_TIMEOUT_MS = 30_000`)
-    /// that bounds how long the game thread will wait before
-    /// declaring its own deadline; this cap just needs to comfortably
-    /// exceed that.
+    /// the game-side handler doesn't reply in time.
+    ///
+    /// This is the *floor* applied to every request. Deferred
+    /// `fire_trigger { wait_until_idle }` calls derive a longer
+    /// deadline from their own
+    /// [`FireTriggerParams::timeout_ms`] (capped at
+    /// [`crate::protocol::MAX_FIRE_TIMEOUT_MS`]) via
+    /// [`reply_timeout_for`], so there is no need to raise this just
+    /// to accommodate long PAL4 cutscenes.
     pub fn with_reply_timeout(mut self, reply_timeout: Duration) -> Self {
         self.reply_timeout = reply_timeout;
         self
@@ -273,6 +273,8 @@ fn handle_request(
         }
     };
 
+    let timeout = reply_timeout_for(&command, timeout);
+
     let (env, rx) = AgentEnvelope::new(command);
     if let Err(err) = sender.send(env) {
         let _ = respond_error(req, AgentError::internal(format!("queue closed: {err}")));
@@ -298,6 +300,37 @@ fn handle_request(
                 AgentError::internal("game thread dropped the reply channel"),
             );
         }
+    }
+}
+
+/// Extra headroom added on top of a fire's own settle deadline before
+/// the HTTP worker gives up. The game thread converts `timeout_ms`
+/// into whole frames and only checks the deadline once per `update`,
+/// so it always replies slightly *after* its nominal deadline; without
+/// the margin the transport would race it and report a spurious 500.
+/// The margin is generous because a fire that triggers a scripted
+/// scene transition (`giArenaLoad`) stops ticking the director's
+/// `update` for the whole synchronous load window, so wall-clock time
+/// can outrun the frame budget by seconds.
+const REPLY_TIMEOUT_MARGIN: Duration = Duration::from_secs(30);
+
+/// Per-request HTTP reply timeout.
+///
+/// `fire_trigger { wait_until_idle: true }` intentionally parks on the
+/// game thread until the script VM settles — up to
+/// [`MAX_FIRE_TIMEOUT_MS`]. The configured [`AgentServerConfig::reply_timeout`]
+/// (5 s by default) is sized for ordinary one-frame commands, so
+/// applying it to a deferred fire would guarantee a
+/// `"game thread did not reply within 5s"` 500 for every real PAL4
+/// cutscene. Derive the deadline from the request itself instead, and
+/// never shorten the configured default.
+fn reply_timeout_for(command: &AgentCommand, default: Duration) -> Duration {
+    match command {
+        AgentCommand::FireSceneTrigger(params) => match params.settle_timeout_ms() {
+            Some(ms) => (Duration::from_millis(ms) + REPLY_TIMEOUT_MARGIN).max(default),
+            None => default,
+        },
+        _ => default,
     }
 }
 

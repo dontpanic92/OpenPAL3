@@ -5,7 +5,7 @@ use crate::rendering::vulkan::adhoc_command_runner::AdhocCommandRunner;
 use crate::rendering::vulkan::descriptor_managers::DescriptorManager;
 use crate::rendering::{RenderObject, VertexBuffer};
 use ash::vk;
-use std::cell::{Ref, RefCell, RefMut};
+use std::cell::{Cell, Ref, RefCell, RefMut};
 use std::error::Error;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -28,8 +28,14 @@ pub struct VulkanRenderObject {
     /// write a camera-independent (flat) matrix here so cast shadows don't
     /// yaw with the camera. The shadow depth pass binds this slot.
     shadow_dub_index: usize,
-    local_centroid: [f32; 3],
-    local_aabb: Option<([f32; 3], [f32; 3])>,
+    /// Local-space bounds of the *current* vertex data. Recomputed
+    /// whenever [`RenderObject::update_vertices`] rewrites the buffer:
+    /// CPU-skinned meshes deform their positions every frame, so a
+    /// construction-time (bind-pose) snapshot would make the frustum
+    /// culler drop posed limbs that moved outside the rest pose (e.g. a
+    /// character's head vanishing while it sits on a bed).
+    local_centroid: Cell<[f32; 3]>,
+    local_aabb: Cell<Option<([f32; 3], [f32; 3])>>,
 }
 
 impl RenderObject for VulkanRenderObject {
@@ -39,14 +45,17 @@ impl RenderObject for VulkanRenderObject {
             .vertex_buffer
             .borrow_mut()
             .copy_memory_from(self.vertices.borrow().data());
+        let (aabb, centroid) = Self::compute_bounds(&self.vertices.borrow());
+        self.local_aabb.set(aabb);
+        self.local_centroid.set(centroid);
     }
 
     fn local_centroid(&self) -> [f32; 3] {
-        self.local_centroid
+        self.local_centroid.get()
     }
 
     fn local_aabb(&self) -> Option<([f32; 3], [f32; 3])> {
-        self.local_aabb
+        self.local_aabb.get()
     }
 
     fn set_uv_xform(&self, scale: [f32; 2], offset: [f32; 2]) {
@@ -96,16 +105,7 @@ impl VulkanRenderObject {
         let dub_index = dub_manager.allocate_buffer();
         let shadow_dub_index = dub_manager.allocate_buffer();
 
-        let local_aabb = vertices.aabb_min_max();
-        let local_centroid = local_aabb
-            .map(|(min, max)| {
-                [
-                    0.5 * (min[0] + max[0]),
-                    0.5 * (min[1] + max[1]),
-                    0.5 * (min[2] + max[2]),
-                ]
-            })
-            .unwrap_or([0.0, 0.0, 0.0]);
+        let (local_aabb, local_centroid) = Self::compute_bounds(&vertices);
 
         Ok(Self {
             vertices: RefCell::new(vertices),
@@ -120,9 +120,24 @@ impl VulkanRenderObject {
             dub_index,
             shadow_dub_index,
             descriptor_manager: descriptor_manager.clone(),
-            local_centroid,
-            local_aabb,
+            local_centroid: Cell::new(local_centroid),
+            local_aabb: Cell::new(local_aabb),
         })
+    }
+
+    /// Local-space `(aabb, centroid)` of a vertex buffer's positions.
+    fn compute_bounds(vertices: &VertexBuffer) -> (Option<([f32; 3], [f32; 3])>, [f32; 3]) {
+        let aabb = vertices.aabb_min_max();
+        let centroid = aabb
+            .map(|(min, max)| {
+                [
+                    0.5 * (min[0] + max[0]),
+                    0.5 * (min[1] + max[1]),
+                    0.5 * (min[2] + max[2]),
+                ]
+            })
+            .unwrap_or([0.0, 0.0, 0.0]);
+        (aabb, centroid)
     }
 
     pub fn vertex_buffer(&self) -> Ref<'_, Buffer> {

@@ -572,8 +572,16 @@ impl Pal4SceneLoader {
             let actor_name = npc.model_name.to_string();
             match actor_name {
                 Ok(actor_name) => {
+                    let npc_name = npc.name.to_string().unwrap_or_default();
+                    log::debug!(
+                        "Pal4Scene::load: npc '{}' -> actor '{}' act={:?} visible={}",
+                        npc_name,
+                        actor_name,
+                        npc.get_default_act(),
+                        npc.default_visible == 1,
+                    );
                     let entity = self.asset_loader.load_actor(
-                        npc.name.to_string().unwrap_or_default().as_str(),
+                        npc_name.as_str(),
                         actor_name.as_str(),
                         npc.get_default_act().as_deref(),
                     );

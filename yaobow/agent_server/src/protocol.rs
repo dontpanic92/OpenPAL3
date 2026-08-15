@@ -493,6 +493,19 @@ pub struct NameParams {
     pub name: String,
 }
 
+/// Default wait (ms) applied to `fire_trigger { wait_until_idle }`
+/// when the caller doesn't pass `timeout_ms`.
+pub const DEFAULT_FIRE_TIMEOUT_MS: u64 = 5_000;
+
+/// Hard cap (ms) on `fire_trigger { wait_until_idle, timeout_ms }`.
+/// PAL4 cutscenes routinely chain dozens of `giPlayerDoAction` /
+/// `giPlayerEndAction` pairs and can exceed two minutes of game clock
+/// even with fast-forward, so the cap is deliberately generous. The
+/// transport derives its per-request HTTP reply timeout from the same
+/// number (see `transport::reply_timeout_for`), which is why the
+/// constant lives here rather than in the game-side director.
+pub const MAX_FIRE_TIMEOUT_MS: u64 = 180_000;
+
 /// Body shape accepted by `POST /v1/scene/fire_trigger`. Strict
 /// superset of [`NameParams`]: a JSON `{ "name": "X" }` body parses
 /// into this with the new fields defaulted, so older clients still
@@ -514,9 +527,26 @@ pub struct FireTriggerParams {
     #[serde(default)]
     pub collect_trace: bool,
     /// Maximum wait when `wait_until_idle` is set. Defaults to
-    /// 5_000 ms; capped at 30_000 ms server-side.
+    /// [`DEFAULT_FIRE_TIMEOUT_MS`]; capped at [`MAX_FIRE_TIMEOUT_MS`]
+    /// server-side.
     #[serde(default)]
     pub timeout_ms: Option<u64>,
+}
+
+impl FireTriggerParams {
+    /// Effective game-side settle deadline for this fire, clamped to
+    /// [`MAX_FIRE_TIMEOUT_MS`]. Returns `None` when the caller didn't
+    /// ask to wait (legacy fire-and-return).
+    pub fn settle_timeout_ms(&self) -> Option<u64> {
+        if !self.wait_until_idle {
+            return None;
+        }
+        Some(
+            self.timeout_ms
+                .unwrap_or(DEFAULT_FIRE_TIMEOUT_MS)
+                .min(MAX_FIRE_TIMEOUT_MS),
+        )
+    }
 }
 
 impl From<NameParams> for FireTriggerParams {

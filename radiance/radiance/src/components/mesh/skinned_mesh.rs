@@ -325,6 +325,14 @@ impl IArmatureComponentImpl for ArmatureComponent {
 impl ArmatureComponent {
     /// Inherent counterpart to the formerly-IDL `set_animation`.
     pub fn set_animation(&self, keyframes: Vec<Vec<AnimKeyFrame>>, events: Vec<AnimationEvent>) {
+        if keyframes.len() != self.bones.len() {
+            log::debug!(
+                "ArmatureComponent::set_animation: track/bone count mismatch \
+                 (tracks={}, bones={}); trailing bones keep their previous pose",
+                keyframes.len(),
+                self.bones.len(),
+            );
+        }
         let mut animation_length = 0.;
         for (bone, kf) in self.bones.iter().zip(keyframes) {
             let kf_animation_length = kf.last().unwrap().timestamp;
