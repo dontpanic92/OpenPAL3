@@ -208,19 +208,38 @@ impl Pal4Session {
     }
 
     /// Buffer a choice for the next `*_get_last_select` call.
-    /// Wired to `/v1/dialog/choose`. The value is consumed on the
-    /// next read (so each pick lasts for exactly one dialog).
+    /// Wired to `/v1/dialog/choose`. The value is a **1-based item
+    /// number** matching the on-screen list (`1` = first item), and is
+    /// consumed on the next read (so each pick lasts for exactly one
+    /// dialog).
     pub fn buffer_dialog_choice(&self, index: i32) {
         self.transient.next_dialog_choice.set(Some(index));
     }
 
-    /// Take the buffered choice (or default to `1`) and clear the
-    /// pending-items list. Called from the `*_get_last_select`
-    /// sysfn handlers.
-    pub fn take_dialog_choice(&self) -> i32 {
+    /// Take the buffered 1-based choice (defaulting to the first item)
+    /// and clear the pending-items list.
+    fn take_dialog_choice_1_based(&self) -> i32 {
         let choice = self.transient.next_dialog_choice.take().unwrap_or(1);
         self.transient.pending_dialog_choices.borrow_mut().clear();
-        choice
+        choice.max(1)
+    }
+
+    /// Result for `giCommonDialogGetLastSelect`, which the game scripts
+    /// compare **1-based** (`if (select == 1)` for the first item — all
+    /// 8 call sites in the shipped bytecode use `1`).
+    pub fn take_common_dialog_choice(&self) -> i32 {
+        self.take_dialog_choice_1_based()
+    }
+
+    /// Result for `giSelectDialogGetLastSelect`, which the game scripts
+    /// compare **0-based** (`if (select == 0)` for the first item — all
+    /// 49 call sites in the shipped bytecode use `0`).
+    ///
+    /// Returning the common-dialog convention here silently answered
+    /// "second item" (usually 否/cancel) for every yes-no prompt, which
+    /// stalled the plot at e.g. Q06 `func2102` (云天青's 入门试炼).
+    pub fn take_select_dialog_choice(&self) -> i32 {
+        self.take_dialog_choice_1_based() - 1
     }
 
     /// Arm a deferred scene transition. The director drains this on
@@ -513,10 +532,14 @@ mod tests {
             vec!["yes".to_string(), "no".to_string()]
         );
         session.buffer_dialog_choice(7);
-        assert_eq!(session.take_dialog_choice(), 7);
+        // Common dialogs are 1-based, select dialogs 0-based.
+        assert_eq!(session.take_common_dialog_choice(), 7);
+        session.buffer_dialog_choice(7);
+        assert_eq!(session.take_select_dialog_choice(), 6);
         // After take, choices are cleared and next call defaults to 1.
         assert!(session.dialog_choices().is_empty());
-        assert_eq!(session.take_dialog_choice(), 1);
+        assert_eq!(session.take_common_dialog_choice(), 1);
+        assert_eq!(session.take_select_dialog_choice(), 0);
 
         // Deferred scene load.
         let gen0 = session.deferred_load_generation();
@@ -568,6 +591,7 @@ mod tests {
         // Generation preserved across reset.
         assert_eq!(session.deferred_load_generation(), gen_before);
         // Default-1 fallback still applies for dialog choice.
-        assert_eq!(session.take_dialog_choice(), 1);
+        assert_eq!(session.take_common_dialog_choice(), 1);
     }
 }
+

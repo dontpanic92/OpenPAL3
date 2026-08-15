@@ -1164,6 +1164,10 @@ impl OpenPAL4Director {
                     name: entity.name(),
                     position: [pos.x, pos.y, pos.z],
                     visible: entity.visible(),
+                    talk_function: scene
+                        .npc_script_function(&entity.name())
+                        .unwrap_or_default()
+                        .to_string(),
                 }
             })
             .collect::<Vec<_>>();
@@ -1266,15 +1270,17 @@ impl OpenPAL4Director {
         AgentResponse::Ok
     }
 
-    /// Fire a GOB entry's `research_function` as if the player had
-    /// pressed "Examine" on it.
+    /// Fire a GOB entry's `research_function` — or an NPC's
+    /// `npcInfo.npc` talk handler — as if the player had pressed
+    /// "Examine" / talked to it.
     fn handle_interact_object(&self, params: NameParams) -> AgentResponse {
         if self.vm.borrow().current_function_name().is_some() {
             return AgentResponse::err(AgentError::conflict(
                 "a script is currently running; wait for it to finish before interacting",
             ));
         }
-        let (module, fn_name) = {
+
+        let resolved = {
             let vm = self.vm.borrow();
             let app = vm.vm_context();
             let scene = app.scene.borrow();
@@ -1283,23 +1289,40 @@ impl OpenPAL4Director {
                     "no scene is loaded; load a block before interacting with objects",
                 ));
             };
-            let Some(entity) = scene.get_object(&params.name) else {
+
+            if let Some(entity) = scene.get_object(&params.name) {
+                let fn_name = object_component(&entity)
+                    .map(|c| c.inner::<Pal4ObjectComponent>().research_function())
+                    .unwrap_or_default();
+                if fn_name.is_empty() {
+                    return AgentResponse::err(AgentError::bad_request(format!(
+                        "object {} has no examine handler (research_function is empty)",
+                        params.name
+                    )));
+                }
+                (module, fn_name)
+            } else if scene.get_npc(&params.name).is_some() {
+                // NPC talk handlers come from `npcInfo.npc`'s
+                // `script_function` and are dispatched through the same
+                // proximity + "F" path as GOB examine handlers.
+                match scene.npc_script_function(&params.name) {
+                    Some(fn_name) if !fn_name.is_empty() => (module, fn_name.to_string()),
+                    _ => {
+                        return AgentResponse::err(AgentError::bad_request(format!(
+                            "npc {} has no talk handler",
+                            params.name
+                        )));
+                    }
+                }
+            } else {
                 return AgentResponse::err(AgentError::bad_request(format!(
-                    "unknown object name: {}",
-                    params.name
-                )));
-            };
-            let fn_name = object_component(&entity)
-                .map(|c| c.inner::<Pal4ObjectComponent>().research_function())
-                .unwrap_or_default();
-            if fn_name.is_empty() {
-                return AgentResponse::err(AgentError::bad_request(format!(
-                    "object {} has no examine handler (research_function is empty)",
+                    "unknown object or npc name: {}",
                     params.name
                 )));
             }
-            (module, fn_name)
         };
+
+        let (module, fn_name) = resolved;
         self.vm.borrow_mut().set_function_by_name2(module, &fn_name);
         AgentResponse::Ok
     }

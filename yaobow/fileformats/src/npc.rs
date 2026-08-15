@@ -20,7 +20,10 @@ pub struct NpcInfoFile {
 pub struct NpcInfo {
     pub name: SizedString,
     pub model_name: SizedString,
-    pub unknown_name: SizedString,
+    /// Script function invoked when the player talks to this NPC (the
+    /// `funcNNNN` / `func5005`-style entry point in the scene's `.csb`
+    /// module). Empty for scenery-only NPCs that can't be talked to.
+    pub script_function: SizedString,
     pub position: [f32; 3],
     pub rotation: [f32; 3],
     pub default_visible: i32,

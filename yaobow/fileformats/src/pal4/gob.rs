@@ -401,6 +401,14 @@ impl GobEntry {
     }
 }
 
+/// Every parameter name in the shipped corpus starts with this prefix
+/// (`PAL4-…` or `PAL4_…`), while GOB *entry* names never do — they are
+/// scene object ids like `floor02` or `candlelight01_ctrl`. That
+/// asymmetry is what lets [`parse_properties`] tell a `ty == 0`
+/// property apart from the region-2 terminator, which is also a bare
+/// `u32 = 0` followed by a `SizedString`.
+const GOB_PROPERTY_NAME_PREFIX: &[u8] = b"PAL4";
+
 #[binrw::parser(reader, endian)]
 fn parse_properties() -> BinResult<Vec<GobProperty>> {
     let mut properties = vec![];
@@ -415,16 +423,52 @@ fn parse_properties() -> BinResult<Vec<GobProperty>> {
             Err(e) => return Err(e.into()),
         };
         if ty == 0 {
-            break;
-        } else {
-            reader.seek(SeekFrom::Current(-4))?;
+            // A zero here is *usually* the region-2 terminator, but
+            // `ty = 0` is also a real (rare) property type: M08's
+            // floating-platform blocks carry
+            // `PAL4_GAMEOBJECT_float` / `_float_auto_touch` /
+            // `_float_touch_type` with tag 0. Both encodings continue
+            // with a `SizedString`, so disambiguate on its content —
+            // parameter names always start with `PAL4`, entry names
+            // never do. Getting this wrong truncated `M08/2`'s
+            // `floor01` entry mid-parameters and made the whole block
+            // (千佛塔 2F) fail to load.
+            if !next_string_is_a_property_name(reader)? {
+                break;
+            }
         }
+        reader.seek(SeekFrom::Current(-4))?;
 
         let property = GobProperty::read_options(reader, endian, ())?;
         properties.push(property);
     }
 
     Ok(properties)
+}
+
+/// Peeks the `SizedString` that follows the current position and
+/// reports whether it looks like a GOB property name. Leaves the
+/// reader exactly where it found it.
+fn next_string_is_a_property_name<R: std::io::Read + std::io::Seek>(
+    reader: &mut R,
+) -> BinResult<bool> {
+    let here = reader.stream_position()?;
+    let probe = (|| -> BinResult<bool> {
+        let len = reader.read_u32_le()? as usize;
+        if len < GOB_PROPERTY_NAME_PREFIX.len() {
+            return Ok(false);
+        }
+        let mut head = [0u8; 4];
+        reader.read_exact(&mut head)?;
+        Ok(head == GOB_PROPERTY_NAME_PREFIX)
+    })();
+    reader.seek(SeekFrom::Start(here))?;
+    match probe {
+        Ok(v) => Ok(v),
+        // A truncated / absent string just means "not a property".
+        Err(binrw::Error::Io(e)) if e.kind() == std::io::ErrorKind::UnexpectedEof => Ok(false),
+        Err(e) => Err(e),
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -458,7 +502,10 @@ impl BinRead for GobProperty {
             ));
         } else {
             match ty {
-                1 => Ok(Self::GobPropertyI32(GobPropertyI32::read_options(
+                // Tag 0 — observed only on M08's floating-platform
+                // markers (`PAL4_GAMEOBJECT_float*`). Payload is a
+                // plain `i32`, same as tag 1.
+                0 | 1 => Ok(Self::GobPropertyI32(GobPropertyI32::read_options(
                     reader,
                     endian,
                     (),
@@ -473,13 +520,14 @@ impl BinRead for GobProperty {
                     endian,
                     (),
                 )?)),
-                _ => {
-                    unreachable!(
-                        "Unknown array name: {:?} at position {}",
-                        name.to_string(),
-                        start_position
-                    );
-                }
+                _ => Err(binrw::Error::AssertFail {
+                    pos: start_position,
+                    message: format!(
+                        "unknown GOB property tag {} for {:?}",
+                        ty,
+                        name.to_string()
+                    ),
+                }),
             }
         }
     }
@@ -941,6 +989,54 @@ mod tests {
         assert_eq!(e1.sound_max_time(), None);
     }
 
+    /// `ty = 0` is a real property tag (M08's floating-platform
+    /// markers use it), not just the region-2 terminator. Since both
+    /// encodings are "a `u32` followed by a `SizedString`", the parser
+    /// disambiguates on the string: property names always start with
+    /// `PAL4`, entry names never do. Before this was handled, `M08/2`
+    /// (千佛塔 2F) truncated `floor01` mid-parameters and the whole
+    /// block failed to load with "not enough bytes in reader".
+    #[test]
+    fn tag_zero_property_is_not_mistaken_for_the_entry_terminator() {
+        let mut buf = Vec::new();
+        write_u32(&mut buf, 2); // entry count
+        write_u32(&mut buf, GobObjectType::MACHINE);
+        write_u32(&mut buf, GobObjectType::GENERIC);
+
+        // Entry 0: one tag-0 parameter followed by a normal one.
+        write_entry_header(&mut buf, "floor01 ", "folder ", "G ", "atomic ", 0);
+        write_i32_prop(&mut buf, "PAL4-GameObject-Parameters", 0);
+        write_u32(&mut buf, 0); // tag 0 …
+        write_string(&mut buf, "PAL4_GAMEOBJECT_float");
+        write_i32(&mut buf, 2);
+        write_i32_prop(&mut buf, "PAL4_GAMEOBJECT_float_auto_touch", 1);
+        write_u32(&mut buf, 0); // region-2 terminator
+
+        // Entry 1: must still be found right after the terminator.
+        write_entry_header(&mut buf, "floor02 ", "folder ", "I ", "atomic ", 0);
+        write_i32_prop(&mut buf, "PAL4-GameObject-Parameters", 0);
+        write_u32(&mut buf, 0);
+
+        let gob = GobFile::read(&mut Cursor::new(buf)).unwrap();
+        assert_eq!(gob.entries.len(), 2);
+
+        let e0 = &gob.entries[0];
+        assert_eq!(e0.name, "floor01 ");
+        assert_eq!(
+            e0.get_parameter("PAL4_GAMEOBJECT_float")
+                .and_then(|p| p.value_i32()),
+            Some(2),
+            "tag-0 parameter must be parsed, not treated as a terminator"
+        );
+        assert_eq!(
+            e0.get_parameter("PAL4_GAMEOBJECT_float_auto_touch")
+                .and_then(|p| p.value_i32()),
+            Some(1),
+            "parameters after a tag-0 entry must keep parsing"
+        );
+        assert_eq!(gob.entries[1].name, "floor02 ");
+    }
+
     /// Developer-local round-trip against a real install of the game.
     /// Ignored by default — run explicitly with `--ignored`.
     #[test]
@@ -956,3 +1052,4 @@ mod tests {
         println!("{:#?}", gob_file);
     }
 }
+

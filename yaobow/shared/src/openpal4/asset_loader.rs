@@ -395,8 +395,18 @@ impl AssetLoader {
         load_amf(&self.vfs, &amf_path).unwrap_or(vec![])
     }
 
-    pub fn load_gob(&self, scene_name: &str, block_name: &str) -> anyhow::Result<GobFile> {
+    /// Whether `/gamedata/scenedata/<scene>/<block>/<file_name>` exists.
+    /// Used to resolve `giArenaLoad`'s sub-block overlays, which only
+    /// carry *some* of a block's gameplay files.
+    pub fn scene_data_file_exists(&self, scene_name: &str, block_name: &str, file_name: &str) -> bool {
         let path = format!(
+            "/gamedata/scenedata/{}/{}/{}",
+            scene_name, block_name, file_name
+        );
+        self.vfs.exists(&path)
+    }
+
+    pub fn load_gob(&self, scene_name: &str, block_name: &str) -> anyhow::Result<GobFile> {        let path = format!(
             "/gamedata/scenedata/{}/{}/GameObjs.gob",
             scene_name, block_name,
         );

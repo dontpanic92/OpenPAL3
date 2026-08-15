@@ -640,6 +640,11 @@ pub struct NpcEntry {
     pub position: [f32; 3],
     /// `true` while the entity is visible (live, not just default).
     pub visible: bool,
+    /// Talk handler from `npcInfo.npc` (`script_function`), or empty
+    /// when the NPC can't be talked to. Fire it with
+    /// `POST /v1/object/interact`.
+    #[serde(default)]
+    pub talk_function: String,
 }
 
 /// One GOB object entry.

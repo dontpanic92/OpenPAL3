@@ -335,7 +335,7 @@ impl ArmatureComponent {
         }
         let mut animation_length = 0.;
         for (bone, kf) in self.bones.iter().zip(keyframes) {
-            let kf_animation_length = kf.last().unwrap().timestamp;
+            let kf_animation_length = kf.last().map(|f| f.timestamp).unwrap_or(0.);
             if kf_animation_length > animation_length {
                 animation_length = kf_animation_length;
             }
@@ -509,6 +509,10 @@ struct HAnimBoneProps {
 /// be unit-tested without an entity. `frames` is assumed non-empty and sorted
 /// by ascending `timestamp` (the loaders guarantee both).
 fn sample_frames(frames: &[AnimKeyFrame], time: f32) -> (usize, usize, f32) {
+    if frames.is_empty() {
+        return (0, 0, 0.);
+    }
+
     let from_index = frames
         .iter()
         .rposition(|t| t.timestamp <= time)
@@ -530,6 +534,13 @@ fn sample_frames(frames: &[AnimKeyFrame], time: f32) -> (usize, usize, f32) {
 
 impl HAnimBoneProps {
     pub fn update(&mut self, entity: ComRc<IEntity>, delta_sec: f32) {
+        // `clear_animation` installs an empty track, and some shipped
+        // animations carry fewer tracks than the armature has bones.
+        // A bone with no keys simply keeps whatever pose it has.
+        if self.frames.is_empty() {
+            return;
+        }
+
         self.last_time = self.last_time + delta_sec;
 
         // Hold on the final keyframe once this bone runs out of keys instead of
@@ -590,9 +601,16 @@ impl IHAnimBoneComponentImpl for HAnimBoneComponent {
 
 impl HAnimBoneComponent {
     /// Inherent counterpart to the formerly-IDL `set_keyframes`.
+    ///
+    /// A bone whose animation carries no track at all is legal in the
+    /// shipped data (PAL4's M07 cutscene actors hit this); treating it
+    /// as a fatal error aborts the process, because this runs behind a
+    /// `extern "system"` COM thunk that cannot unwind.
     pub fn set_keyframes(&self, keyframes: Vec<AnimKeyFrame>) {
-        self.props.borrow_mut().max_time = keyframes.last().unwrap().timestamp;
-        self.props.borrow_mut().frames = keyframes;
+        let max_time = keyframes.last().map(|f| f.timestamp).unwrap_or(0.);
+        let mut props = self.props.borrow_mut();
+        props.max_time = max_time;
+        props.frames = keyframes;
     }
 
     /// Inherent counterpart to the formerly-IDL `set_bond_pose`.
@@ -653,6 +671,14 @@ mod tests {
             position: Vec3::new(0., 0., 0.),
             timestamp,
         }
+    }
+
+    /// An empty track must not index out of bounds: `clear_animation`
+    /// installs one on every bone, and it used to abort the process
+    /// (the panic could not unwind through the COM thunk).
+    #[test]
+    fn sample_frames_tolerates_an_empty_track() {
+        assert_eq!(sample_frames(&[], 1.5), (0, 0, 0.));
     }
 
     #[test]

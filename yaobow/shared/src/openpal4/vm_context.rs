@@ -686,7 +686,18 @@ impl Pal4VmContext {
     pub fn player_do_action(&mut self, player: i32, action: &str, flag: i32) {
         let player = self.map_player(player);
         let metadata = self.scene.borrow().get_player_metadata(player);
-        let anm = self.loader.load_anm(metadata.actor_name(), action).unwrap();
+        let anm = match self.loader.load_anm(metadata.actor_name(), action) {
+            Ok(anm) => anm,
+            Err(e) => {
+                log::warn!(
+                    "player_do_action: cannot load action '{}' for '{}': {:#}",
+                    action,
+                    metadata.actor_name(),
+                    e
+                );
+                return;
+            }
+        };
         let events = self.loader.load_amf(metadata.actor_name(), action);
 
         let config = match flag {
@@ -697,18 +708,16 @@ impl Pal4VmContext {
             _ => Pal4ActorAnimationConfig::OneTime,
         };
 
-        self.scene
-            .borrow()
-            .get_player_controller(player)
-            .play_animation(anm, events, config);
+        if let Some(controller) = self.scene.borrow().get_player_controller(player) {
+            controller.play_animation(anm, events, config);
+        }
     }
 
     pub fn player_play_animation(&mut self, player: i32, animation: Pal4ActorAnimation) {
         let player = self.map_player(player);
-        self.scene
-            .borrow()
-            .get_player_controller(player)
-            .play(animation, Pal4ActorAnimationConfig::Looping);
+        if let Some(controller) = self.scene.borrow().get_player_controller(player) {
+            controller.play(animation, Pal4ActorAnimationConfig::Looping);
+        }
     }
 
     pub fn npc_play_animation(&mut self, name: &str, animation: Pal4ActorAnimation) {
@@ -785,15 +794,30 @@ impl Pal4VmContext {
 
     pub fn player_unhold_act(&mut self, player: i32) {
         let player = self.map_player(player);
-        self.scene.borrow().get_player_controller(player).unhold();
+        if let Some(controller) = self.scene.borrow().get_player_controller(player) {
+            controller.unhold();
+        }
     }
 
     pub fn player_act_completed(&mut self, player: i32) -> bool {
         let player = self.map_player(player);
+
+        // A disabled entity is skipped by the scene-graph update walk
+        // (`CoreEntity::update` early-returns on `!enabled()`), so its
+        // armature clock never advances and the animation can never
+        // reach `Stopped`. PAL4 cutscenes routinely hide a party
+        // member with `giPlayerEnable(_, 0)` while an action is still
+        // pending and then call `giPlayerEndAction` on it (Q04C's
+        // `func2002`); without this guard the script wedges forever.
+        if !self.scene.borrow().get_player(player).enabled() {
+            return true;
+        }
+
         self.scene
             .borrow()
             .get_player_controller(player)
-            .animation_completed()
+            .map(|c| c.animation_completed())
+            .unwrap_or(true)
     }
 
     pub fn player_set_direction(&mut self, player: i32, direction: f32) {

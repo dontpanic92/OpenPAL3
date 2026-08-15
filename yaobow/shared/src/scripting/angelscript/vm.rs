@@ -736,9 +736,25 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
         }
     }
 
+    /// Opcode 4 — push the 4-byte local variable at frame slot `index`
+    /// onto the operand stack (upstream AngelScript's `asBC_PshV4`).
+    ///
+    /// This *pushes*: `sp` has to move down before the write. It used
+    /// to write at `sp` without decrementing, which meant the value
+    /// never became a real stack entry while the consumer of that
+    /// value (`Cmpii` + `Jz`/`Jnz`/`Js`/…, or `CallSys` arg popping)
+    /// still advanced `sp` past it. Every `rdsf4; cmpi; jcc` therefore
+    /// leaked +4 bytes, walking the operand stack *up* into the local
+    /// slots until pushes started overwriting locals — e.g. `Q04`'s
+    /// innkeeper (`func5005`) had its `money` local clobbered with the
+    /// dialog-selection result and always answered "您身上的钱不够",
+    /// making the inn rest (and therefore the day→night flip) unreachable.
+    ///
+    /// The slot address is relative to `fp`, matching `psf` / `movsf4`.
     fn rdsf4(&mut self, index: u16) {
         unsafe {
-            let data: u32 = self.read_stack(self.stack.len() - index as usize * 4);
+            let data: u32 = self.read_stack(self.fp - index as usize * 4);
+            self.sp -= 4;
             self.write_stack(self.sp, data);
         }
     }
@@ -1852,6 +1868,56 @@ mod tests {
             vm.stack_word_at(vm.sp as u32),
             Some(1),
             "Rd1 must read back the byte Wrt1 stored"
+        );
+    }
+
+    /// `rdsf4` (opcode 4) must *push* the local it reads. PAL4
+    /// compiles `if (local == K)` to `Rdsf4 slot ; Cmpii K ; Jnz`,
+    /// and the jump pops the comparison result — so a `rdsf4` that
+    /// writes at `sp` without decrementing leaks +4 bytes per guard.
+    /// The operand stack then walks *up* into the frame's local slots
+    /// and later pushes silently overwrite them (`Q04/func5005`'s
+    /// innkeeper lost its `money` local this way and always claimed
+    /// the party couldn't afford a room, blocking the day→night flip).
+    #[test]
+    fn rdsf4_pushes_the_local_and_keeps_the_stack_balanced() {
+        // Push{4} ; Set4 4100 ; Movsf4{3} ;      // local3 = 4100
+        // Rdsf4{3} ; Cmpii 300 ; Jns +0 ;        // guard, must balance
+        // Rdsf4{3} ; Ret{0}                      // re-read local3
+        let inst = assemble(&[
+            &op(1),
+            &4u16.to_le_bytes(),
+            &op(2),
+            &4100u32.to_le_bytes(),
+            &op(8),
+            &3u16.to_le_bytes(),
+            &op(4),
+            &3u16.to_le_bytes(),
+            &op(95),
+            &300i32.to_le_bytes(),
+            &op(92),
+            &0i32.to_le_bytes(),
+            &op(4),
+            &3u16.to_le_bytes(),
+            &op(13),
+            &0u16.to_le_bytes(),
+        ]);
+
+        let mut vm = build_vm(inst);
+        let base_sp = vm.sp;
+        vm.execute(0.0);
+
+        // The guard must have left the operand stack where it found
+        // it: one live push (the final `Rdsf4`) below the 4 locals.
+        assert_eq!(
+            vm.sp,
+            base_sp - 4 * 4 - 4,
+            "rdsf4/cmpi/jcc leaked operand-stack space"
+        );
+        assert_eq!(
+            vm.stack_word_at(vm.sp as u32),
+            Some(4100),
+            "rdsf4 must push the value of the addressed local"
         );
     }
 

@@ -176,6 +176,7 @@ fn every_response_roundtrips() {
                 name: "lingsha".into(),
                 position: [0.0, 0.0, 0.0],
                 visible: true,
+                talk_function: "func4001".into(),
             }],
             objects: vec![ObjectEntry {
                 name: "chest1".into(),

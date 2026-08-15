@@ -1,4 +1,4 @@
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use crosscom::ComRc;
 use fileformats::npc::NpcInfoFile;
@@ -96,6 +96,10 @@ pub struct Pal4Scene {
     /// `None` on the placeholder scene returned by `new_empty` and
     /// when no `actor_controller_factory` was installed.
     pub(crate) actor_controller: Option<ComRc<IPal4ActorController>>,
+    /// NPC name -> talk script function, taken from each `npcInfo.npc`
+    /// record's `script_function`. Talking to an NPC (proximity + "F")
+    /// dispatches through the same path as a GOB examine handler.
+    pub(crate) npc_functions: HashMap<String, String>,
 }
 
 /// Fallback `trigger_distance` for SOUND emitters whose entry has
@@ -105,6 +109,11 @@ pub struct Pal4Scene {
 const DEFAULT_SOUND_TRIGGER_DISTANCE: f32 = 600.0;
 
 const SHOW_TRIGGER_POINT: bool = false;
+
+/// Interaction radius (world units, XZ) for NPC talk triggers.
+/// `npcInfo.npc` carries no per-NPC trigger distance, so this mirrors
+/// the fallback used for GOB entries with an unset `trigger_distance`.
+const NPC_TALK_DISTANCE: f32 = 50.0;
 
 impl Pal4Scene {
     const ID_YUN_TIANHE: usize = 0;
@@ -125,6 +134,7 @@ impl Pal4Scene {
             module: None,
             game_context: None,
             actor_controller: None,
+            npc_functions: HashMap::new(),
         }
     }
 
@@ -204,6 +214,8 @@ pub struct Pal4SceneLoader {
     game_context: Option<ComRc<IPal4GameContext>>,
     actor_controller: Option<ComRc<IPal4ActorController>>,
     module: Option<Rc<RefCell<ScriptModule>>>,
+    /// NPC name -> talk script function, collected by `stage_npcs`.
+    npc_functions: HashMap<String, String>,
 }
 
 /// One stage's outcome: the cumulative post-stage progress fraction
@@ -239,6 +251,7 @@ impl Pal4SceneLoader {
             game_context: None,
             actor_controller: None,
             module: None,
+            npc_functions: HashMap::new(),
         }
     }
 
@@ -300,15 +313,39 @@ impl Pal4SceneLoader {
         }
     }
 
-    /// The block folder that carries the gameplay data (EVF events,
-    /// `GameObjs.gob`, `npcInfo.npc`). Falls back to the geometry block
-    /// when the script did not name a sub-block.
-    fn data_block(&self) -> &str {
+    /// The block folder that carries a particular piece of gameplay
+    /// data (EVF events, `GameObjs.gob`, `npcInfo.npc`).
+    ///
+    /// `giArenaLoad`'s third argument names a lettered sibling folder
+    /// (`M06/1A`, `Q04/CN05c`, …). Those folders are *partial
+    /// overlays*: `M06/1A` ships its own GOB + NPC data, while
+    /// `Q04/CN05c` ships nothing but `CN05c.evf` and expects the rest
+    /// to come from the base `CN05` folder. So resolve per file rather
+    /// than per scene — using the sub-block unconditionally made the
+    /// M08 千佛塔 → 陈州 epilogue (`Q04/CN05` + sub-block `CN05c`)
+    /// fail its GOB load and abort the cutscene.
+    fn data_block_for(&self, file_name: &str) -> &str {
         if self.sub_block_name.is_empty() {
-            &self.block_name
-        } else {
-            &self.sub_block_name
+            return &self.block_name;
         }
+        if self
+            .asset_loader
+            .scene_data_file_exists(&self.scene_name, &self.sub_block_name, file_name)
+        {
+            &self.sub_block_name
+        } else {
+            &self.block_name
+        }
+    }
+
+    /// The sub-block folder for `<block>.evf`, whose file name tracks
+    /// the folder name (`CN05c/CN05c.evf`).
+    fn data_block_for_evf(&self) -> &str {
+        if self.sub_block_name.is_empty() {
+            return &self.block_name;
+        }
+        let file = format!("{}.evf", self.sub_block_name);
+        self.data_block_for(&file)
     }
 
     fn stage_bsp(&mut self) -> anyhow::Result<()> {
@@ -475,7 +512,7 @@ impl Pal4SceneLoader {
         // surrounding `giArenaLoad` and strand the player.
         let events = match self
             .asset_loader
-            .load_evf(&self.scene_name, self.data_block())
+            .load_evf(&self.scene_name, self.data_block_for_evf())
         {
             Ok(events) => events,
             Err(e) => {
@@ -483,7 +520,7 @@ impl Pal4SceneLoader {
                     "Pal4Scene::load: EVF missing/unreadable for scene='{}' \
                      block='{}' ({:#}); proceeding with no event volumes",
                     self.scene_name,
-                    self.data_block(),
+                    self.data_block_for_evf(),
                     e
                 );
                 EvfFile::default()
@@ -593,7 +630,7 @@ impl Pal4SceneLoader {
         // `giArenaLoad` and abort the surrounding cutscene.
         let npc_info = match self
             .asset_loader
-            .load_npc_info(&self.scene_name, self.data_block())
+            .load_npc_info(&self.scene_name, self.data_block_for("npcInfo.npc"))
         {
             Ok(info) => info,
             Err(e) => {
@@ -629,6 +666,18 @@ impl Pal4SceneLoader {
                         entity.set_visible(npc.default_visible == 1);
                         entity.set_enabled(npc.default_visible == 1);
                         entity.add_tag(TAG_NPC);
+
+                        // `npcInfo` carries the NPC's talk handler; the
+                        // proximity trigger that dispatches it is
+                        // attached in `stage_finalize` (world transforms
+                        // are only final once the scene has been
+                        // assembled).
+                        let script_function =
+                            npc.script_function.to_string().unwrap_or_default().trim().to_string();
+                        if !script_function.is_empty() {
+                            self.npc_functions
+                                .insert(npc_name.clone(), script_function);
+                        }
                         entity
                             .transform()
                             .borrow_mut()
@@ -655,7 +704,7 @@ impl Pal4SceneLoader {
         let mut objects = vec![];
         let gob = self
             .asset_loader
-            .load_gob(&self.scene_name, self.data_block())?;
+            .load_gob(&self.scene_name, self.data_block_for("GameObjs.gob"))?;
 
         for (i, entry) in gob.entries.iter().enumerate() {
             let object_type = gob.header.object_types[i];
@@ -910,6 +959,23 @@ impl Pal4SceneLoader {
                 // consume only the `tag`), so a per-loop counter suffices.
                 world.attach_proximity_trigger(&e, i as i64, research, radius);
             }
+
+            // NPCs are interactable too: `npcInfo.npc`'s
+            // `script_function` is the talk handler, dispatched by the
+            // same proximity + "F" path as a GOB examine handler. NPC
+            // entities are skinned actors with no static mesh, so the
+            // volume degenerates to a point + radius around the NPC.
+            for (i, e) in scene.find_entities_by_tag(TAG_NPC).into_iter().enumerate() {
+                let Some(function) = self.npc_functions.get(&e.name()) else {
+                    continue;
+                };
+                world.attach_proximity_trigger(
+                    &e,
+                    i as i64,
+                    function.clone(),
+                    NPC_TALK_DISTANCE,
+                );
+            }
         }
 
         Ok(Pal4Scene {
@@ -919,6 +985,7 @@ impl Pal4SceneLoader {
             module: Some(module),
             game_context: Some(game_context),
             actor_controller: self.actor_controller.take(),
+            npc_functions: std::mem::take(&mut self.npc_functions),
         })
     }
 }
@@ -959,6 +1026,12 @@ impl Pal4Scene {
         self.scene.find_entity_by_tag_and_name(TAG_NPC, name)
     }
 
+    /// Talk handler for an NPC, as authored in `npcInfo.npc`. `None`
+    /// when the NPC is unknown or has no handler.
+    pub fn npc_script_function(&self, name: &str) -> Option<&str> {
+        self.npc_functions.get(name).map(|s| s.as_str())
+    }
+
     /// All NPC entities in the scene (tagged `TAG_NPC`). Used by the
     /// agent server to snapshot NPCs with their live positions.
     pub fn npcs(&self) -> Vec<ComRc<IEntity>> {
@@ -969,12 +1042,22 @@ impl Pal4Scene {
         self.scene.find_entity_by_tag_and_name(TAG_OBJECT, name)
     }
 
-    pub fn get_player_controller(&self, player_id: usize) -> ComRc<IPal4ActorAnimationController> {
+    /// Animation controller for a party slot, or `None` when the slot
+    /// carries no controller component. The latter happens on the
+    /// placeholder scene produced by [`Pal4Scene::new_empty`] (its four
+    /// players are bare entities), which is what `vm_context` sees
+    /// during the window between `giArenaLoad` swapping the scene out
+    /// and the new block finishing staging. Scripts do issue player
+    /// commands in that window, and since every `gi*` handler runs
+    /// inside a non-unwinding COM thunk an `unwrap()` here aborts the
+    /// whole process instead of panicking.
+    pub fn get_player_controller(
+        &self,
+        player_id: usize,
+    ) -> Option<ComRc<IPal4ActorAnimationController>> {
         self.players[player_id]
-            .get_component(IPal4ActorAnimationController::uuid())
-            .unwrap()
+            .get_component(IPal4ActorAnimationController::uuid())?
             .query_interface::<IPal4ActorAnimationController>()
-            .unwrap()
     }
 
     pub fn get_npc_controller(&self, name: &str) -> Option<ComRc<IPal4ActorAnimationController>> {
@@ -1501,3 +1584,4 @@ mod tests {
         assert!(!s.reset_object("nope"));
     }
 }
+

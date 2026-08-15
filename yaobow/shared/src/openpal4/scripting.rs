@@ -1853,7 +1853,7 @@ fn select_dialog_add_item(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4Func
 }
 
 fn select_dialog_get_last_select(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
-    let choice = vm.vm_context.session().take_dialog_choice();
+    let choice = vm.vm_context.session().take_select_dialog_choice();
     vm.set_ret_value(choice);
     Pal4FunctionState::Completed
 }
@@ -2215,7 +2215,7 @@ fn player_detach_effect(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4Functi
 }
 
 fn common_dialog_get_last_select(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
-    let choice = vm.vm_context.session().take_dialog_choice();
+    let choice = vm.vm_context.session().take_common_dialog_choice();
     vm.set_ret_value(choice);
     Pal4FunctionState::Completed
 }
@@ -2358,6 +2358,13 @@ fn player_do_action(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionSt
     Pal4FunctionState::Completed
 }
 
+/// Upper bound on how long `giPlayerEndAction` /
+/// `giPlayerCurrentEndAction` will wait for an action to play out
+/// before giving up and letting the script continue. PAL4 actions are
+/// only a few seconds long, so anything beyond this is an engine-side
+/// stall — and stalling here freezes the entire game.
+const END_ACTION_TIMEOUT_SEC: f32 = 10.0;
+
 fn player_end_action(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
     as_params!(vm, player_id: i32);
 
@@ -2374,10 +2381,23 @@ fn player_end_action(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionS
     // natural Stopped state.
     vm.vm_context.player_unhold_act(player_id);
 
-    Pal4FunctionState::Yield(Box::new(move |vm, _delta_sec| {
+    let mut waited = 0.0f32;
+    Pal4FunctionState::Yield(Box::new(move |vm, delta_sec| {
         if vm.vm_context.player_act_completed(player_id) {
             ContinuationState::Completed
         } else {
+            // Safety net: never let a stuck armature wedge the whole
+            // script (and with it the game). Actions in PAL4 are at
+            // most a few seconds long.
+            waited += delta_sec;
+            if waited > END_ACTION_TIMEOUT_SEC {
+                log::warn!(
+                    "giPlayerEndAction({}): action did not complete within {}s; continuing",
+                    player_id,
+                    END_ACTION_TIMEOUT_SEC
+                );
+                return ContinuationState::Completed;
+            }
             ContinuationState::Loop
         }
     }))
@@ -2401,10 +2421,19 @@ fn player_current_end_action(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4F
     // the script wedges forever (M06's `func7002` lamp puzzle).
     vm.vm_context.player_unhold_act(-1);
 
-    Pal4FunctionState::Yield(Box::new(move |vm, _delta_sec| {
+    let mut waited = 0.0f32;
+    Pal4FunctionState::Yield(Box::new(move |vm, delta_sec| {
         if vm.vm_context.player_act_completed(-1) {
             ContinuationState::Completed
         } else {
+            waited += delta_sec;
+            if waited > END_ACTION_TIMEOUT_SEC {
+                log::warn!(
+                    "giPlayerCurrentEndAction: action did not complete within {}s; continuing",
+                    END_ACTION_TIMEOUT_SEC
+                );
+                return ContinuationState::Completed;
+            }
             ContinuationState::Loop
         }
     }))
