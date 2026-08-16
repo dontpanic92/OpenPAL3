@@ -1226,6 +1226,7 @@ impl OpenPAL4Director {
             len,
             start,
             globals: snap[start..end].to_vec(),
+            ..Default::default()
         })
     }
 

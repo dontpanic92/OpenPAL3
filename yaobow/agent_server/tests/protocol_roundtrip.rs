@@ -190,6 +190,10 @@ fn every_response_roundtrips() {
             len: 256,
             start: 0,
             globals: vec![1, 2, 3, 4],
+            named: vec![agent_server::protocol::NamedGlobal {
+                name: "g_plot_flag".into(),
+                value: serde_json::json!(3.0),
+            }],
         }),
         AgentResponse::PerfMetrics(agent_server::protocol::PerfMetricsResponse {
             enabled: true,

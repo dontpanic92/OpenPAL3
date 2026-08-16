@@ -187,7 +187,10 @@ impl Axis {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+/// Analog axis reading. `Default` is the neutral (zero) position —
+/// public so crates outside `radiance` can implement a no-op
+/// [`InputEngine`] (e.g. test stubs behind `SyntheticInputBridge`).
+#[derive(Copy, Clone, Debug, Default)]
 pub struct AxisState {
     value: f32,
 }
@@ -206,7 +209,9 @@ impl AxisState {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+/// Per-key state for a single frame. `Default` is "up, no edges" —
+/// public for the same reason as [`AxisState`]'s.
+#[derive(Copy, Clone, Debug, Default)]
 pub struct KeyState {
     is_down: bool,
     pressed: bool,

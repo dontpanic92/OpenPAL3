@@ -301,7 +301,7 @@ impl YaobowApplicationLoader {
                     })?
             }
             GameType::SWD5 | GameType::SWDHC | GameType::SWDCF => {
-                self.boot_swd5_agent_if_requested(host_ctx)?;
+                self.boot_swd5_agent_if_requested(host_ctx, game)?;
                 let game_ordinal = ordinal_for_game(game);
                 host_ctx.swd5().create_director(&asset_path, game_ordinal)
             }
@@ -341,13 +341,18 @@ impl YaobowApplicationLoader {
         Ok(())
     }
 
-    /// Boot the agent server for SWD5 (mirrors
+    /// Boot the agent server for the SWD5 family (mirrors
     /// [`Self::boot_pal3_agent_if_requested`]). Installs the bridge on
     /// `Swd5Service` so the next `create_director` plumbs synthetic
     /// input + pause gating.
+    ///
+    /// `game` is only used for the listener log line, so `--swdhc` and
+    /// `--swdcf` are distinguishable from `--swd5` at a glance; all
+    /// three share one service and one dispatcher.
     fn boot_swd5_agent_if_requested(
         &self,
         host_ctx: &ComRc<IYaobowHostContext>,
+        game: GameType,
     ) -> Result<(), String> {
         let opts = match self.initial_agent_opts.borrow_mut().take() {
             Some(opts) => opts,
@@ -358,7 +363,7 @@ impl YaobowApplicationLoader {
             &self.app,
             &opts,
             self.agent_server.borrow_mut(),
-            "SWD5",
+            &game.config_key().to_uppercase(),
         )?;
 
         host_ctx

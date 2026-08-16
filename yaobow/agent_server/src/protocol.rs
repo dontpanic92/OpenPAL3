@@ -684,6 +684,28 @@ pub struct ScriptGlobalsResponse {
     /// Returned slots; `globals[i]` corresponds to global index
     /// `start + i`.
     pub globals: Vec<u32>,
+    /// Name-keyed globals, used by games whose script VM has a named
+    /// global table rather than PAL3/PAL4's flat index array (the
+    /// SWD5 family's Lua 5.0 VM). Sorted by `name` and windowed by
+    /// the same `start` / `limit` parameters as [`Self::globals`].
+    ///
+    /// Games that populate [`Self::globals`] leave this empty and
+    /// vice-versa; the field is `#[serde(default)]` so existing
+    /// index-based clients are unaffected.
+    #[serde(default)]
+    pub named: Vec<NamedGlobal>,
+}
+
+/// One name-keyed script global in [`ScriptGlobalsResponse::named`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct NamedGlobal {
+    /// Global variable name as it appears in the script's global table.
+    pub name: String,
+    /// Marshalled value. Numbers, strings and booleans round-trip as
+    /// the corresponding JSON types; `nil` becomes `null`. Values the
+    /// bridge refuses to walk (functions, tables, userdata) are
+    /// reported as a type-tag string such as `"<function>"`.
+    pub value: serde_json::Value,
 }
 
 impl AgentError {

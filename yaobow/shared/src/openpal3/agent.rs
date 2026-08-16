@@ -387,5 +387,6 @@ fn handle_get_globals(ctx: &Pal3DispatchCtx, params: ScriptGlobalsParams) -> Age
         len,
         start,
         globals,
+        ..Default::default()
     })
 }

@@ -95,6 +95,132 @@ impl SWD5Context {
         self.video_player.get_state() == radiance::video::VideoStreamState::Playing
     }
 
+    /// Live dialog text as `(speaker, text)`, or `None` when no
+    /// message box is up. A `talkmsg` (which carries a speaker name)
+    /// takes precedence over a plain `storymsg`, matching the draw
+    /// order in `update`. Surfaced to the agent snapshot's `dialog`
+    /// field so a driver can read the line before tapping through it.
+    pub fn dialog_text(&self) -> Option<(String, String)> {
+        if let Some(talk) = self.talk_msg.as_ref() {
+            return Some((talk.name.clone(), talk.text.clone()));
+        }
+
+        self.story_msg
+            .as_ref()
+            .map(|story| (String::new(), story.text.clone()))
+    }
+
+    /// Whether a full-screen story picture (`openstorypic`) is
+    /// currently displayed.
+    pub fn story_pic_open(&self) -> bool {
+        self.story_pic.is_some()
+    }
+
+    /// Current camera pose as `(eye, look_at)` in world space, or
+    /// `None` before the first map load. Surfaced to the agent
+    /// snapshot's `camera_eye` / `camera_target`.
+    pub fn camera_pose(&self) -> Option<([f32; 3], [f32; 3])> {
+        self.scene.as_ref().map(|scene| {
+            let eye = scene.camera_position;
+            let target = scene.camera_look_at;
+            ([eye.x, eye.y, eye.z], [target.x, target.y, target.z])
+        })
+    }
+
+    /// Agent-driven camera placement: set the eye position and the
+    /// look-at target in one shot. Returns `false` when no scene is
+    /// loaded yet (the dispatcher turns that into a `Conflict`).
+    ///
+    /// Note the ordering — `set_camera_lookat` must run first because
+    /// `set_camera_pos` re-aims at the stored `camera_look_at`.
+    pub fn agent_set_camera(&mut self, eye: [f32; 3], target: [f32; 3]) -> bool {
+        let scene = match self.scene.as_mut() {
+            Some(scene) => scene,
+            None => return false,
+        };
+
+        scene.set_camera_lookat(target[0], target[1], target[2]);
+        scene.set_camera_pos(eye[0], eye[1], eye[2]);
+        true
+    }
+
+    /// Agent-driven map change. Reuses the exact `chang_map` path the
+    /// Lua VM takes (load + scene-manager pop/push), but reports
+    /// failure to the caller instead of only logging it.
+    ///
+    /// SWDHC has no role entities, so a map id is the only navigable
+    /// "position" the agent surface can offer; `/v1/player/teleport`
+    /// is routed here.
+    pub fn agent_change_map(&mut self, map_id: i32) -> anyhow::Result<()> {
+        let scene = Swd5Scene::load(&self.asset_loader, map_id)?;
+        self.scene_manager.pop_scene();
+        self.scene_manager.push_scene(scene.scene.clone());
+        self.scene = Some(scene);
+        self.current_map_id = map_id;
+        Ok(())
+    }
+
+    /// Host functions `/v1/script/eval` is allowed to invoke. Every
+    /// entry is a pure state mutation that is safe to run outside a VM
+    /// tick; nothing here resumes or inspects the Lua coroutine.
+    ///
+    /// Keep in sync with the `match` in [`Self::agent_eval`].
+    pub const EVAL_ALLOW_LIST: &'static [&'static str] = &[
+        "chang_map",
+        "story_music",
+        "story_music_off",
+        "play_sound",
+        "stop_sound",
+        "play_movie",
+        "openstorypic",
+        "closestorypic",
+        "dark",
+        "undark",
+    ];
+
+    /// Invoke one of the allow-listed host functions by name with
+    /// `f64` arguments, mirroring the Lua ABI (every scripted SWD5
+    /// builtin takes numbers). Backs `/v1/script/eval`.
+    ///
+    /// Deliberately does **not** re-enter the Lua VM: the coroutine is
+    /// suspended mid-`sleep` and resuming it out of band would corrupt
+    /// the script's control flow. These call straight into the same
+    /// `&mut self` methods the registered C shims call.
+    pub fn agent_eval(&mut self, function: &str, args: &[f64]) -> Result<(), String> {
+        fn arg(args: &[f64], i: usize) -> f64 {
+            args.get(i).copied().unwrap_or(0.)
+        }
+
+        if !Self::EVAL_ALLOW_LIST.contains(&function) {
+            return Err(eval_rejection_message(function));
+        }
+
+        match function {
+            "chang_map" => self.chang_map(arg(args, 0), arg(args, 1), arg(args, 2), arg(args, 3)),
+            "story_music" => self.story_music(
+                arg(args, 0),
+                arg(args, 1),
+                arg(args, 2),
+                arg(args, 3),
+                arg(args, 4),
+                arg(args, 5),
+            ),
+            "story_music_off" => self.story_music_off(arg(args, 0), arg(args, 1)),
+            "play_sound" => self.play_sound(arg(args, 0), arg(args, 1)),
+            "stop_sound" => self.stop_sound(arg(args, 0)),
+            "play_movie" => self.play_movie(arg(args, 0)),
+            "openstorypic" => self.openstorypic(arg(args, 0)),
+            "closestorypic" => self.closestorypic(),
+            "dark" => self.dark(arg(args, 0)),
+            "undark" => self.undark(arg(args, 0)),
+            // Unreachable: the allow-list check above already filtered
+            // every name not handled here.
+            other => return Err(eval_rejection_message(other)),
+        }
+
+        Ok(())
+    }
+
     /// Agent fast-forward tick: collapse any pending `sleep` and
     /// dismiss the current story / talk message so the Lua VM resumes
     /// immediately this frame instead of waiting on a scripted pause
@@ -495,6 +621,87 @@ pub fn create_lua_vm(
     Ok(vm)
 }
 
+/// Names registered into the Lua global table by [`create_lua_vm`],
+/// plus the Lua 5.0 standard-library entries opened by
+/// [`Lua5032Vm::new`]. `/v1/script/globals` filters these out so the
+/// response carries only the game's own plot state.
+///
+/// Keep in sync with the `def_func!` / `vm.register` calls above.
+pub const RESERVED_GLOBAL_NAMES: &[&str] = &[
+    // Host functions registered by `create_lua_vm`.
+    "isfon",
+    "fon",
+    "foff",
+    "lock_player",
+    "dark",
+    "undark",
+    "sleep",
+    "chang_map",
+    "wait_camera",
+    "camera_mode",
+    "story_music_off",
+    "story_music",
+    "chang_role_map",
+    "set_motion",
+    "set_walks",
+    "play_sound",
+    "storymsg",
+    "storymsgpos",
+    "talkmsg",
+    "anykey",
+    "openstorypic",
+    "stop_sound",
+    "closestorypic",
+    "play_movie",
+    "is_play_movie",
+    "set_camera_src_pos",
+    "set_camera_pos",
+    "chang_camera_view",
+    "set_role_face_motion",
+    // Lua 5.0 stdlib (base / table / io / string / math / debug / loadlib).
+    "_G",
+    "_LOADED",
+    "_REQUIREDNAME",
+    "_TRACEBACK",
+    "_VERSION",
+    "LUA_PATH",
+    "assert",
+    "collectgarbage",
+    "coroutine",
+    "debug",
+    "dofile",
+    "error",
+    "gcinfo",
+    "getfenv",
+    "getmetatable",
+    "io",
+    "ipairs",
+    "loadfile",
+    "loadlib",
+    "loadstring",
+    "math",
+    "newproxy",
+    "next",
+    "os",
+    "pairs",
+    "pcall",
+    "print",
+    "rawequal",
+    "rawget",
+    "rawset",
+    "require",
+    "select",
+    "setfenv",
+    "setmetatable",
+    "string",
+    "table",
+    "tonumber",
+    "tostring",
+    "type",
+    "unpack",
+    "xpcall",
+];
+
 extern "C" fn sleep(state: *mut lua_State) -> i32 {
     unsafe {
         let delay = lua50_32_sys::lua_tonumber(state, 1);
@@ -502,6 +709,15 @@ extern "C" fn sleep(state: *mut lua_State) -> i32 {
         lua50_32_sys::lua_pushnumber(state, delay);
         lua50_32_sys::lua_yield(state, 1)
     }
+}
+
+/// Rejection message for a `/v1/script/eval` call naming a function
+/// outside [`SWD5Context::EVAL_ALLOW_LIST`].
+pub(crate) fn eval_rejection_message(function: &str) -> String {
+    format!(
+        "'{function}' is not in the SWD5 script_eval allow-list ({})",
+        SWD5Context::EVAL_ALLOW_LIST.join(", ")
+    )
 }
 
 fn decode_big5(s: *const c_char) -> String {
@@ -519,9 +735,8 @@ struct StoryMsg {
 }
 
 struct TalkMsg {
-    // Speaker name parsed from the script; not currently displayed but
-    // preserved for future dialog rendering.
-    #[allow(dead_code)]
+    /// Speaker name parsed from the script. Not drawn in the message
+    /// box yet, but surfaced to the agent snapshot as `dialog.avatar`.
     name: String,
     text: String,
 }

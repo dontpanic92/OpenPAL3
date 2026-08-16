@@ -11,11 +11,11 @@ use radiance::{
 };
 
 use crate::agent_common::AgentBridge;
-use crate::scripting::lua50_32::Lua5032Vm;
+use crate::scripting::lua50_32::{Lua5032Vm, LuaValue};
 
 use super::{
     asset_loader::AssetLoader,
-    scripting::{SWD5Context, create_lua_vm},
+    scripting::{RESERVED_GLOBAL_NAMES, SWD5Context, create_lua_vm},
 };
 
 pub struct OpenSWD5Director {
@@ -64,6 +64,19 @@ impl OpenSWD5Director {
     /// context (snapshot reads).
     pub fn context(&self) -> Rc<RefCell<SWD5Context>> {
         self.context.clone()
+    }
+
+    /// Enumerate the Lua global table, dropping the host functions and
+    /// stdlib entries listed in
+    /// [`RESERVED_GLOBAL_NAMES`](super::scripting::RESERVED_GLOBAL_NAMES)
+    /// so only the game's own script state remains. Backs
+    /// `/v1/script/globals` for the SWD5 family.
+    pub fn script_globals(&self) -> Vec<(String, LuaValue)> {
+        self.vm
+            .enumerate_globals()
+            .into_iter()
+            .filter(|(name, _)| !RESERVED_GLOBAL_NAMES.contains(&name.as_str()))
+            .collect()
     }
 }
 

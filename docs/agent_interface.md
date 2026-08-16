@@ -10,11 +10,17 @@ before.
 
 The same flag is also supported on the PAL3 binary (`yaobow --pal3
 --agent-port 8765`) and on the PAL5 / SWD5 binaries (`yaobow --pal5`,
-`yaobow --pal5q`, `yaobow --swd5`). The wire protocol and transport are
+`yaobow --pal5q`, `yaobow --swd5`, `yaobow --swdhc`, `yaobow --swdcf`).
+The wire protocol and transport are
 shared; the [PAL3 support matrix](#pal3-support) and
 [PAL5 / SWD5 support matrix](#pal5--swd5-support) below list which
 endpoints are fully implemented, partially supported, or
 `not_implemented` against each binary.
+
+Throughout this document **"SWD5"** means the whole SWD5 family —
+`--swd5`, `--swdhc` and `--swdcf`. All three share one Lua game layer
+and one agent dispatcher, so every SWD5 row applies to each of them
+identically.
 
 ## Boot
 
@@ -452,17 +458,29 @@ The PAL5 (`yaobow --pal5` / `--pal5q`) and SWD5 (`yaobow --swd5` /
 `--swdhc` / `--swdcf`)
 binaries speak the same wire protocol, but both are early **single-script
 bootstrap** runtimes (one Lua VM, one hardcoded intro scene, no start
-menu / save-load / battle). They therefore implement only the
-**game-agnostic observability + control subset** and return HTTP 501
-`{"error":{"kind":"not_implemented", …}}` for the per-game gameplay
-endpoints, so external drivers can probe and fall back.
+menu / save-load / battle). Endpoints with no counterpart in those
+runtimes return HTTP 501
+`{"error":{"kind":"not_implemented", …}}`, so external drivers can probe
+and fall back.
+
+PAL5 currently implements only the game-agnostic observability + control
+subset. SWD5 additionally serves the gameplay endpoints its Lua layer can
+genuinely back: live dialog text in `/v1/state`, `/v1/camera/pose`,
+`/v1/script/globals`, a narrow `/v1/script/eval` allow-list, and
+`/v1/player/teleport` reinterpreted as a map change.
 
 Both adapters reuse the shared `agent_common::AgentBridge` and the
 generic command handlers in `agent_common::handlers`; the per-game
-adapters (`shared::openswd5::agent`, `yaobow_lib::openpal5::agent`) only
-add snapshot construction and the `not_implemented` routing.
+adapters (`shared::openswd5::agent`, `yaobow_lib::openpal5::agent`) add
+snapshot construction, the game-specific endpoints, and the
+`not_implemented` routing.
 
 ### Supported endpoints (PAL5 and SWD5)
+
+The SWD5 column applies identically to `--swd5`, `--swdhc` and
+`--swdcf`: all three share one Lua game layer
+(`OpenSWD5Director` + `SWD5Context`) and therefore one dispatcher
+(`shared::openswd5::agent`). Only the asset loader differs.
 
 | Endpoint                              | Status        | Notes |
 | ------------------------------------- | ------------- | ----- |
@@ -472,14 +490,96 @@ add snapshot construction and the `not_implemented` routing.
 | `POST /v1/time/fast_forward`          | **Supported** | Collapses pending `Wait`/`sleep` and dismisses the current dialog so scripted waits skip |
 | `POST /v1/dialog/advance`             | **Supported** | Synthesises the Space tap the player presses to dismiss a story/talk box |
 | `GET  /v1/screenshot`                 | **Supported** | Last-frame readback via the shared bridge |
-| `POST /v1/camera/debug` / `pose`      | **PAL5 only** | Enable the free-fly debug camera (freezes the plot) and place the camera at an absolute eye + look-at target. SWD5 returns **not_implemented**. |
+| `POST /v1/camera/pose`                | **Supported** | Absolute eye + look-at placement. On SWD5 a later scripted `set_camera_src_pos` / `chang_camera_view` can overwrite the pose — pause time first for a stable shot. `409` before the first map loads. |
+| `POST /v1/camera/debug`               | **PAL5 only** | Free-fly debug camera (freezes the plot). SWD5 has no such mode and returns **not_implemented**. |
 | `GET  /v1/log/tail`                   | **Supported** | Served by the transport (shared `AgentLogSink`) |
 | `GET  /v1/perf`                       | **Supported** | `radiance::perf` snapshot |
+| `GET  /v1/script/globals`             | **SWD5 only** | Lua global table, name-keyed — see [SWD5 script globals](#swd5-script-globals) |
+| `POST /v1/script/eval`                | **SWD5 only** | Narrow host-function allow-list — see [SWD5 script eval](#swd5-script-eval) |
+| `POST /v1/player/teleport`            | **SWD5 only** | Reinterpreted as a **map change** — see [SWD5 teleport](#swd5-teleport) |
 | save/load, `/v1/menu/*`, `/v1/load`   | **not_implemented** | Single bootstrap script — no persistence or mode graph yet |
-| `/v1/player/teleport`                 | **not_implemented** | No controlled-role teleport surface yet |
 | `/v1/dialog/choose`, `/v1/world_map/choose` | **not_implemented** | No structured choice / world-map prompt |
-| `/v1/scene/triggers` / `objects` / `fire_trigger`, `/v1/object/interact` | **not_implemented** | Scene enumeration deferred |
-| `/v1/script/globals` / `eval` / `trace/*` | **not_implemented** | Lua flag table not exposed; no eval / trace adapter |
+| `/v1/scene/triggers` / `fire_trigger` | **not_implemented** | SWD5 maps carry no EVF-equivalent trigger volumes; the Lua script drives all transitions |
+| `/v1/scene/objects`, `/v1/object/interact` | **not_implemented** | SWD5 has **no role/actor entities** (see below) |
+| `/v1/script/trace/*`                  | **not_implemented** | No trace adapter for the Lua VM yet |
+
+> **Why SWD5 has no role endpoints.** The SWD5-family game layer never
+> creates actor entities: `chang_role_map`, `set_motion`, `set_walks`
+> and `set_role_face_motion` are empty stubs in
+> `shared/src/openswd5/scripting.rs`, and `Swd5Scene` holds only the map
+> DFF plus a camera. There is consequently no player position to report
+> or teleport to and no NPC list to enumerate. These endpoints are
+> blocked on game-layer role loading, not on the agent surface.
+
+<a id="swd5-teleport"></a>
+#### SWD5: `/v1/player/teleport` means "change map"
+
+Since there is no player entity, `POST /v1/player/teleport` is routed
+through the engine's own `chang_map` path instead. `pos[0]` is the
+target **map id** — the same value `/v1/state` reports as `scene` — and
+`player` / `pos[1..]` are ignored:
+
+```bash
+# Jump to map 12.
+curl -s -XPOST localhost:8765/v1/player/teleport \
+     -d '{"player":0,"pos":[12,0,0]}'
+```
+
+A negative or non-finite `pos[0]` is a `400`; a map that fails to load
+is a `409`.
+
+<a id="swd5-script-globals"></a>
+#### SWD5: `/v1/script/globals`
+
+SWD5's Lua 5.0 VM keys globals by **name**, not by the flat index array
+PAL3/PAL4 expose. The response therefore populates the `named` array
+rather than `globals`:
+
+```jsonc
+{
+  "len": 37, "start": 0,
+  "globals": [],                       // always empty for SWD5
+  "named": [
+    { "name": "g_chapter", "value": 3 },
+    { "name": "g_flag_met_npc", "value": true },
+    { "name": "g_hero_name", "value": "云天河" },
+    { "name": "g_party", "value": "<table>" }
+  ]
+}
+```
+
+Entries are sorted by name and windowed by the same `?start=` / `?limit=`
+query parameters. Lua stdlib names and the host functions registered by
+`create_lua_vm` are filtered out, so what remains is the game's own
+state. Nested values are not walked — tables, functions, userdata and
+threads are reported as a type tag string (`"<table>"`). Strings are
+BIG5-decoded.
+
+`named` is `#[serde(default)]`, so existing index-based PAL3/PAL4
+clients are unaffected.
+
+<a id="swd5-script-eval"></a>
+#### SWD5: `/v1/script/eval`
+
+The Lua coroutine is suspended mid-`sleep` for most of a frame, and
+resuming it out of band would corrupt the script's control flow. SWD5's
+`script_eval` therefore does **not** re-enter the VM — it calls the same
+host functions the registered C shims call, restricted to an allow-list
+of pure state mutations:
+
+`chang_map`, `story_music`, `story_music_off`, `play_sound`,
+`stop_sound`, `play_movie`, `openstorypic`, `closestorypic`, `dark`,
+`undark`.
+
+All arguments must be JSON **numbers** (mirroring the Lua ABI, where
+every SWD5 builtin takes numbers); missing trailing arguments default to
+`0`. Any other function name, or a non-numeric argument, is a `400`. The
+reply carries no `result` — none of these functions return a value.
+
+```bash
+curl -s -XPOST localhost:8765/v1/script/eval \
+     -d '{"function":"play_movie","args":[3]}'
+```
 
 ### Snapshot field mapping
 
@@ -487,12 +587,20 @@ add snapshot construction and the `not_implemented` routing.
 | ---------------- | -------------------------------------------- | ------------------------------------------- |
 | `scene`          | Bootstrap scene name once loaded (`kuangfengzhai`) | Current map id (`chang_map`), as a string |
 | `block`          | Always empty                                 | Always empty                                |
-| `leader_pos`     | Player-1 entity world position when created  | Always `[0,0,0]` (no tracked leader)        |
+| `leader_pos`     | Player-1 entity world position when created  | Always `[0,0,0]` (no role entities)         |
 | `script_running` | `true` while the Lua VM isn't parked in `Wait` | `true` while not parked in `sleep`        |
 | `movie_playing`  | Always `false`                               | `true` while a bik movie is playing         |
-| `dialog`         | Always default — free-form text, not structured | Always default                           |
+| `dialog`         | Always default — free-form text, not structured | `open` + `text` from the live `storymsg` / `talkmsg` box; `avatar` carries the `talkmsg` speaker name (empty for `storymsg`); `choices` always empty |
 | `frame` / `fps` / `dt` / `paused` / `fast_forward` | Driven by the shared bridge | Driven by the shared bridge |
-| `debug_camera` / `camera_eye` / `camera_target` | Set via `/v1/camera/*`; pose reflects the live scene camera | `debug_camera` always `false`, camera fields `[0,0,0]` (no camera control) |
+| `debug_camera`   | Set via `/v1/camera/debug`                   | Always `false` (no free-fly mode)           |
+| `camera_eye` / `camera_target` | Pose reflects the live scene camera | Live `Swd5Scene` camera position / look-at; `[0,0,0]` before the first map load |
+
+> **`script_running` vs `dialog.open` on SWD5.** `script_running` is the
+> VM-level truth (is the coroutine outside a `sleep`?). `dialog.open` is
+> the "waiting on the player" signal: while it is `true`, drive
+> `/v1/dialog/advance` until it clears. Poll both rather than assuming
+> one implies the other.
+
 
 > **Single-director invariant.** PAL5/SWD5 only ever install their one
 > Lua story director (no menu/title mode), so the per-frame drainer

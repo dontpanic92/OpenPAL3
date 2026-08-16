@@ -102,19 +102,21 @@ impl Swd5Service {
         }
 
         if !envelopes.is_empty() {
-            // Resolve the active director and clone out its context
-            // handle for snapshot reads. SWD5 only ever installs an
-            // `OpenSWD5Director` (no menu / title mode), so the
-            // `inner` downcast is sound whenever a director exists.
+            // Resolve the active director and hold the ComRc for the
+            // whole dispatch loop so the borrowed `inner` stays valid.
+            // SWD5 only ever installs an `OpenSWD5Director` (no menu /
+            // title mode), so the downcast is sound whenever a director
+            // exists.
             let scene_manager = self.app.engine().borrow().scene_manager().clone();
-            let context = scene_manager
-                .director()
-                .map(|d| d.inner::<OpenSWD5Director>().context());
+            let director_rc = scene_manager.director();
+            let director = director_rc.as_ref().map(|d| d.inner::<OpenSWD5Director>());
+            let context = director.map(|d| d.context());
 
             for env in envelopes {
                 let ctx = Swd5DispatchCtx {
                     bridge: &bridge,
                     context: context.clone(),
+                    director,
                 };
                 let response = dispatch_swd5_command(&ctx, env.command.clone());
                 env.reply(response);
