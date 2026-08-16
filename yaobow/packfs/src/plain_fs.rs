@@ -28,7 +28,7 @@ impl<TArchive: PlainArchive> Store for PlainFs<TArchive> {
         self.archive
             .borrow_mut()
             .open(path)
-            .map_err(|_| std::io::Error::from(std::io::ErrorKind::Unsupported))
+            .map_err(archive_error_to_io)
     }
 
     fn entries_path(&self, _: &Path) -> std::io::Result<Entries<'_>> {
@@ -45,5 +45,24 @@ impl<TArchive: PlainArchive> Store for PlainFs<TArchive> {
             .collect();
 
         Ok(Entries::new(list))
+    }
+}
+
+/// Flatten a [`PlainArchive`] error into an [`std::io::Error`] while
+/// **preserving its [`std::io::ErrorKind`]**.
+///
+/// Every `PlainArchive` implementation reports a missing entry as
+/// `std::io::Error::from(ErrorKind::NotFound)` wrapped in `anyhow`.
+/// This used to be collapsed into `ErrorKind::Unsupported`, which broke
+/// `MiniFs::open_path`: it only walks on to the next (lower-priority)
+/// mount when a store answers `NotFound` and returns immediately on any
+/// other error. Games that mount several archives at the same VFS point
+/// — e.g. SWDHC's four `Texture_*.imd` files, all mounted at
+/// `/Texture/Texture` — therefore lost every lookup that missed the
+/// highest-priority archive, and their textures failed to resolve.
+fn archive_error_to_io(error: anyhow::Error) -> std::io::Error {
+    match error.downcast::<std::io::Error>() {
+        Ok(io) => io,
+        Err(other) => std::io::Error::new(std::io::ErrorKind::Other, other.to_string()),
     }
 }

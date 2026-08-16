@@ -151,11 +151,20 @@ impl AtpEntry {
                 2 => entry.data2 = Some(AtpEntryData2::read(cursor, item_length - 2)?),
                 3 => entry.data3 = Some(read_data3(cursor)?),
                 4 => {
-                    entry.data4 = Some(AtpEntryData4::read(
-                        cursor,
-                        item_length - 2,
-                        entry.unknown.unwrap(),
-                    )?)
+                    // The type discriminator lives in index 1, which
+                    // always precedes index 4 in practice. Skip rather
+                    // than panic if a file ever violates that.
+                    match entry.unknown {
+                        Some(ty) => {
+                            entry.data4 = Some(AtpEntryData4::read(cursor, item_length - 2, ty)?)
+                        }
+                        None => {
+                            log::warn!(
+                                "AtpEntry data4 seen before its type discriminator; skipping"
+                            );
+                            cursor.skip((item_length - 2) as usize)?
+                        }
+                    }
                 }
                 _ => {
                     log::warn!("Unknown index for AtpEntry: {}", index);
@@ -232,6 +241,15 @@ pub enum AtpEntryData4 {
     Data1(AtpEntryData41),
     Data2(AtpEntryData42),
     Data5(AtpEntryData45),
+    /// A payload whose discriminator (`AtpEntry::unknown`) we haven't
+    /// reverse-engineered yet — SWD5's `ACT/*.atp` ship types beyond
+    /// the 1 / 2 / 5 seen in SWDHC. The record is length-prefixed, so
+    /// the bytes are captured verbatim and the walk continues instead
+    /// of failing the whole archive.
+    Unknown {
+        ty: u32,
+        data: Vec<u8>,
+    },
 }
 
 impl AtpEntryData4 {
@@ -240,7 +258,18 @@ impl AtpEntryData4 {
             1 => Ok(AtpEntryData4::Data1(AtpEntryData41::read(cursor, length)?)),
             2 => Ok(AtpEntryData4::Data2(AtpEntryData42::read(cursor, length)?)),
             5 => Ok(AtpEntryData4::Data5(AtpEntryData45::read(cursor, length)?)),
-            _ => Err(anyhow::anyhow!("Unknown AtpEntryData4 type: {}", ty)),
+            _ => {
+                log::warn!(
+                    "Unknown AtpEntryData4 type {} at position {}; skipping {} bytes",
+                    ty,
+                    cursor.position(),
+                    length
+                );
+                Ok(AtpEntryData4::Unknown {
+                    ty,
+                    data: cursor.read_u8_vec(length as usize)?,
+                })
+            }
         }
     }
 }

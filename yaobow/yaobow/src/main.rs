@@ -7,7 +7,8 @@ use yaobow_lib::{
     Pal4AgentBootOptions, run_opengujian, run_openpal3, run_openpal3_with_agent, run_openpal3a,
     run_openpal3a_with_agent, run_openpal4, run_openpal4_with_agent, run_openpal5,
     run_openpal5_with_agent, run_openpal5q, run_openpal5q_with_agent, run_openswd5,
-    run_openswd5_with_agent, run_title_selection,
+    run_openswd5_with_agent, run_openswdcf, run_openswdcf_with_agent, run_openswdhc,
+    run_openswdhc_with_agent, run_title_selection,
 };
 
 pub fn main() {
@@ -26,7 +27,14 @@ pub fn main() {
         let agent_opts: Option<Pal4AgentBootOptions> = if args.len() > 2
             && matches!(
                 args[1].as_str(),
-                "--pal3" | "--pal3a" | "--pal4" | "--pal5" | "--pal5q" | "--swd5"
+                "--pal3"
+                    | "--pal3a"
+                    | "--pal4"
+                    | "--pal5"
+                    | "--pal5q"
+                    | "--swd5"
+                    | "--swdhc"
+                    | "--swdcf"
             ) {
             parse_agent_args(&args[2..])
         } else {
@@ -77,6 +85,20 @@ pub fn main() {
                         run_openswd5_with_agent(agent_opts);
                     } else {
                         run_openswd5();
+                    }
+                }
+                "--swdhc" => {
+                    if agent_opts.is_some() {
+                        run_openswdhc_with_agent(agent_opts);
+                    } else {
+                        run_openswdhc();
+                    }
+                }
+                "--swdcf" => {
+                    if agent_opts.is_some() {
+                        run_openswdcf_with_agent(agent_opts);
+                    } else {
+                        run_openswdcf();
                     }
                 }
                 "--pal3a" => {

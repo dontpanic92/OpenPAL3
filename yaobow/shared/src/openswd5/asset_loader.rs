@@ -131,7 +131,10 @@ impl AssetLoader {
             .as_ref()
             .ok_or(anyhow::anyhow!("No such pic {pic_id}"))?;
 
-        let data4 = atp_entry.data4.as_ref().unwrap();
+        let data4 = atp_entry
+            .data4
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Pic {pic_id} has no data4 payload"))?;
         match data4 {
             AtpEntryData4::Data1(_) => {
                 anyhow::bail!("Unsupported data41 type in load_story_pic: {:?}", pic_id);

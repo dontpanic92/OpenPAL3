@@ -195,8 +195,8 @@ pub mod openpal5;
 pub use application::{
     BootOptions, Pal4AgentBootOptions, boot_for, create_application, resolve_asset_path, run_app,
     run_opengujian, run_openpal4, run_openpal4_with_agent, run_openpal5, run_openpal5_with_agent,
-    run_openpal5q, run_openpal5q_with_agent, run_openswd5, run_openswd5_with_agent,
-    run_title_selection,
+    run_openpal5q, run_openpal5q_with_agent, run_openswd5, run_openswd5_with_agent, run_openswdcf,
+    run_openswdcf_with_agent, run_openswdhc, run_openswdhc_with_agent, run_title_selection,
 };
 pub use openpal3::{
     run_openpal3, run_openpal3_with_agent, run_openpal3a, run_openpal3a_with_agent,

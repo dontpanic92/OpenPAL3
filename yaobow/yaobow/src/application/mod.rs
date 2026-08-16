@@ -466,6 +466,18 @@ fn ordinal_for_game(game: GameType) -> i32 {
     -1
 }
 
+/// Dev-workflow default asset path for `game`, taken from the
+/// script-facing game registry so the CLI direct-boot path and the p7
+/// title selector agree on where each title's assets live.
+#[allow(dead_code)]
+fn registry_default_asset_path(game: GameType) -> Option<String> {
+    radiance_scripting::services::game_registry::default_asset_path_for_config_key(
+        game.config_key(),
+    )
+    .filter(|path| !path.is_empty())
+    .map(|path| path.to_string())
+}
+
 pub fn create_application(opts: BootOptions) -> ComRc<IApplication> {
     // Read the user's persisted SceneScaleMode preference at boot and
     // translate it into the radiance-side options. The actual logical
@@ -546,13 +558,19 @@ pub fn resolve_asset_path(game: GameType) -> Option<String> {
         }
         // Per-game hardcoded fallback for dev workflows — preserves
         // the legacy `OpenPalXApplicationLoader::new` defaults.
-        return match game {
-            GameType::PAL4 => Some("F:\\PAL4_test".to_string()),
-            GameType::SWD5 | GameType::SWDHC | GameType::SWDCF => {
-                Some("F:\\SteamLibrary\\steamapps\\common\\SWDHC".to_string())
-            }
-            _ => None,
-        };
+        if let GameType::PAL4 = game {
+            return Some("F:\\PAL4_test".to_string());
+        }
+        // The SWD family defers to the script-facing game registry,
+        // which already carries a distinct dev path per title. Sharing
+        // it keeps the CLI direct-boot path and the p7 title selector
+        // from disagreeing about where a game's assets live — the
+        // previous hardcoded arm pointed SWD5 and SWDCF at the SWDHC
+        // install.
+        if matches!(game, GameType::SWD5 | GameType::SWDHC | GameType::SWDCF) {
+            return registry_default_asset_path(game);
+        }
+        return None;
     }
     #[cfg(target_os = "android")]
     {
@@ -623,7 +641,23 @@ pub fn run_openswd5() {
 }
 
 pub fn run_openswd5_with_agent(agent: Option<AgentBootOptions>) {
+    run_app(boot_for(GameType::SWD5).with_agent_opts_opt(agent));
+}
+
+pub fn run_openswdhc() {
+    run_openswdhc_with_agent(None);
+}
+
+pub fn run_openswdhc_with_agent(agent: Option<AgentBootOptions>) {
     run_app(boot_for(GameType::SWDHC).with_agent_opts_opt(agent));
+}
+
+pub fn run_openswdcf() {
+    run_openswdcf_with_agent(None);
+}
+
+pub fn run_openswdcf_with_agent(agent: Option<AgentBootOptions>) {
+    run_app(boot_for(GameType::SWDCF).with_agent_opts_opt(agent));
 }
 
 pub fn run_opengujian() {

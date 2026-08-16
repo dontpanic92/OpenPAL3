@@ -114,3 +114,15 @@ fn find(ordinal: i32) -> Option<&'static GameInfo> {
 pub fn ordinal_to_config_key(ordinal: i32) -> Option<&'static str> {
     find(ordinal).map(|g| g.config_key)
 }
+
+/// Look up the registry's per-game dev default asset path by config
+/// key (the same key `shared::GameType::config_key` returns).
+///
+/// Lets the native CLI direct-boot path reuse the registry's per-title
+/// paths instead of maintaining a second, divergent hardcoded table.
+pub fn default_asset_path_for_config_key(config_key: &str) -> Option<&'static str> {
+    GAMES
+        .iter()
+        .find(|game| game.config_key == config_key)
+        .map(|g| g.default_asset_path)
+}
