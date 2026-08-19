@@ -64,9 +64,9 @@ impl Pal5Service {
         *self.agent_bridge.borrow_mut() = Some(bridge);
     }
 
-    /// Drain the agent-server command queue, dispatch each command
-    /// against PAL5 state, then publish frame telemetry and clear
-    /// synthetic-input edges. Called once per frame by
+    /// Retire the previous frame's synthetic-input edges, drain the
+    /// agent-server command queue, dispatch each command against PAL5
+    /// state, then publish frame telemetry. Called once per frame by
     /// `YaobowApplicationLoader::on_updating` (before the engine
     /// tick), so commands land before the active director runs.
     ///
@@ -76,6 +76,14 @@ impl Pal5Service {
             Some(b) => b.clone(),
             None => return,
         };
+
+        // Retire the *previous* frame's synthetic-input edges before
+        // injecting this frame's. `Pal5StoryDirector::update` runs
+        // during `engine.update`, i.e. *after* this hook, so an edge
+        // injected below must survive until the next pump to be
+        // observable at all. Clearing at the end of this function
+        // instead would wipe every tap before the director polls it.
+        bridge.input_bridge.borrow().end_frame();
 
         // Lazily wire the rendering engine so `/v1/screenshot` works.
         if bridge.rendering_engine.borrow().is_none() {
@@ -112,10 +120,6 @@ impl Pal5Service {
 
         // Telemetry: always advance frame counter + publish dt/fps.
         bridge.publish_frame_telemetry(delta_sec);
-
-        // Clear synthetic-input edges (before the engine tick; the
-        // director's `update` runs during `engine.update`).
-        bridge.input_bridge.borrow().end_frame();
     }
 }
 

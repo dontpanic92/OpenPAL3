@@ -316,14 +316,26 @@ impl Pal4Service {
     /// active playthrough" snapshot, `Screenshot` of the 3D backdrop)
     /// and rejects gameplay commands with a clear `not_implemented`.
     ///
-    /// In story mode the per-frame agent bookkeeping (frame counter /
-    /// fps / synthetic-input edges) is done by the director's
-    /// `end_agent_frame`; in non-story modes this method does it.
+    /// In story mode the director's `end_agent_frame` additionally
+    /// retires the synthetic-input edges immediately after its VM tick;
+    /// this method retires the *previous* frame's edges up front so
+    /// non-story modes (which have no such post-update hook) still
+    /// observe taps injected during the drain below.
     pub fn pump_agent(&self, delta_sec: f32) {
         let bridge = match self.agent_bridge.borrow().as_ref() {
             Some(b) => b.clone(),
             None => return,
         };
+
+        // Retire the *previous* frame's synthetic-input edges before
+        // injecting this frame's. Every director's `update` runs during
+        // `engine.update`, i.e. *after* this hook, so an edge injected
+        // below must survive until the next pump to be observable at
+        // all. Clearing at the end of this function instead would wipe
+        // every tap before a non-story mode polls it. (Story mode also
+        // retires in `end_agent_frame` right after its VM tick, which
+        // makes this an idempotent no-op there.)
+        bridge.input_bridge.borrow().end_frame();
 
         // Lazily wire the rendering engine so `/v1/screenshot` works
         // before any story director has set it on the bridge.
@@ -400,16 +412,6 @@ impl Pal4Service {
         // Per-frame agent telemetry (frame counter + dt/fps) is generic
         // and published here once per frame for **every** mode.
         bridge.publish_frame_telemetry(delta_sec);
-
-        // The synthetic-input edge clear must run *after* the active
-        // mode polls input for the frame. In story mode the director's
-        // `end_agent_frame` does it (after its VM tick, which happens in
-        // `engine.update`, i.e. after this `on_updating`); here we do it
-        // only when no story director is installed (re-resolved, since a
-        // mode-control command this frame may have just installed one).
-        if Self::active_story_director(&scene_manager).is_none() {
-            bridge.input_bridge.borrow().end_frame();
-        }
     }
 
     /// Resolve the currently-installed director and downcast to the

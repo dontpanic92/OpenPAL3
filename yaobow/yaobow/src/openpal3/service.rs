@@ -297,9 +297,9 @@ impl Pal3Service {
         *self.agent_bridge.borrow_mut() = Some(bridge);
     }
 
-    /// Drain the agent-server command queue, dispatch each command
-    /// against PAL3 state, then publish frame telemetry and clear
-    /// synthetic-input edges. Called once per frame by
+    /// Retire the previous frame's synthetic-input edges, drain the
+    /// agent-server command queue, dispatch each command against PAL3
+    /// state, then publish frame telemetry. Called once per frame by
     /// `YaobowApplicationLoader::on_updating` (before the engine
     /// tick), so commands land before the active director runs.
     pub fn pump_agent(&self, delta_sec: f32) {
@@ -307,6 +307,14 @@ impl Pal3Service {
             Some(b) => b.clone(),
             None => return,
         };
+
+        // Retire the *previous* frame's synthetic-input edges before
+        // injecting this frame's. `AdventureDirector::update` runs
+        // during `engine.update`, i.e. *after* this hook, so an edge
+        // injected below must survive until the next pump to be
+        // observable at all. Clearing at the end of this function
+        // instead would wipe every tap before the director polls it.
+        bridge.input_bridge.borrow().end_frame();
 
         // Lazily wire the rendering engine so `/v1/screenshot` works
         // before any director has set it on the bridge.
@@ -346,14 +354,6 @@ impl Pal3Service {
 
         // Telemetry: always advance frame counter + publish dt/fps.
         bridge.publish_frame_telemetry(delta_sec);
-
-        // Clear synthetic-input edges. We do it here unconditionally
-        // because PAL3's `AdventureDirector::update` runs *during*
-        // `engine.update`, which is *after* this `on_updating` hook.
-        // That means any tap injected this frame is observable by
-        // the director's input poll, and we clear at the start of
-        // the next frame's pump.
-        bridge.input_bridge.borrow().end_frame();
     }
 
     fn is_mode_control_command(command: &AgentCommand) -> bool {
