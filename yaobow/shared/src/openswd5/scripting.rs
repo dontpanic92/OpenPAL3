@@ -35,6 +35,11 @@ pub struct SWD5Context {
     sound_sources: HashMap<i32, RefCell<Box<dyn AudioMemorySource>>>,
     story_msg: Option<StoryMsg>,
     story_pic: Option<Sprite>,
+    /// Character name-card shown by `intromsg`. Unlike `story_pic`
+    /// (a full-screen 4:3 backdrop) this is a small sprite blitted at
+    /// a scripted position, and it is dismissed by the same keypress
+    /// that closes the message box it accompanies.
+    intro_pic: Option<IntroPic>,
     talk_msg: Option<TalkMsg>,
 
     movie_texture: Option<TextureId>,
@@ -68,6 +73,7 @@ impl SWD5Context {
             sound_sources: HashMap::new(),
             story_msg: None,
             story_pic: None,
+            intro_pic: None,
             talk_msg: None,
             movie_texture: None,
             actdrop: ActDrop::new(),
@@ -230,6 +236,7 @@ impl SWD5Context {
         self.sleep_sec = 0.;
         self.story_msg = None;
         self.talk_msg = None;
+        self.intro_pic = None;
     }
 
     pub fn update(&mut self, delta_sec: f32) {
@@ -242,6 +249,7 @@ impl SWD5Context {
 
         self.update_audio();
         self.update_story_pic();
+        self.update_intro_pic();
         self.update_storymsg();
         self.update_talkmsg();
         self.update_video();
@@ -332,6 +340,56 @@ impl SWD5Context {
 
             style.pop();
         }
+    }
+
+    /// Draw the `intromsg` name-card, if one is up. Dismissed by the
+    /// same any-key press that closes story / talk messages, so the
+    /// card stays visible for exactly the line it introduces.
+    fn update_intro_pic(&mut self) {
+        if self.anykey_down() {
+            self.intro_pic = None;
+        }
+
+        let intro_pic = match &self.intro_pic {
+            Some(p) => p,
+            None => return,
+        };
+
+        let (origin, box_size) = calc_43_box(self.ui.ui());
+        let scale = box_size[0] / 960.;
+        let position = [
+            origin[0] + intro_pic.position[0] * scale,
+            origin[1] + intro_pic.position[1] * scale,
+        ];
+        let size = [
+            intro_pic.sprite.width() as f32 * scale,
+            intro_pic.sprite.height() as f32 * scale,
+        ];
+
+        let style = self
+            .ui
+            .ui()
+            .push_style_var(imgui::StyleVar::WindowPadding([0., 0.]));
+
+        self.ui
+            .ui()
+            .window("intro_pic")
+            .position(position, imgui::Condition::Always)
+            .size(size, imgui::Condition::Always)
+            .movable(false)
+            .resizable(false)
+            .collapsible(false)
+            .title_bar(false)
+            .draw_background(false)
+            .scroll_bar(false)
+            .nav_focus(false)
+            .focused(false)
+            .mouse_inputs(false)
+            .build(|| {
+                Image::new(intro_pic.sprite.imgui_texture_id(), size).build(self.ui.ui());
+            });
+
+        style.pop();
     }
 
     fn update_video(&mut self) {
@@ -499,6 +557,26 @@ impl SWD5Context {
         self.story_pic = None;
     }
 
+    /// Show a character introduction name-card at `(x, y)`.
+    ///
+    /// `pic_id` indexes the same global ATP resource table
+    /// `openstorypic` uses (id 9002 -> `intro001` ->
+    /// `/Texture/Texture/intro001.png`); the SWDHC scripts call this
+    /// right after `dark_out`, just before the character's first
+    /// `talkinfo` line. `x` / `y` are in the game's 960x720 design
+    /// space, same as `storymsgpos`.
+    fn intromsg(&mut self, pic_id: f64, x: f64, y: f64) {
+        match self.asset_loader.load_story_pic(pic_id as i32) {
+            Ok(sprite) => {
+                self.intro_pic = Some(IntroPic {
+                    sprite,
+                    position: [x as f32, y as f32],
+                })
+            }
+            Err(e) => log::error!("intromsg: {:?}", e),
+        }
+    }
+
     fn set_camera_src_pos(&mut self, x: f64, y: f64, z: f64) {
         let scene = self.scene.as_mut().unwrap();
         scene.set_camera_lookat(x as f32, y as f32, z as f32);
@@ -609,6 +687,7 @@ pub fn create_lua_vm(
     def_func!(vm, talkmsg, name: string, text: string);
     def_func!(vm, anykey -> number);
     def_func!(vm, openstorypic, pic_id: number);
+    def_func!(vm, intromsg, pic_id: number, x: number, y: number);
     def_func!(vm, stop_sound, sound_id: number);
     def_func!(vm, closestorypic);
     def_func!(vm, play_movie, id: number);
@@ -650,6 +729,7 @@ pub const RESERVED_GLOBAL_NAMES: &[&str] = &[
     "talkmsg",
     "anykey",
     "openstorypic",
+    "intromsg",
     "stop_sound",
     "closestorypic",
     "play_movie",
@@ -731,6 +811,15 @@ fn decode_big5(s: *const c_char) -> String {
 
 struct StoryMsg {
     text: String,
+    position: [f32; 2],
+}
+
+/// A `intromsg` character name-card: an `interface\CharIntro\introNNN`
+/// sprite resolved through the shared ATP resource index, plus the
+/// script-supplied position in the game's 960x720 design space.
+struct IntroPic {
+    sprite: Sprite,
+    /// Top-left corner, in 960x720 design-space units.
     position: [f32; 2],
 }
 

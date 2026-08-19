@@ -76,9 +76,9 @@ impl Swd5Service {
         self.app.engine().borrow().input_engine()
     }
 
-    /// Drain the agent-server command queue, dispatch each command
-    /// against SWD5 state, then publish frame telemetry and clear
-    /// synthetic-input edges. Called once per frame by
+    /// Retire the previous frame's synthetic-input edges, drain the
+    /// agent-server command queue, dispatch each command against SWD5
+    /// state, then publish frame telemetry. Called once per frame by
     /// `YaobowApplicationLoader::on_updating` (before the engine
     /// tick), so commands land before the active director runs.
     ///
@@ -88,6 +88,14 @@ impl Swd5Service {
             Some(b) => b.clone(),
             None => return,
         };
+
+        // Retire the *previous* frame's synthetic-input edges before
+        // injecting this frame's. The director's `update` runs during
+        // `engine.update`, i.e. *after* this hook, so an edge injected
+        // below must survive until the next pump to be observable at
+        // all. Clearing at the end of this function instead would wipe
+        // every tap before the Lua VM ever polls it.
+        bridge.input_bridge.borrow().end_frame();
 
         // Lazily wire the rendering engine so `/v1/screenshot` works.
         if bridge.rendering_engine.borrow().is_none() {
@@ -125,12 +133,6 @@ impl Swd5Service {
 
         // Telemetry: always advance frame counter + publish dt/fps.
         bridge.publish_frame_telemetry(delta_sec);
-
-        // Clear synthetic-input edges. Done here (before the engine
-        // tick) because the director's `update` runs *during*
-        // `engine.update`, so taps injected this frame are observable
-        // by the VM's input polls and cleared at the next pump.
-        bridge.input_bridge.borrow().end_frame();
     }
 }
 
