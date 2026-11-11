@@ -97,3 +97,39 @@ fn fittedbox_letterboxes_and_align_places_child() {
         "FittedBox+Align(top-left) should place text at (400, 0); got {calls:?}"
     );
 }
+
+#[test]
+fn native_canvas_children_survive_repeated_clipped_and_unclipped_paints() {
+    let source = r#"
+import radiance;
+import radiance_scripting.ui;
+
+pub fn entry(host: box<radiance.IUiHost>) -> int {
+    let ctx = ui.make_ctx();
+    let clipped: box<ui.Element> = ui.NativeCanvas(
+        ui.Size(100.0, 100.0), [ui.Text("clipped")]);
+    let unclipped: box<ui.Element> = ui.NativeCanvas(
+        ui.Size(100.0, 100.0), [ui.Text("unclipped")], false);
+    for i in Range(0, 2) {
+        ui.paint_root(clipped, host, ctx);
+        ui.paint_root(unclipped, host, ctx);
+    }
+    0
+}
+"#;
+    let (recorder, ui_com) = RecordingUiHost::create();
+    recorder.set_display_size(200, 200);
+    run(source, &recorder, ui_com);
+    for label in ["clipped", "unclipped"] {
+        assert_eq!(
+            recorder
+                .calls
+                .borrow()
+                .iter()
+                .filter(|call| matches!(call, UiCall::TextAt { s, .. } if s == label))
+                .count(),
+            2,
+            "each paint must retain the original child collection"
+        );
+    }
+}

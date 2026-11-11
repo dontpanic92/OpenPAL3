@@ -171,7 +171,7 @@ pub fn is_proto_registered(uuid: [u8; 16]) -> bool {
 ///
 /// The IDL declares `IAction::invoke()` with a `void` C-ABI return,
 /// so the spec uses [`RetKind::Void`]. The script side declares
-/// `invoke(self: ref<IAction>) -> int` per the p7 void→int mapping;
+/// `invoke(self: &IAction) -> int` per the p7 void→int mapping;
 /// the runtime-typed CCW pops and discards that int.
 pub fn register_crosscom_iaction() {
     let _ = register_proto_ccw(ProtoSpec {

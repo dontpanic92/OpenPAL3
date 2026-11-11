@@ -34,6 +34,10 @@
 //! | `IFoo?`      | `?box<IFoo>` |
 //! | `IFoo[]`     | `array<box<IFoo>>` |
 //!
+//! Scriptable interfaces use retained `&I` receivers so callbacks can keep
+//! their script owner alive. Host-only interfaces use scoped `refmut<I>`.
+//! Interface arguments and results remain owned box carriers.
+//!
 //! The generated file is intended to be read by the `p7` compiler. It does
 //! not exercise any unstable language features; it stays within the subset
 //! covered by `protosept/tests/` (foreign protos, nullable types, arrays).
@@ -258,14 +262,23 @@ impl ProtoseptGen {
         Ok(methods)
     }
 
-    /// Build the `fn name(self: refmut<I>, ...) -> T` signature for a proto
-    /// method. Returns `Ok(None)` if any type cannot be mapped to protosept.
+    /// Scriptable receivers are retainable because callbacks may outlive a call;
+    /// host-only receivers remain scoped mutable views. Returns `Ok(None)` if
+    /// any type cannot be mapped to protosept.
     fn proto_method_signature(
         &self,
         iface: &str,
         method: &Method,
     ) -> Result<Option<String>, Error> {
-        let mut params = format!("self: refmut<{iface}>");
+        let receiver = if self
+            .find_interface(iface)?
+            .lang_flag("protosept", "scriptable")
+        {
+            format!("&{iface}")
+        } else {
+            format!("refmut<{iface}>")
+        };
+        let mut params = format!("self: {receiver}");
         for p in &method.params {
             let Some(ty) = self.protosept_type(&p.ty)? else {
                 return Ok(None);

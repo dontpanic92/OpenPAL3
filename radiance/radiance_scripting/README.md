@@ -59,6 +59,31 @@ that implements `radiance.IUiLayer` and `radiance.IDirector` and forwards
 `activate` / `update` to the wrapped Rust `IDirector`, with `render` a no-op.
 The canonical adapter shape lives in `yaobow_editor/scripts/editor_consts.p7`.
 
+## Managed References
+
+`radiance/protosept` is pinned by the repository's submodule gitlink to the
+remote `dontpanic92-managed-references` branch. Use
+`git submodule update --init --recursive` to reproduce that exact revision;
+do not use `--remote` for a reproducible build. Cargo uses this submodule's
+`p7` path dependency. Rebuild and restart after updating it so scripts and
+bindings are recompiled with the new reference lowering.
+
+IDL interfaces marked `[protosept(scriptable)]` generate retained `self: &I`
+receivers. Implement these as `self: &Self`: UI callbacks may retain that
+receiver, unlike scoped `ref<Self>` / `refmut<Self>` views. Host-only methods
+still use scoped mutable receivers.
+
+Shared editor state can live directly in the director. Instead of storing
+`project_panel: box<ProjectPanelState>` and passing that box, the editor stores
+`project_panel: ProjectPanelState` and passes `&self.project_panel` to functions
+taking `state: &ProjectPanelState`. Callbacks retain the existing field location
+and its owner; they do not capture a fresh copy of the panel.
+
+Keep `box(...)` where fresh identity or foreign ownership is intended. Director
+factories still return fresh `box<IDirector>` values; `foreign_box` still owns
+the interned COM reference. External callbacks are rooted by their CCW until its
+final `ComRc` is dropped. A raw Rust `Data` clone alone is not a GC root.
+
 ## File Map
 
 | Path | Role |

@@ -29,25 +29,25 @@ import yaobow.title.title;
 pub struct[yaobow_services.IYaobowScriptApp, openpal3.IPal3ScriptFactory, openpal4.IPal4ScriptFactory] YaobowScriptApp(
     pub ctx: box<yaobow_services.IYaobowHostContext>,
 ) {
-    pub fn make_title_director(self: refmut<Self>) -> box<radiance.IDirector> {
+    pub fn make_title_director(self: &Self) -> box<radiance.IDirector> {
         return title.make_title_director(self.ctx);
     }
 
     pub fn make_pal4_debug_overlay(
-        self: refmut<Self>,
+        self: &Self,
         ctx: box<pal4_debug.IPal4DebugContext>,
     ) -> box<pal4_debug.IPal4DebugOverlay> {
         return debug_overlay.make_overlay(ctx);
     }
 
     pub fn make_pal4_loading_overlay(
-        self: refmut<Self>,
+        self: &Self,
     ) -> box<openpal4.IPal4LoadingOverlay> {
         return loading_overlay.make_loading_overlay(self.ctx);
     }
 
     pub fn make_actor_controller(
-        self: refmut<Self>,
+        self: &Self,
         game_ctx: box<openpal4.IPal4GameContext>,
         input: box<scripting_services.IInputService>,
         entity_0: box<radiance.IEntity>,
@@ -76,7 +76,7 @@ pub struct[yaobow_services.IYaobowScriptApp, openpal3.IPal3ScriptFactory, openpa
     // handler swaps itself for the story director via
     // `host.pal4().enter_new_game(path)`.
     pub fn make_pal4_start_menu(
-        self: refmut<Self>,
+        self: &Self,
         asset_path: string,
     ) -> box<radiance.IDirector> {
         return start_menu.make_pal4_start_menu(self.ctx, asset_path);
@@ -88,7 +88,7 @@ pub struct[yaobow_services.IYaobowScriptApp, openpal3.IPal3ScriptFactory, openpa
     // (`create_adventure_director` / `load_adventure_director` /
     // `exit_app`).
     pub fn make_pal3_start_menu(
-        self: refmut<Self>,
+        self: &Self,
         asset_path: string,
     ) -> box<radiance.IDirector> {
         return pal3_start_menu.make_pal3_start_menu(self.ctx, asset_path);
@@ -99,14 +99,14 @@ pub struct[yaobow_services.IYaobowScriptApp, openpal3.IPal3ScriptFactory, openpa
     // its sprites through) and threads it into the SCE command loop,
     // which forwards events + per-frame draw calls.
     pub fn make_pal3_dialog_renderer(
-        self: refmut<Self>,
+        self: &Self,
         sprites: box<scripting_services.ISpriteService>,
     ) -> box<openpal3.IPal3DialogRenderer> {
         return pal3_dlg_box.make_pal3_dialog_renderer(sprites);
     }
 
     pub fn make_pal3_status_renderer(
-        self: refmut<Self>,
+        self: &Self,
         sprites: box<scripting_services.ISpriteService>,
         atlas: box<openpal3.IPal3UiAtlas>,
     ) -> box<openpal3.IPal3StatusRenderer> {

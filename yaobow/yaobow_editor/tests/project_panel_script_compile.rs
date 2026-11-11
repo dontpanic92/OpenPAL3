@@ -66,28 +66,28 @@ import yaobow_editor.main_editor;
 
 pub struct[radiance.IUiLayer, radiance.IDirector] Harness(
     pub host: box<yaobow_editor_services.IEditorHostContext>,
-    pub state: box<project_panel.ProjectPanelState>,
+    pub state: project_panel.ProjectPanelState,
 ) {
-    pub fn activate(self: refmut<Self>) -> int { 0 }
-    pub fn deactivate(self: refmut<Self>) -> int { 0 }
+    pub fn activate(self: &Self) -> int { 0 }
+    pub fn deactivate(self: &Self) -> int { 0 }
 
-    pub fn render(self: refmut<Self>, ui: box<radiance.IUiHost>, dt: float) -> int {
-        project_panel.render_file_menu(ui, self.host, self.state);
+    pub fn render(self: &Self, ui: box<radiance.IUiHost>, dt: float) -> int {
+        project_panel.render_file_menu(ui, self.host, &self.state);
         ui.menu("View", () => {
-            project_panel.render_view_menu_item(ui, self.state);
+            project_panel.render_view_menu_item(ui, &self.state);
         });
-        project_panel.render_project_changes_panel(ui, self.host, self.state);
+        project_panel.render_project_changes_panel(ui, self.host, &self.state);
         ui.text(main_editor.project_status_label(self.host.project()));
         0
     }
 
-    pub fn update(self: refmut<Self>, dt: float) -> ?box<radiance.IDirector> {
+    pub fn update(self: &Self, dt: float) -> ?box<radiance.IDirector> {
         return null;
     }
 }
 
 pub fn init(host: box<yaobow_editor_services.IEditorHostContext>) -> box<radiance.IDirector> {
-    return box(Harness(host, box(project_panel.make_project_panel_state())));
+    return box(Harness(host, project_panel.make_project_panel_state()));
 }
 "#;
 

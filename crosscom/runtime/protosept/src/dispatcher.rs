@@ -295,6 +295,9 @@ fn classify_pop(
         Data::BoxRef { idx, generation } => {
             classify_foreign_box(ctx, idx, generation, None, recv_tag)
         }
+        data @ Data::ManagedReference { .. } => Ok(ClassifiedPop::Receiver(
+            ctx.foreign_handle(&data, recv_tag)?,
+        )),
         other => Err(RuntimeError::Other(format!(
             "com.invoke: unsupported argument shape: {:?}",
             other

@@ -43,14 +43,14 @@ pub struct[radiance.IUiLayer, radiance.IDirector] WelcomeDirector(
     pub intent: Intent,
     pub intent_arg: int,
 ) {
-    pub fn activate(self: refmut<Self>) -> int {
+    pub fn activate(self: &Self) -> int {
         self.intent = Intent.None;
         self.intent_arg = 0;
         0
     }
-    pub fn deactivate(self: refmut<Self>) -> int { 0 }
+    pub fn deactivate(self: &Self) -> int { 0 }
 
-    pub fn render(self: refmut<Self>, ui: box<radiance.IUiHost>, dt: float) -> int {
+    pub fn render(self: &Self, ui: box<radiance.IUiHost>, dt: float) -> int {
         ui.main_menu_bar(() => {
             theme_menu.render_theme_menu(ui, self.host.config());
         });
@@ -83,7 +83,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] WelcomeDirector(
         0
     }
 
-    pub fn render_game_cell(self: refmut<Self>, ui: box<radiance.IUiHost>, ordinal: int) {
+    pub fn render_game_cell(self: &Self, ui: box<radiance.IUiHost>, ordinal: int) {
         let name = welcome_game_name(self, ordinal);
         let label = f"运行《{name}》编辑器";
         if ui.button(label, -1.0, 60.0) {
@@ -93,7 +93,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] WelcomeDirector(
     }
 
     pub fn update(
-        self: refmut<Self>,
+        self: &Self,
         dt: float,
     ) -> ?box<radiance.IDirector> {
         let code = self.intent;
@@ -139,14 +139,14 @@ pub struct[radiance.IUiLayer, radiance.IDirector] SettingsDirector(
     pub intent: Intent,
     pub intent_arg: int,
 ) {
-    pub fn activate(self: refmut<Self>) -> int {
+    pub fn activate(self: &Self) -> int {
         self.intent = Intent.None;
         self.intent_arg = 0;
         0
     }
-    pub fn deactivate(self: refmut<Self>) -> int { 0 }
+    pub fn deactivate(self: &Self) -> int { 0 }
 
-    pub fn render(self: refmut<Self>, ui: box<radiance.IUiHost>, dt: float) -> int {
+    pub fn render(self: &Self, ui: box<radiance.IUiHost>, dt: float) -> int {
         ui.window_centered("游戏路径设置", 820.0, 560.0, () => {
             ui.text_with_font(0, "游戏资源路径设置");
             ui.dummy(0.0, 12.0);
@@ -175,7 +175,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] SettingsDirector(
         0
     }
 
-    pub fn render_settings_row(self: refmut<Self>, ui: box<radiance.IUiHost>, ordinal: int) {
+    pub fn render_settings_row(self: &Self, ui: box<radiance.IUiHost>, ordinal: int) {
         ui.table_next_column();
         ui.text(settings_game_name(self, ordinal));
         ui.table_next_column();
@@ -194,7 +194,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] SettingsDirector(
     }
 
     pub fn update(
-        self: refmut<Self>,
+        self: &Self,
         dt: float,
     ) -> ?box<radiance.IDirector> {
         let code = self.intent;
@@ -248,7 +248,7 @@ fn make_settings_director(
         as box<radiance.IDirector>;
 }
 
-fn welcome_game_name(d: ref<WelcomeDirector>, ordinal: int) -> string {
+fn welcome_game_name(d: &WelcomeDirector, ordinal: int) -> string {
     for i, g in d.games {
         if g == ordinal {
             return d.names[i];
@@ -257,7 +257,7 @@ fn welcome_game_name(d: ref<WelcomeDirector>, ordinal: int) -> string {
     ""
 }
 
-fn settings_game_name(d: ref<SettingsDirector>, ordinal: int) -> string {
+fn settings_game_name(d: &SettingsDirector, ordinal: int) -> string {
     for i, g in d.games {
         if g == ordinal {
             return d.names[i];

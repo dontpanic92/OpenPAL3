@@ -64,7 +64,7 @@ let PROMPT_TEXT_A: string = "按下任意键继续";
 let PROMPT_TEXT_B: string = "按下任意键继续_";
 
 // Per-frame mutable state. The generated `IUiLayer`/`IDirector` protos now use
-// `refmut self` receivers, so the interface methods may mutate fields directly;
+// retained receivers, so callbacks share the director's mutable field storage;
 // the per-frame scratch lives as plain fields on `TitleDirector`.
 pub struct[radiance.IUiLayer, radiance.IDirector] TitleDirector(
     pub host: box<yaobow_services.IYaobowHostContext>,
@@ -88,14 +88,14 @@ pub struct[radiance.IUiLayer, radiance.IDirector] TitleDirector(
     pub intent_arg: int,
     pub current_pic: ?box<scripting_services.ITexture>,
 ) {
-    pub fn activate(self: refmut<Self>) -> int {
+    pub fn activate(self: &Self) -> int {
         if self.bgm != null {
             self.bgm!.play(true);
         }
         0
     }
 
-    pub fn deactivate(self: refmut<Self>) -> int {
+    pub fn deactivate(self: &Self) -> int {
         if self.bgm != null {
             self.bgm!.stop();
         }
@@ -103,7 +103,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] TitleDirector(
     }
 
     pub fn render(
-        self: refmut<Self>,
+        self: &Self,
         ui: box<radiance.IUiHost>,
         dt: float,
     ) -> int {
@@ -136,7 +136,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] TitleDirector(
     // Declare the whole title screen as a widget tree. The fade-in alpha
     // (computed from `self.time`) wraps the logo / prompt / preview group
     // via `gui.Opacity`; the version label sits outside it at full opacity.
-    pub fn build(self: refmut<Self>, ui: box<radiance.IUiHost>) -> box<gui.Element> {
+    pub fn build(self: &Self, ui: box<radiance.IUiHost>) -> box<gui.Element> {
         let display_w = ui.display_size_x() as float;
         let display_h = ui.display_size_y() as float;
         let unit_w = display_w / 16.0;
@@ -185,7 +185,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] TitleDirector(
         return gui.Stack(root_items);
     }
 
-    pub fn build_logo(self: refmut<Self>, cx: float, cy: float, bw: float, bh: float) -> box<gui.Element> {
+    pub fn build_logo(self: &Self, cx: float, cy: float, bw: float, bh: float) -> box<gui.Element> {
         if self.logo == null {
             let empty: array<box<gui.Element>> = [];
             return gui.Stack(empty);
@@ -196,14 +196,14 @@ pub struct[radiance.IUiLayer, radiance.IDirector] TitleDirector(
 
     // Left pane content: either the blinking "press any key" prompt or
     // (once the user has pressed + released) the game-selection list.
-    pub fn build_left_pane(self: refmut<Self>, list_w: float) -> box<gui.Element> {
+    pub fn build_left_pane(self: &Self, list_w: float) -> box<gui.Element> {
         if self.prompt_phase == PROMPT_SHOWING_LIST {
             return self.build_game_list(list_w);
         }
         return PromptLabel(self.prompt_label());
     }
 
-    pub fn build_game_list(self: refmut<Self>, list_w: float) -> box<gui.Element> {
+    pub fn build_game_list(self: &Self, list_w: float) -> box<gui.Element> {
         let items: array<box<gui.Element>> = [
             self.game_btn(title_consts.GAME_PAL3, list_w),
             self.game_btn(title_consts.GAME_PAL3A, list_w),
@@ -216,7 +216,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] TitleDirector(
         return gui.Column(items, 0.0, gui.ALIGN_CENTER, gui.ALIGN_CENTER);
     }
 
-    pub fn game_btn(self: refmut<Self>, ordinal: int, w: float) -> box<gui.Element> {
+    pub fn game_btn(self: &Self, ordinal: int, w: float) -> box<gui.Element> {
         let label = game_full_name(ordinal);
         let hovered = self.hovered_game == ordinal;
         return title_game_button(
@@ -229,7 +229,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] TitleDirector(
     // The prompt string to display this frame (the blink phase decides
     // whether the trailing underline shows). Pure read of current state;
     // the timing advance lives in `tick_prompt`.
-    pub fn prompt_label(self: refmut<Self>) -> string {
+    pub fn prompt_label(self: &Self) -> string {
         let phase = self.prompt_phase;
         if phase == PROMPT_BLINKING {
             let cycle = title_consts.UNDERLINE_MARGIN_TIME + title_consts.UNDERLINE_SHOW_TIME;
@@ -246,7 +246,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] TitleDirector(
     }
 
     pub fn build_right_pane(
-        self: refmut<Self>,
+        self: &Self,
         cx: float, cy: float, w: float, h: float,
     ) -> box<gui.Element> {
         if self.pic_state == PIC_OUTLINE {
@@ -256,7 +256,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] TitleDirector(
     }
 
     pub fn build_outline(
-        self: refmut<Self>,
+        self: &Self,
         cx: float, cy: float, w: float, h: float,
     ) -> box<gui.Element> {
         if self.outline_phase == OUTLINE_PLAYING && self.outlines != null {
@@ -283,7 +283,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] TitleDirector(
     }
 
     pub fn build_hovered_pic(
-        self: refmut<Self>,
+        self: &Self,
         cx: float, cy: float, w: float, h: float,
     ) -> box<gui.Element> {
         if self.current_pic == null {
@@ -297,11 +297,11 @@ pub struct[radiance.IUiLayer, radiance.IDirector] TitleDirector(
 
     // --- State mutators invoked from widget callbacks -------------------
 
-    pub fn set_hovered(self: refmut<Self>, ordinal: int) {
+    pub fn set_hovered(self: &Self, ordinal: int) {
         self.hovered_game = ordinal;
     }
 
-    pub fn submit_game(self: refmut<Self>, ordinal: int) {
+    pub fn submit_game(self: &Self, ordinal: int) {
         if ordinal == title_consts.MENU_SETTINGS {
             self.intent = title_consts.Intent.OpenSettings;
             self.intent_arg = 0;
@@ -318,7 +318,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] TitleDirector(
 
     // Runs BEFORE the tree is built: latch the preview pane on first
     // hover and lazy-load the chosen preview so it can paint this frame.
-    pub fn tick_pre(self: refmut<Self>, ui: box<radiance.IUiHost>) {
+    pub fn tick_pre(self: &Self, ui: box<radiance.IUiHost>) {
         if self.hovered_game != NO_HOVER {
             self.pic_state = PIC_SHOWING;
         }
@@ -327,7 +327,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] TitleDirector(
         }
     }
 
-    pub fn load_hovered_pic(self: refmut<Self>) {
+    pub fn load_hovered_pic(self: &Self) {
         let hovered = self.hovered_game;
         if hovered == NO_HOVER { return; }
         if hovered != title_consts.GAME_PAL3 && hovered != title_consts.GAME_PAL4 { return; }
@@ -343,13 +343,13 @@ pub struct[radiance.IUiLayer, radiance.IDirector] TitleDirector(
 
     // Runs AFTER the tree is painted: advance the prompt blink, the
     // outline GIF, and the master fade timer.
-    pub fn tick_post(self: refmut<Self>, ui: box<radiance.IUiHost>, dt: float) {
+    pub fn tick_post(self: &Self, ui: box<radiance.IUiHost>, dt: float) {
         self.tick_prompt(ui, dt);
         self.tick_outline(dt);
         self.time = self.time + dt;
     }
 
-    pub fn tick_prompt(self: refmut<Self>, ui: box<radiance.IUiHost>, dt: float) {
+    pub fn tick_prompt(self: &Self, ui: box<radiance.IUiHost>, dt: float) {
         let phase = self.prompt_phase;
         if phase == PROMPT_FIRST_TIME {
             let t = self.prompt_time - dt;
@@ -380,7 +380,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] TitleDirector(
         }
     }
 
-    pub fn tick_outline(self: refmut<Self>, dt: float) {
+    pub fn tick_outline(self: &Self, dt: float) {
         let phase = self.outline_phase;
         if phase == OUTLINE_FIRST_TIME {
             let t = self.outline_remaining - dt;
@@ -427,7 +427,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] TitleDirector(
     }
 
     pub fn update(
-        self: refmut<Self>,
+        self: &Self,
         dt: float,
     ) -> ?box<radiance.IDirector> {
         let code = self.intent;
@@ -522,14 +522,14 @@ pub struct[radiance.IUiLayer, radiance.IDirector] TitleSettingsDirector(
     pub intent: title_consts.Intent,
     pub intent_arg: int,
 ) {
-    pub fn activate(self: refmut<Self>) -> int {
+    pub fn activate(self: &Self) -> int {
         self.intent = title_consts.Intent.None;
         self.intent_arg = 0;
         0
     }
-    pub fn deactivate(self: refmut<Self>) -> int { 0 }
+    pub fn deactivate(self: &Self) -> int { 0 }
 
-    pub fn render(self: refmut<Self>, ui: box<radiance.IUiHost>, dt: float) -> int {
+    pub fn render(self: &Self, ui: box<radiance.IUiHost>, dt: float) -> int {
         ui.style_color(
             title_consts.SC_WINDOW_BG,
             title_consts.BG_R, title_consts.BG_G, title_consts.BG_B, title_consts.BG_A,
@@ -567,7 +567,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] TitleSettingsDirector(
         0
     }
 
-    pub fn render_row(self: refmut<Self>, ui: box<radiance.IUiHost>, ordinal: int) {
+    pub fn render_row(self: &Self, ui: box<radiance.IUiHost>, ordinal: int) {
         ui.table_next_column();
         ui.text(settings_game_name(ordinal));
         ui.table_next_column();
@@ -590,7 +590,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] TitleSettingsDirector(
     // `SceneScaleMode` once at startup and builds its swapchain
     // accordingly; live-swapping render passes mid-frame is out of
     // scope for v1.
-    pub fn render_render_settings(self: refmut<Self>, ui: box<radiance.IUiHost>) {
+    pub fn render_render_settings(self: &Self, ui: box<radiance.IUiHost>) {
         let cfg = self.host.config();
         let current = cfg.get_scene_scale_mode();
         let is_logical = current == "logical";
@@ -610,7 +610,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] TitleSettingsDirector(
     }
 
     pub fn update(
-        self: refmut<Self>,
+        self: &Self,
         dt: float,
     ) -> ?box<radiance.IDirector> {
         let code = self.intent;

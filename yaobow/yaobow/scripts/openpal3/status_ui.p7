@@ -63,7 +63,7 @@ pub struct[openpal3.IPal3StatusRenderer] Pal3StatusRendererImpl(
     // Previous-frame left-button state, for click rising-edge detection.
     pub prev_down: bool = false,
 ) {
-    pub fn render_status(self: refmut<Self>, ui: box<radiance.IUiHost>, dt: float) -> int {
+    pub fn render_status(self: &Self, ui: box<radiance.IUiHost>, dt: float) -> int {
         let lw = ui.display_size_x() as float;
         let lh = ui.display_size_y() as float;
         if lw <= 0.0 || lh <= 0.0 { return 0; }
@@ -132,14 +132,14 @@ pub struct[openpal3.IPal3StatusRenderer] Pal3StatusRendererImpl(
 
     // Agent-server hook: open/close the character-status menu without a
     // synthetic avatar click. Takes effect on the next idle frame.
-    pub fn set_menu_open(self: refmut<Self>, open: bool) -> int {
+    pub fn set_menu_open(self: &Self, open: bool) -> int {
         self.menu_open = open;
         0
     }
 
     // Whether the character-status menu is open. The adventure director
     // polls this each frame to freeze the game world while it's up.
-    pub fn is_menu_open(self: refmut<Self>) -> bool {
+    pub fn is_menu_open(self: &Self) -> bool {
         return self.menu_open;
     }
 }

@@ -101,6 +101,16 @@ pub fn run() -> int {
     let _y: int = c.add(5);
     c.add(0)
 }
+
+pub fn run_retained() -> int {
+    let c: &ICounter = make_counter();
+    c.add(10);
+    c.add(5);
+    c.add(0)
+}
+
+pub fn make_retained() -> &ICounter { make_counter() }
+pub fn read_retained(c: &ICounter) -> int { c.add(0) }
 "#;
 
 fn host_make_counter(ctx: &mut Context) -> Result<(), p7::errors::RuntimeError> {
@@ -137,4 +147,62 @@ fn dispatcher_roundtrips_long_arg_and_return_through_real_vtable() {
 
         ctx.collect_garbage().expect("collect");
     });
+}
+
+#[test]
+fn dispatcher_calls_through_owned_retained_foreign_reference() {
+    let module = p7::compile(SOURCE.to_string()).expect("compile");
+    let mut ctx = Context::new();
+    install_com_dispatcher(&mut ctx);
+    ctx.register_host_function("test.make_counter".to_string(), host_make_counter);
+    ctx.load_module(module);
+    let mut services = TestServices {
+        com: ComObjectTable::new(),
+    };
+    scope(&mut services, || {
+        ctx.push_function("run_retained", Vec::new());
+        ctx.resume().expect("run retained receiver");
+        assert_eq!(ctx.stack[0].stack.pop(), Some(Data::Int(15)));
+        ctx.collect_garbage().expect("collect");
+    });
+}
+
+#[test]
+fn retained_foreign_reference_roots_ownership_and_rejects_another_runtime() {
+    let mut ctx = Context::new();
+    install_com_dispatcher(&mut ctx);
+    ctx.register_host_function("test.make_counter".into(), host_make_counter);
+    ctx.load_module(p7::compile(SOURCE.into()).unwrap());
+    let mut services = TestServices {
+        com: ComObjectTable::new(),
+    };
+    let (value, root) = scope(&mut services, || {
+        ctx.push_function("make_retained", vec![]);
+        ctx.resume().unwrap();
+        let value = ctx.stack[0].stack.pop().unwrap();
+        let root = ctx.add_external_root(value.clone());
+        ctx.collect_garbage().unwrap();
+        (value, root)
+    });
+    assert_eq!(services.com.live(), 1);
+
+    let mut other = Context::new();
+    install_com_dispatcher(&mut other);
+    other.load_module(p7::compile(SOURCE.into()).unwrap());
+    other.push_function("read_retained", vec![value.clone()]);
+    let error = other.resume().expect_err("cannot cross runtime ownership");
+    assert!(error.to_string().contains("different runtime"), "{error}");
+
+    scope(&mut services, || {
+        ctx.push_function("read_retained", vec![value]);
+        ctx.resume().unwrap();
+        assert_eq!(ctx.stack[0].stack.pop(), Some(Data::Int(0)));
+        ctx.remove_external_root(root);
+        ctx.collect_garbage().unwrap();
+    });
+    assert_eq!(
+        services.com.live(),
+        0,
+        "final GC releases the owned COM cell"
+    );
 }

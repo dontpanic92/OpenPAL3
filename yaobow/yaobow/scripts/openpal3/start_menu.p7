@@ -259,7 +259,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal3StartMenuDirector(
     // `WID_*` for buttons and `SLOT_KEY_BASE + slot` for save rows.
     pub ctx: box<gui.UiCtx>,
 ) {
-    pub fn activate(self: refmut<Self>) -> int {
+    pub fn activate(self: &Self) -> int {
         // When an intro movie is queued we postpone BGM start until
         // the movie ends — otherwise the menu BGM overlaps with the
         // logo's audio track. The render branch that drops `intro`
@@ -280,7 +280,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal3StartMenuDirector(
         0
     }
 
-    pub fn deactivate(self: refmut<Self>) -> int {
+    pub fn deactivate(self: &Self) -> int {
         if self.bgm != null {
             self.bgm!.stop();
         }
@@ -289,7 +289,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal3StartMenuDirector(
     }
 
     pub fn render(
-        self: refmut<Self>,
+        self: &Self,
         ui: box<radiance.IUiHost>,
         dt: float,
     ) -> int {
@@ -375,7 +375,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal3StartMenuDirector(
     // Declare the whole screen as a widget tree. Dispatches on the
     // current state: intro video, missing-assets fallback, or the cover
     // (optionally with the load overlay stacked on top).
-    pub fn build(self: refmut<Self>, ui: box<radiance.IUiHost>) -> box<gui.Element> {
+    pub fn build(self: &Self, ui: box<radiance.IUiHost>) -> box<gui.Element> {
         if self.intro != null {
             return self.build_intro(ui);
         }
@@ -407,7 +407,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal3StartMenuDirector(
 
     // Intro `LOGO.bik` frame, letterboxed full-canvas. The source aspect
     // is preserved against the imgui window's pixel extent.
-    pub fn build_intro(self: refmut<Self>, ui: box<radiance.IUiHost>) -> box<gui.Element> {
+    pub fn build_intro(self: &Self, ui: box<radiance.IUiHost>) -> box<gui.Element> {
         let v = self.intro!;
         let viewport = gui.Rect(0.0, 0.0,
             ui.display_size_x() as float, ui.display_size_y() as float);
@@ -420,7 +420,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal3StartMenuDirector(
             gui.Image(v.texture_com_id(), dst.w, dst.h));
     }
 
-    pub fn build_missing(self: refmut<Self>) -> box<gui.Element> {
+    pub fn build_missing(self: &Self) -> box<gui.Element> {
         let lines: array<box<gui.Element>> = [
             gui.Positioned(20.0, 20.0, 760.0, 24.0,
                 gui.Text("PAL3 start menu: UI_opt.tli not found in basedata.cpk.")),
@@ -433,7 +433,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal3StartMenuDirector(
     // Load-mode overlay: a title, a `ListView` of clickable save rows,
     // and a Back affordance — all anchored at the cover's letterbox-fit
     // panel rect. Mirrors PAL4's synthetic save-slot list.
-    pub fn build_load_overlay(self: refmut<Self>, ui: box<radiance.IUiHost>) -> box<gui.Element> {
+    pub fn build_load_overlay(self: &Self, ui: box<radiance.IUiHost>) -> box<gui.Element> {
         let atlas = self.atlas!;
         let native = native_size(atlas);
         let viewport = gui.Rect(0.0, 0.0,
@@ -472,7 +472,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal3StartMenuDirector(
     // release); empty rows render greyed + inert. The press-latch key is
     // namespaced by `SLOT_KEY_BASE` so it never collides with a cover
     // `WID_*`.
-    pub fn slot_row(self: refmut<Self>, idx: int) -> box<gui.Element> {
+    pub fn slot_row(self: &Self, idx: int) -> box<gui.Element> {
         let slot = idx + 1;
         let exists = self.host.pal3().save_slot_exists(slot);
         let key = SLOT_KEY_BASE + slot;
@@ -487,7 +487,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal3StartMenuDirector(
 
     // --- Click handlers (mutate intent/mode; drained in `update`) -------
 
-    pub fn dispatch_click(self: refmut<Self>, wid: int) {
+    pub fn dispatch_click(self: &Self, wid: int) {
         // Sprite → role mapping. xindegushi (新的故事) is the New Game
         // trigger; jiudehuiyi (旧的回忆) opens the load list;
         // likaiyouxi (离开游戏) exits. The other three sprites
@@ -498,18 +498,18 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal3StartMenuDirector(
         if wid == WID_JIUDEHUIYI { self.mode = MODE_LOAD;         return; }
     }
 
-    pub fn fire_load_slot(self: refmut<Self>, slot: int) {
+    pub fn fire_load_slot(self: &Self, slot: int) {
         self.load_slot = slot;
         self.intent = Intent.Load;
         self.mode = MODE_MAIN;
     }
 
-    pub fn go_main(self: refmut<Self>) {
+    pub fn go_main(self: &Self) {
         self.mode = MODE_MAIN;
     }
 
     pub fn update(
-        self: refmut<Self>,
+        self: &Self,
         dt: float,
     ) -> ?box<radiance.IDirector> {
         // Already closing: do not honour new intents; just fire

@@ -32,15 +32,15 @@ fn record_event(seed: int, event: int);
 struct[radiance.IUiLayer, radiance.IDirector] StubLayer(
     seed: int,
 ) {
-    pub fn activate(self: refmut<Self>) -> int {
+    pub fn activate(self: &Self) -> int {
         record_event(self.seed, 1);
         0
     }
-    pub fn update(self: refmut<Self>, dt: float) -> ?box<radiance.IDirector> {
+    pub fn update(self: &Self, dt: float) -> ?box<radiance.IDirector> {
         record_event(self.seed, 2);
         return null;
     }
-    pub fn render(self: refmut<Self>, ui: box<radiance.IUiHost>, dt: float) -> int {
+    pub fn render(self: &Self, ui: box<radiance.IUiHost>, dt: float) -> int {
         // Forward a single recognisable call to the UI host so the
         // RecordingUiHost picks it up. `text` is the simplest leaf
         // method we can verify.
@@ -48,7 +48,7 @@ struct[radiance.IUiLayer, radiance.IDirector] StubLayer(
         record_event(self.seed, 4);
         0
     }
-    pub fn deactivate(self: refmut<Self>) -> int {
+    pub fn deactivate(self: &Self) -> int {
         record_event(self.seed, 3);
         0
     }
@@ -184,9 +184,9 @@ import radiance;
 fn record_event(seed: int, event: int);
 
 struct[radiance.IDirector] PlainDir(seed: int) {
-    pub fn activate(self: refmut<Self>) -> int { record_event(self.seed, 1); 0 }
-    pub fn update(self: refmut<Self>, dt: float) -> ?box<radiance.IDirector> { return null; }
-    pub fn deactivate(self: refmut<Self>) -> int { record_event(self.seed, 3); 0 }
+    pub fn activate(self: &Self) -> int { record_event(self.seed, 1); 0 }
+    pub fn update(self: &Self, dt: float) -> ?box<radiance.IDirector> { return null; }
+    pub fn deactivate(self: &Self) -> int { record_event(self.seed, 3); 0 }
 }
 
 pub fn make_plain(seed: int) -> box<radiance.IDirector> {
@@ -235,23 +235,23 @@ import radiance;
 fn record_event(seed: int, event: int);
 
 struct[radiance.IUiLayer, radiance.IDirector] NextLayer(seed: int) {
-    pub fn activate(self: refmut<Self>) -> int { record_event(self.seed, 1); 0 }
-    pub fn update(self: refmut<Self>, dt: float) -> ?box<radiance.IDirector> { return null; }
-    pub fn render(self: refmut<Self>, ui: box<radiance.IUiHost>, dt: float) -> int {
+    pub fn activate(self: &Self) -> int { record_event(self.seed, 1); 0 }
+    pub fn update(self: &Self, dt: float) -> ?box<radiance.IDirector> { return null; }
+    pub fn render(self: &Self, ui: box<radiance.IUiHost>, dt: float) -> int {
         ui.text("next");
         record_event(self.seed, 4);
         0
     }
-    pub fn deactivate(self: refmut<Self>) -> int { record_event(self.seed, 3); 0 }
+    pub fn deactivate(self: &Self) -> int { record_event(self.seed, 3); 0 }
 }
 
 struct[radiance.IDirector] WelcomeLike(next_seed: int) {
-    pub fn activate(self: refmut<Self>) -> int { 0 }
-    pub fn update(self: refmut<Self>, dt: float) -> ?box<radiance.IDirector> {
+    pub fn activate(self: &Self) -> int { 0 }
+    pub fn update(self: &Self, dt: float) -> ?box<radiance.IDirector> {
         let n = box(NextLayer(self.next_seed));
         return n as box<radiance.IDirector>;
     }
-    pub fn deactivate(self: refmut<Self>) -> int { 0 }
+    pub fn deactivate(self: &Self) -> int { 0 }
 }
 
 pub fn make_welcome(seed: int) -> box<radiance.IDirector> {

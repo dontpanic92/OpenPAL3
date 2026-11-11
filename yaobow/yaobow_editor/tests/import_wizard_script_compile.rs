@@ -53,8 +53,8 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Harness(
     pub state: box<import_wizard.ImportWizardState>,
     pub picks: box<array<string>>,
 ) {
-    pub fn activate(self: refmut<Self>) -> int { 0 }
-    pub fn deactivate(self: refmut<Self>) -> int { 0 }
+    pub fn activate(self: &Self) -> int { 0 }
+    pub fn deactivate(self: &Self) -> int { 0 }
 
     // Returns the current `picks` length so Rust-side tests can
     // observe the "Preview staged asset" button's routing without
@@ -62,12 +62,12 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Harness(
     // `IUiLayer`/`IDirector` surface (custom instance methods aren't
     // reachable via `ScriptHost::call_method_*` — only methods on a
     // proto box's declared interfaces are).
-    pub fn render(self: refmut<Self>, ui: box<radiance.IUiHost>, dt: float) -> int {
+    pub fn render(self: &Self, ui: box<radiance.IUiHost>, dt: float) -> int {
         import_wizard.render_import_wizard(ui, self.host, self.state, self.picks);
         return self.picks.len();
     }
 
-    pub fn update(self: refmut<Self>, dt: float) -> ?box<radiance.IDirector> {
+    pub fn update(self: &Self, dt: float) -> ?box<radiance.IDirector> {
         return null;
     }
 }

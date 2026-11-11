@@ -126,7 +126,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal4StartMenuDirector(
     // images and `SLOT_KEY_BASE + slot` for save rows.
     pub ctx: box<gui.UiCtx>,
 ) {
-    pub fn activate(self: refmut<Self>) -> int {
+    pub fn activate(self: &Self) -> int {
         if self.bgm != null {
             self.bgm!.play(true);
         }
@@ -147,7 +147,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal4StartMenuDirector(
         0
     }
 
-    pub fn deactivate(self: refmut<Self>) -> int {
+    pub fn deactivate(self: &Self) -> int {
         if self.scene_pushed {
             self.host.scene_manager().pop_scene();
             self.scene_pushed = false;
@@ -159,7 +159,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal4StartMenuDirector(
     }
 
     pub fn render(
-        self: refmut<Self>,
+        self: &Self,
         ui: box<radiance.IUiHost>,
         dt: float,
     ) -> int {
@@ -192,7 +192,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal4StartMenuDirector(
     // letterbox fit; on the load screen a `ListView` of save rows is
     // anchored over the central panel via `LayoutAnchor`. No `for`/`push`
     // or scaling arithmetic — the whole screen is a single expression.
-    pub fn build(self: refmut<Self>) -> box<gui.Element> {
+    pub fn build(self: &Self) -> box<gui.Element> {
         if self.mode == MODE_LOAD {
             if self.load_layout != null {
                 let items: array<box<gui.Element>> = [
@@ -215,11 +215,11 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal4StartMenuDirector(
         return self.missing_widget("PAL4 start menu: layout MainWindow.xml not found.");
     }
 
-    pub fn missing_widget(self: refmut<Self>, msg: string) -> box<gui.Element> {
+    pub fn missing_widget(self: &Self, msg: string) -> box<gui.Element> {
         return gui.Positioned(20.0, 20.0, 800.0, 40.0, gui.Text(msg));
     }
 
-    pub fn slot_count(self: refmut<Self>) -> int {
+    pub fn slot_count(self: &Self) -> int {
         return self.host.pal4().save_slot_count();
     }
 
@@ -227,7 +227,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal4StartMenuDirector(
     // Populated rows render white + clickable (loads on release); empty
     // rows render greyed + inert. The press latch key is namespaced by
     // `SLOT_KEY_BASE` so it never collides with a layout `window_id`.
-    pub fn slot_row(self: refmut<Self>, idx: int) -> box<gui.Element> {
+    pub fn slot_row(self: &Self, idx: int) -> box<gui.Element> {
         let slot = idx + 1;
         let exists = self.host.pal4().save_slot_exists(slot);
         let label = self.host.pal4().save_slot_summary(slot);
@@ -241,7 +241,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal4StartMenuDirector(
 
     // --- Click handlers (mutate intent/mode; drained in `update`) -------
 
-    pub fn on_main_click(self: refmut<Self>, name: string) {
+    pub fn on_main_click(self: &Self, name: string) {
         if name == BTN_NEW_GAME {
             self.intent = Intent.NewGame;
             return;
@@ -262,7 +262,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal4StartMenuDirector(
         // BtnPicture are intentionally inert.
     }
 
-    pub fn on_load_click(self: refmut<Self>, name: string) {
+    pub fn on_load_click(self: &Self, name: string) {
         if is_back_name(name) {
             self.mode = MODE_MAIN;
         }
@@ -271,13 +271,13 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal4StartMenuDirector(
         // selection is handled by the slot rows.
     }
 
-    pub fn fire_load_slot(self: refmut<Self>, slot: int) {
+    pub fn fire_load_slot(self: &Self, slot: int) {
         self.load_slot = slot;
         self.intent = Intent.Load;
     }
 
     pub fn update(
-        self: refmut<Self>,
+        self: &Self,
         dt: float,
     ) -> ?box<radiance.IDirector> {
         let code = self.intent;

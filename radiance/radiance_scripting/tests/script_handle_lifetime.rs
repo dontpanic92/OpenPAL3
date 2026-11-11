@@ -25,7 +25,7 @@ fn capture_action(body: box<crosscom.IAction>);
 fn record_invocation();
 
 struct[crosscom.IAction] Callback() {
-    pub fn invoke(self: refmut<Self>) -> int {
+    pub fn invoke(self: &Self) -> int {
         record_invocation();
         0
     }
@@ -43,6 +43,18 @@ pub fn run_unrelated() {
     // that the captured ComRc survives across distinct
     // `scope_context` activations.
 }
+
+pub fn save_stateful_callback() -> &int {
+    let mut state = 0;
+    let count = &state;
+    capture_action(() => {
+        *count += 1;
+        record_invocation();
+    });
+    count
+}
+
+pub fn read_count(count: &int) -> int { *count }
 "#;
 
 // Thread-local because tests in cargo's harness run in parallel; we
@@ -129,6 +141,47 @@ fn captured_action_survives_across_script_host_calls() {
     // ScriptHost still alive and functional after drop.
     host.call_void("run_unrelated", vec![])
         .expect("run_unrelated again");
+}
+
+#[test]
+fn captured_action_roots_shared_managed_state_across_calls_and_gc() {
+    let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    CAPTURED.with(|c| c.borrow_mut().clear());
+    INVOCATIONS.with(|c| *c.borrow_mut() = 0);
+
+    let host = ScriptHost::new();
+    host.with_ctx_mut(|ctx| {
+        ctx.register_host_function("test.capture_action".into(), capture_action_host_fn);
+        ctx.register_host_function("test.record_invocation".into(), record_invocation_host_fn);
+    });
+    host.load_source(SOURCE).expect("load source");
+    let count = host
+        .call_returning_data("save_stateful_callback", vec![])
+        .expect("capture managed state");
+    let captured = CAPTURED.with(|c| c.borrow().last().cloned().expect("captured action"));
+
+    for expected in 1..=3 {
+        host.call_void("run_unrelated", vec![]).unwrap();
+        host.with_ctx_mut(|ctx| ctx.collect_garbage().unwrap());
+        captured.invoke();
+        assert_eq!(
+            host.call_returning_data("read_count", vec![count.clone()])
+                .unwrap(),
+            p7::interpreter::context::Data::Int(expected)
+        );
+    }
+    assert_eq!(INVOCATIONS.with(|c| *c.borrow()), 3);
+
+    drop(captured);
+    CAPTURED.with(|c| c.borrow_mut().clear());
+    host.with_ctx_mut(|ctx| {
+        ctx.collect_garbage().unwrap();
+        assert_eq!(
+            ctx.box_heap.live_count(),
+            0,
+            "dropping the CCW releases state"
+        );
+    });
 }
 
 #[test]

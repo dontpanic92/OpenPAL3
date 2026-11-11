@@ -35,7 +35,7 @@ pub fn make_import_wizard_state() -> ImportWizardState {
     return ImportWizardState(false, false, 100, 4580, -1, true);
 }
 
-fn reset_option_mirror(state: box<ImportWizardState>) {
+fn reset_option_mirror(state: &ImportWizardState) {
     state.mv3_scale_pct = 100;
     state.mv3_ticks = 4580;
     state.pol_alpha_mode = -1;
@@ -51,7 +51,7 @@ fn configure_project_output(
 
 // Main-menu entry: always Add beside the currently previewed resource.
 pub fn open_wizard_for_add(
-    state: box<ImportWizardState>,
+    state: &ImportWizardState,
     imports: box<yaobow_editor_services.IImportService>,
     context_vfs_path: string,
 ) {
@@ -70,7 +70,7 @@ pub fn open_wizard_for_add(
 // `render_replace_section` surfaces that via `last_error`/an empty
 // target so the user can see why and pick a different target.
 pub fn open_wizard_for_replace(
-    state: box<ImportWizardState>,
+    state: &ImportWizardState,
     imports: box<yaobow_editor_services.IImportService>,
     vfs_path: string,
 ) {
@@ -99,7 +99,7 @@ fn status_label(status: int) -> string {
 pub fn render_import_wizard(
     ui: box<radiance.IUiHost>,
     host: box<yaobow_editor_services.IEditorHostContext>,
-    state: box<ImportWizardState>,
+    state: &ImportWizardState,
     picks: box<array<string>>,
 ) {
     if !state.show {
@@ -286,7 +286,7 @@ fn render_add_section(
 fn render_format_options(
     ui: box<radiance.IUiHost>,
     imports: box<yaobow_editor_services.IImportService>,
-    state: box<ImportWizardState>,
+    state: &ImportWizardState,
 ) {
     let fmt = imports.target_format();
     if fmt == 0 {
@@ -303,7 +303,7 @@ fn render_format_options(
 fn render_mv3_options(
     ui: box<radiance.IUiHost>,
     imports: box<yaobow_editor_services.IImportService>,
-    state: box<ImportWizardState>,
+    state: &ImportWizardState,
 ) {
     let scale_pct = state.mv3_scale_pct;
     let new_scale_pct = ui.slider_int("Vertex scale (% of PAL3 default)", scale_pct, 1, 1000);
@@ -322,7 +322,7 @@ fn render_mv3_options(
 fn render_pol_options(
     ui: box<radiance.IUiHost>,
     imports: box<yaobow_editor_services.IImportService>,
-    state: box<ImportWizardState>,
+    state: &ImportWizardState,
 ) {
     render_pol_alpha_choice(ui, imports, state, -1, "Auto (use source material)");
     render_pol_alpha_choice(ui, imports, state, 0, "Force alpha off");
@@ -332,7 +332,7 @@ fn render_pol_options(
 fn render_pol_alpha_choice(
     ui: box<radiance.IUiHost>,
     imports: box<yaobow_editor_services.IImportService>,
-    state: box<ImportWizardState>,
+    state: &ImportWizardState,
     mode: int,
     label: string,
 ) {
@@ -346,7 +346,7 @@ fn render_pol_alpha_choice(
 fn render_cvd_options(
     ui: box<radiance.IUiHost>,
     imports: box<yaobow_editor_services.IImportService>,
-    state: box<ImportWizardState>,
+    state: &ImportWizardState,
 ) {
     let legacy = state.cvd_legacy;
     let new_legacy = ui.checkbox("Use legacy CVD magic", legacy);

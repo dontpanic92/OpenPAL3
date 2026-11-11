@@ -26,7 +26,7 @@ pub fn make_project_panel_state() -> ProjectPanelState {
 pub fn render_file_menu(
     ui: box<radiance.IUiHost>,
     host: box<yaobow_editor_services.IEditorHostContext>,
-    state: box<ProjectPanelState>,
+    state: &ProjectPanelState,
 ) {
     ui.menu("File", () => {
         let proj = host.project();
@@ -74,7 +74,7 @@ pub fn render_file_menu(
 
 pub fn render_view_menu_item(
     ui: box<radiance.IUiHost>,
-    state: box<ProjectPanelState>,
+    state: &ProjectPanelState,
 ) {
     let shown = state.show_changes_panel;
     if ui.menu_item("Show Project Changes", shown) {
@@ -90,7 +90,7 @@ pub fn render_view_menu_item(
 pub fn render_project_changes_panel(
     ui: box<radiance.IUiHost>,
     host: box<yaobow_editor_services.IEditorHostContext>,
-    state: box<ProjectPanelState>,
+    state: &ProjectPanelState,
 ) {
     if !state.show_changes_panel {
         return;

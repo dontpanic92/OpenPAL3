@@ -744,7 +744,11 @@ pub struct[Element] NativeCanvas(
         // whose origin is the fitted top-left and whose extent is the native
         // size scaled up — i.e. native coordinates multiplied through.
         let canvas = Rect(fitted.x, fitted.y, self.native.w * scale, self.native.h * scale);
-        let kids = self.children;
+        // The clip callback retains handles, not a scoped view into this widget.
+        let mut kids: array<box<Element>> = [];
+        for child in self.children {
+            kids.push(child);
+        }
         if !self.clip {
             for c in kids {
                 c.paint(canvas, ui, ctx);
