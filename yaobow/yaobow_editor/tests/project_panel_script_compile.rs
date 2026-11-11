@@ -65,13 +65,13 @@ import yaobow_editor.project_panel;
 import yaobow_editor.main_editor;
 
 pub struct[radiance.IUiLayer, radiance.IDirector] Harness(
-    pub host: box<yaobow_editor_services.IEditorHostContext>,
+    pub host: &yaobow_editor_services.IEditorHostContext,
     pub state: project_panel.ProjectPanelState,
 ) {
     pub fn activate(self: &Self) -> int { 0 }
     pub fn deactivate(self: &Self) -> int { 0 }
 
-    pub fn render(self: &Self, ui: box<radiance.IUiHost>, dt: float) -> int {
+    pub fn render(self: &Self, ui: &radiance.IUiHost, dt: float) -> int {
         project_panel.render_file_menu(ui, self.host, &self.state);
         ui.menu("View", () => {
             project_panel.render_view_menu_item(ui, &self.state);
@@ -81,12 +81,12 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Harness(
         0
     }
 
-    pub fn update(self: &Self, dt: float) -> ?box<radiance.IDirector> {
+    pub fn update(self: &Self, dt: float) -> ?&radiance.IDirector {
         return null;
     }
 }
 
-pub fn init(host: box<yaobow_editor_services.IEditorHostContext>) -> box<radiance.IDirector> {
+pub fn init(host: &yaobow_editor_services.IEditorHostContext) -> &radiance.IDirector {
     return box(Harness(host, project_panel.make_project_panel_state()));
 }
 "#;

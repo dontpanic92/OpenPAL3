@@ -10,7 +10,7 @@
 //! non-IUnknown slot. The host dispatcher relies on this invariant.
 //!
 //! Classes are no longer emitted as script-visible artifacts: scripts
-//! interact with COM objects through `box<I>` foreign cells whose
+//! interact with COM objects through retained `&I` references whose owning cells'
 //! handle is interned by the host (see `crosscom-protosept` for
 //! the dispatcher implementation).
 //!
@@ -30,13 +30,16 @@
 //! | `float`      | `float`   |
 //! | `UUID`       | `string`  |
 //! | `&str` / `string` | `string` |
-//! | `IFoo`       | `box<IFoo>` |
-//! | `IFoo?`      | `?box<IFoo>` |
-//! | `IFoo[]`     | `array<box<IFoo>>` |
+//! | `IFoo`       | `&IFoo` |
+//! | `IFoo?`      | `?&IFoo` |
+//! | `IFoo[]`     | `array<&IFoo>` |
+//!
+//! `[protosept(owned)]` explicitly retains `box<I>` carriers for native-only
+//! ownership contracts; it is not the default for interface identity.
 //!
 //! Scriptable interfaces use retained `&I` receivers so callbacks can keep
 //! their script owner alive. Host-only interfaces use scoped `refmut<I>`.
-//! Interface arguments and results remain owned box carriers.
+//! Owned foreign carriers remain internal to the runtime.
 //!
 //! The generated file is intended to be read by the `p7` compiler. It does
 //! not exercise any unstable language features; it stays within the subset
@@ -121,7 +124,7 @@ impl ProtoseptGen {
         }
 
         // Emit interfaces as `@foreign` protos. IDL classes are no longer
-        // emitted as script-visible artifacts — scripts hold `box<I>`
+        // emitted as script-visible artifacts — scripts hold `&I`
         // directly and the host dispatcher backs every method call.
         for item in &self.unit.items {
             if let Item::Interface(interface) = item {
@@ -301,7 +304,7 @@ impl ProtoseptGen {
 
     /// Map an IDL type string to its protosept equivalent, or `Ok(None)` if
     /// the type cannot be represented in script. Interface types lower to
-    /// `box<I>` carriers backed by a host-managed `ComRc<I>` (see
+    /// `&I` references backed by an owned host-managed `ComRc<I>` (see
     /// `crosscom-protosept` for the dispatcher).
     ///
     /// Interfaces declared in an *imported* IDL are emitted as qualified
@@ -322,8 +325,8 @@ impl ProtoseptGen {
             if inner == "IUnknown" {
                 return Ok(Some("array<int>".to_string()));
             }
-            if let Some(iface) = self.interface_name_for_p7(inner) {
-                return Ok(Some(format!("array<box<{iface}>>")));
+            if let Some(iface) = self.interface_value_type(inner) {
+                return Ok(Some(format!("array<{iface}>")));
             }
             // Primitive-element arrays could be added later.
             return Ok(None);
@@ -334,8 +337,8 @@ impl ProtoseptGen {
             if inner == "IUnknown" {
                 return Ok(Some("?int".to_string()));
             }
-            if let Some(iface) = self.interface_name_for_p7(inner) {
-                return Ok(Some(format!("?box<{iface}>")));
+            if let Some(iface) = self.interface_value_type(inner) {
+                return Ok(Some(format!("?{iface}")));
             }
             // Nullable primitives are not currently used in any IDL; map them
             // anyway for completeness.
@@ -353,12 +356,24 @@ impl ProtoseptGen {
             return Ok(Some("int".to_string()));
         }
 
-        if let Some(iface) = self.interface_name_for_p7(trimmed) {
-            return Ok(Some(format!("box<{iface}>")));
+        if let Some(iface) = self.interface_value_type(trimmed) {
+            return Ok(Some(iface));
         }
 
         // Unknown — caller treats as "skip method".
         Ok(None)
+    }
+
+    fn interface_value_type(&self, name: &str) -> Option<String> {
+        let reference = self.interface_name_for_p7(name)?;
+        let Symbol::Interface(interface) = self.symbols.get(name)? else {
+            return None;
+        };
+        Some(if interface.lang_flag("protosept", "owned") {
+            format!("box<{reference}>")
+        } else {
+            format!("&{reference}")
+        })
     }
 
     /// If `name` is an interface symbol known to this generator, return the

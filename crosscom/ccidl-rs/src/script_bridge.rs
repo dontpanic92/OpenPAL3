@@ -19,6 +19,9 @@
 //! `wrap_director`; `IUiLayer` → `register_ui_layer_proto`,
 //! `wrap_ui_layer`).
 //!
+//! `[protosept(owned)]` instead emits `register_<i>_owned_proto()` to require
+//! original owned foreign carriers and reject managed/script proxies.
+//!
 //! Type mapping (must stay in lock-step with `protosept.rs` and
 //! `crosscom_protosept::proto_ccw`):
 //!
@@ -99,16 +102,44 @@ impl<'a> ScriptBridgeGen<'a> {
                     continue;
                 }
                 if interface.lang_flag("protosept", "scriptable") {
+                    if interface.lang_flag("protosept", "owned") {
+                        return Err(Error::Generate(format!(
+                            "{} cannot be both protosept(scriptable) and protosept(owned)",
+                            interface.name
+                        )));
+                    }
                     local_scriptable.push(interface);
                 }
             }
         }
-        if local_scriptable.is_empty() {
+        if local_scriptable.is_empty()
+            && !self.unit.items.iter().any(|item| {
+                matches!(
+                    item, Item::Interface(interface)
+                        if !interface.codegen_ignore() && interface.lang_flag("protosept", "owned")
+                )
+            })
+        {
             return Ok(String::new());
         }
-
         let mut out = String::new();
         out.push_str("\n// --- Script bridge (auto-generated from [protosept(scriptable)]) ---\n");
+        for item in &self.unit.items {
+            if let Item::Interface(interface) = item
+                && !interface.codegen_ignore()
+                && interface.lang_flag("protosept", "owned")
+            {
+                let snake = pascal_to_snake_drop_leading_i(&interface.name);
+                let path = self.interface_rust_path(interface);
+                out.push_str(&format!(
+                    "\npub fn register_{snake}_owned_proto() {{\n\
+                         ::crosscom_protosept::register_owned_proto(\
+                         <{path} as ::crosscom::ComInterface>::INTERFACE_ID)\
+                         .expect(\"owned protocol cannot also have a script proxy\");\n\
+                     }}\n"
+                ));
+            }
+        }
         // Each scriptable interface gets `register_<i>_proto()` (the
         // IDL-derived ProtoSpec / COM-vtable metadata) and `wrap_<i>()`
         // (reverse-wrap a script struct into a real `ComRc<I>`). That's

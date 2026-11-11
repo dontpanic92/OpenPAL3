@@ -203,9 +203,45 @@ fn icounter_roundtrips_add_and_get_through_runtime_typed_ccw() {
 
     drop(counter);
     runtime.with_ctx_mut(|ctx| {
+        ctx.collect_garbage().unwrap();
         assert!(
             ctx.external_root(0).is_none(),
             "drop must unroot via runtime handle"
+        );
+    });
+}
+
+#[test]
+fn ccw_rejects_cross_runtime_and_unowned_foreign_receivers() {
+    let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    register_counter();
+    let mut origin = Context::new();
+    origin.load_module(p7::compile(COUNTER_SCRIPT.to_string()).unwrap());
+    origin.push_function("make_counter", vec![Data::Int(7)]);
+    origin.resume().unwrap();
+    let owned = origin.stack[0].stack.pop().unwrap();
+    let retained = origin.retain_reference(&owned).unwrap();
+    let origin = TestRuntime::new(origin);
+    let origin_handle = RuntimeHandle::from_rc(&origin);
+    let _original = wrap_proto::<ICounterInst>(&origin_handle, retained.clone()).unwrap();
+
+    let mut other = Context::new();
+    other.load_module(p7::compile(COUNTER_SCRIPT.to_string()).unwrap());
+    let unowned = other.alloc_foreign_ref("test.ICounter", 123).unwrap();
+    let other = TestRuntime::new(other);
+    let other_handle = RuntimeHandle::from_rc(&other);
+    let error = wrap_proto::<ICounterInst>(&other_handle, retained)
+        .err()
+        .unwrap();
+    assert!(error.to_string().contains("different runtime"), "{error}");
+    let error = wrap_proto::<ICounterInst>(&other_handle, unowned)
+        .err()
+        .unwrap();
+    assert!(error.to_string().contains("owned"), "{error}");
+    other.with_ctx_mut(|ctx| {
+        assert!(
+            ctx.external_root(0).is_none(),
+            "rejected values create no roots"
         );
     });
 }
@@ -425,15 +461,14 @@ fn wrap_proto_for_unregistered_uuid_errors_loudly() {
 
     // Now with a live runtime: registry lookup should fail.
     let mut ctx = Context::new();
-    let module = p7::compile(r#"pub fn make_box() -> int { 0 }"#.to_string()).expect("compile");
+    let module = p7::compile(COUNTER_SCRIPT.to_string()).expect("compile");
     ctx.load_module(module);
+    ctx.push_function("make_counter", vec![Data::Int(7)]);
+    ctx.resume().unwrap();
+    let valid = ctx.stack[0].stack.pop().unwrap();
     let runtime = TestRuntime::new(ctx);
     let handle = RuntimeHandle::from_rc(&runtime);
-    let dummy = Data::BoxRef {
-        idx: 0,
-        generation: 0,
-    };
-    let err2 = match wrap_proto::<INotRegistered>(&handle, dummy) {
+    let err2 = match wrap_proto::<INotRegistered>(&handle, valid) {
         Ok(_) => panic!("expected registry error"),
         Err(e) => e,
     };

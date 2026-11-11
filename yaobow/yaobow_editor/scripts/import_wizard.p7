@@ -43,7 +43,7 @@ fn reset_option_mirror(state: &ImportWizardState) {
 }
 
 fn configure_project_output(
-    imports: box<yaobow_editor_services.IImportService>,
+    imports: &yaobow_editor_services.IImportService,
 ) {
     imports.set_save_to_file(false);
     imports.set_add_to_project(true);
@@ -52,7 +52,7 @@ fn configure_project_output(
 // Main-menu entry: always Add beside the currently previewed resource.
 pub fn open_wizard_for_add(
     state: &ImportWizardState,
-    imports: box<yaobow_editor_services.IImportService>,
+    imports: &yaobow_editor_services.IImportService,
     context_vfs_path: string,
 ) {
     imports.reset();
@@ -71,7 +71,7 @@ pub fn open_wizard_for_add(
 // target so the user can see why and pick a different target.
 pub fn open_wizard_for_replace(
     state: &ImportWizardState,
-    imports: box<yaobow_editor_services.IImportService>,
+    imports: &yaobow_editor_services.IImportService,
     vfs_path: string,
 ) {
     imports.reset();
@@ -97,8 +97,8 @@ fn status_label(status: int) -> string {
 }
 
 pub fn render_import_wizard(
-    ui: box<radiance.IUiHost>,
-    host: box<yaobow_editor_services.IEditorHostContext>,
+    ui: &radiance.IUiHost,
+    host: &yaobow_editor_services.IEditorHostContext,
     state: &ImportWizardState,
     picks: box<array<string>>,
 ) {
@@ -224,8 +224,8 @@ fn planned_action_label(action: int) -> string {
 }
 
 fn render_planned_files(
-    ui: box<radiance.IUiHost>,
-    imports: box<yaobow_editor_services.IImportService>,
+    ui: &radiance.IUiHost,
+    imports: &yaobow_editor_services.IImportService,
 ) {
     let n = imports.planned_file_count();
     ui.text(f"Files to import: {n}");
@@ -242,8 +242,8 @@ fn render_planned_files(
 }
 
 fn render_format_choice(
-    ui: box<radiance.IUiHost>,
-    imports: box<yaobow_editor_services.IImportService>,
+    ui: &radiance.IUiHost,
+    imports: &yaobow_editor_services.IImportService,
     fmt: int,
     label: string,
 ) {
@@ -254,8 +254,8 @@ fn render_format_choice(
 }
 
 fn render_replace_section(
-    ui: box<radiance.IUiHost>,
-    imports: box<yaobow_editor_services.IImportService>,
+    ui: &radiance.IUiHost,
+    imports: &yaobow_editor_services.IImportService,
 ) {
     let pkg = imports.replace_target_package();
     if pkg == "" {
@@ -267,8 +267,8 @@ fn render_replace_section(
 }
 
 fn render_add_section(
-    ui: box<radiance.IUiHost>,
-    imports: box<yaobow_editor_services.IImportService>,
+    ui: &radiance.IUiHost,
+    imports: &yaobow_editor_services.IImportService,
 ) {
     let pkg = imports.add_target_package();
     let dir = imports.add_target_directory();
@@ -284,8 +284,8 @@ fn render_add_section(
 }
 
 fn render_format_options(
-    ui: box<radiance.IUiHost>,
-    imports: box<yaobow_editor_services.IImportService>,
+    ui: &radiance.IUiHost,
+    imports: &yaobow_editor_services.IImportService,
     state: &ImportWizardState,
 ) {
     let fmt = imports.target_format();
@@ -301,8 +301,8 @@ fn render_format_options(
 }
 
 fn render_mv3_options(
-    ui: box<radiance.IUiHost>,
-    imports: box<yaobow_editor_services.IImportService>,
+    ui: &radiance.IUiHost,
+    imports: &yaobow_editor_services.IImportService,
     state: &ImportWizardState,
 ) {
     let scale_pct = state.mv3_scale_pct;
@@ -320,8 +320,8 @@ fn render_mv3_options(
 }
 
 fn render_pol_options(
-    ui: box<radiance.IUiHost>,
-    imports: box<yaobow_editor_services.IImportService>,
+    ui: &radiance.IUiHost,
+    imports: &yaobow_editor_services.IImportService,
     state: &ImportWizardState,
 ) {
     render_pol_alpha_choice(ui, imports, state, -1, "Auto (use source material)");
@@ -330,8 +330,8 @@ fn render_pol_options(
 }
 
 fn render_pol_alpha_choice(
-    ui: box<radiance.IUiHost>,
-    imports: box<yaobow_editor_services.IImportService>,
+    ui: &radiance.IUiHost,
+    imports: &yaobow_editor_services.IImportService,
     state: &ImportWizardState,
     mode: int,
     label: string,
@@ -344,8 +344,8 @@ fn render_pol_alpha_choice(
 }
 
 fn render_cvd_options(
-    ui: box<radiance.IUiHost>,
-    imports: box<yaobow_editor_services.IImportService>,
+    ui: &radiance.IUiHost,
+    imports: &yaobow_editor_services.IImportService,
     state: &ImportWizardState,
 ) {
     let legacy = state.cvd_legacy;

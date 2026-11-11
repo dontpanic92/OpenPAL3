@@ -16,6 +16,7 @@ use radiance_scripting::comdef::services::{
     IGifAnimation, IHostContext, IHostContextImpl, IInputService, IRandomService, ITexture,
     ITextureService, ITextureServiceImpl, IVfsService,
 };
+use radiance_scripting::services::ui_host_recording::{RecordingUiHost, UiCall};
 use radiance_scripting::services::{GameRegistry, RandomService};
 use radiance_scripting::{
     RuntimeAccess, RuntimeHandle, ScriptHost, register_ui_layer_proto, with_services,
@@ -171,6 +172,9 @@ fn title_script_init_loads_with_imported_bindings() {
             app_ctx_id,
         )
         .expect("IHostContext foreign box must construct");
+    <ScriptHost as RuntimeAccess>::with_ctx(&runtime, &mut |_ctx| {
+        assert!(with_services(|s| s.com_table_mut().release(app_ctx_id)).unwrap());
+    });
     let app_data = runtime
         .call_returning_data("init", vec![app_ctx_box])
         .expect("yaobow app init should succeed");
@@ -189,8 +193,36 @@ fn title_script_init_loads_with_imported_bindings() {
     );
     director.activate();
     assert!(director.update(0.016).is_none());
+    let layer = director.query_interface::<IUiLayer>().unwrap();
+    let (recorder, ui) = RecordingUiHost::create();
+    recorder.set_display_size(1280, 720);
+    recorder.set_char_size(8.0, 16.0);
+    for _ in 0..3 {
+        <ScriptHost as RuntimeAccess>::with_ctx(&runtime, &mut |ctx| {
+            ctx.collect_garbage().unwrap()
+        });
+        layer.render(ui.clone(), 2.5);
+        assert!(director.update(0.016).is_none());
+    }
+    assert!(
+        recorder.calls.borrow().iter().any(|call| {
+            matches!(call, UiCall::Text(text) if text.contains("按下任意键继续"))
+        }),
+        "real title render must execute its nested retained callbacks: {:?}",
+        recorder.calls.borrow()
+    );
+    drop(layer);
     drop(director);
     drop(factory);
+    <ScriptHost as RuntimeAccess>::with_ctx(&runtime, &mut |ctx| {
+        ctx.collect_garbage().unwrap();
+        assert_eq!(
+            ctx.box_heap.live_count(),
+            0,
+            "title callbacks leave no retained roots"
+        );
+        assert_eq!(with_services(|s| s.com_table_mut().live()).unwrap(), 0);
+    });
 }
 
 #[test]

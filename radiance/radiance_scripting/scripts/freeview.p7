@@ -36,8 +36,8 @@ pub let KEY_RIGHT: int = 41;
 pub let KEY_DOWN: int = 42;
 
 pub fn update(
-    camera: box<radiance.ICameraControl>,
-    input: box<scripting_services.IInputService>,
+    camera: &radiance.ICameraControl,
+    input: &scripting_services.IInputService,
     delta_sec: float,
 ) {
     // WASD: build a local-frame direction vector and translate_local

@@ -30,7 +30,7 @@ struct[radiance.IDirector] StubDir(
         record_event(self.seed, 1);
         0
     }
-    pub fn update(self: &Self, dt: float) -> ?box<radiance.IDirector> {
+    pub fn update(self: &Self, dt: float) -> ?&radiance.IDirector {
         record_event(self.seed, 2);
         return null;
     }
@@ -40,9 +40,9 @@ struct[radiance.IDirector] StubDir(
     }
 }
 
-pub fn make_stub(seed: int) -> box<radiance.IDirector> {
+pub fn make_stub(seed: int) -> &radiance.IDirector {
     let d = box(StubDir(seed));
-    d as box<radiance.IDirector>
+    d as &radiance.IDirector
 }
 "#;
 

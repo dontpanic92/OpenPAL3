@@ -40,7 +40,7 @@
 //! incrementally.
 
 use std::alloc::{Layout, alloc, dealloc};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ffi::{CStr, c_void};
 use std::mem::size_of;
 use std::os::raw::{c_char, c_float, c_int, c_long};
@@ -49,7 +49,8 @@ use std::sync::{Mutex, OnceLock};
 
 use crosscom::{ComInterface, ComRc, IUnknown, ResultCode};
 use libffi::middle::{Cif, Closure, Type};
-use p7::interpreter::context::{Context, Data};
+use p7::embedding::RootedValue;
+use p7::interpreter::context::{Context, Data, ProtocolValue};
 
 use crate::{HostError, RuntimeHandle, with_services};
 
@@ -90,7 +91,7 @@ pub enum ArgKind {
     Float,
     Bool,
     Str,
-    /// `box<F>` interface arg. The C-ABI is a `*const *const c_void`
+    /// Retained `&F` (or legacy `box<F>`) interface arg. The C-ABI is a `*const *const c_void`
     /// pointing at the interface's vtable; the script side receives
     /// it as a foreign cell tagged with `type_tag`.
     Foreign {
@@ -145,6 +146,14 @@ pub enum RetKind {
 /// callers that registered it explicitly at startup.
 pub fn register_proto_ccw(spec: ProtoSpec) -> Result<(), HostError> {
     validate_spec(&spec)?;
+    let owned = owned_registry()
+        .lock()
+        .expect("owned protocol registry poisoned");
+    if owned.contains(&spec.uuid) {
+        return Err(HostError::message(
+            "an owned-only protocol cannot have a script proxy",
+        ));
+    }
     let mut reg = registry().lock().expect("proto_ccw registry poisoned");
     if reg.contains_key(&spec.uuid) {
         // Phase 4 (B4): silent no-op on duplicate registration so
@@ -161,6 +170,46 @@ pub fn is_proto_registered(uuid: [u8; 16]) -> bool {
         .lock()
         .expect("proto_ccw registry poisoned")
         .contains_key(&uuid)
+}
+
+fn owned_registry() -> &'static Mutex<HashSet<[u8; 16]>> {
+    static OWNED: OnceLock<Mutex<HashSet<[u8; 16]>>> = OnceLock::new();
+    OWNED.get_or_init(|| Mutex::new(HashSet::new()))
+}
+
+/// Mark a native-carrier ownership contract that must never become a proxy.
+pub fn register_owned_proto(uuid: [u8; 16]) -> Result<(), HostError> {
+    let mut owned = owned_registry()
+        .lock()
+        .expect("owned protocol registry poisoned");
+    if is_proto_registered(uuid) {
+        return Err(HostError::message(
+            "a script proxy cannot become an owned-only protocol",
+        ));
+    }
+    owned.insert(uuid);
+    Ok(())
+}
+
+pub(crate) fn is_owned_proto(uuid: [u8; 16]) -> bool {
+    owned_registry()
+        .lock()
+        .expect("owned protocol registry poisoned")
+        .contains(&uuid)
+}
+
+pub(crate) fn owned_foreign_handle(
+    ctx: &Context,
+    data: &Data,
+) -> Result<i64, p7::errors::RuntimeError> {
+    if matches!(data, Data::BoxRef { .. } | Data::ProtoBoxRef { .. })
+        && let ProtocolValue::Foreign { handle, .. } = ctx.inspect_protocol_value(data)?
+    {
+        return Ok(handle);
+    }
+    Err(p7::errors::RuntimeError::Other(
+        "owned-only interface requires its original owned foreign carrier, not a projection or script value".into()
+    ))
 }
 
 /// Pre-register `crosscom.IAction` with the runtime-typed CCW
@@ -186,8 +235,8 @@ pub fn register_crosscom_iaction() {
     });
 }
 
-/// Reverse-wrap a script-side `box<F>` value (`Data::ProtoBoxRef` or
-/// `Data::BoxRef`) as a Rust-side `ComRc<I>`. `I::INTERFACE_ID` must
+/// Root an owner-backed managed protocol reference (or a legacy owned box)
+/// as a Rust-side `ComRc<I>`. `I::INTERFACE_ID` must
 /// match the UUID of a previously-registered [`ProtoSpec`].
 pub fn wrap_proto<I: ComInterface + 'static>(
     handle: &RuntimeHandle,
@@ -423,7 +472,7 @@ struct CcwHeader {
 }
 
 struct ProtoCcwPayload {
-    root_idx: usize,
+    root: RootedValue,
     handle: RuntimeHandle,
     /// Per-slot interface metadata, in declaration order. `slots[k]`
     /// describes the interface backing slot K of the CCW.
@@ -555,9 +604,6 @@ unsafe extern "system" fn proto_release(this: *const *const c_void) -> c_long {
             // the header survives past this point — ref_count just hit
             // zero.
             let payload = std::ptr::read(&(*header_addr).payload);
-            let _ = payload
-                .handle
-                .try_with_ctx(|ctx| ctx.remove_external_root(payload.root_idx));
             drop(payload);
             dealloc(header_addr as *mut u8, layout);
         }
@@ -574,27 +620,56 @@ fn wrap_proto_raw(
     data: Data,
     requested_uuid: [u8; 16],
 ) -> Result<*const *const c_void, HostError> {
-    match data {
-        Data::ProtoBoxRef { .. } | Data::BoxRef { .. } => {}
-        other => {
-            return Err(HostError::message(format!(
-                "wrap_proto: expected ProtoBoxRef / BoxRef, got {:?}",
-                other
-            )));
-        }
-    }
     if handle.is_dangling() {
         return Err(HostError::message(
             "wrap_proto called with a dangling RuntimeHandle",
         ));
     }
+    if is_owned_proto(requested_uuid) {
+        return handle
+            .try_with_ctx(|ctx| {
+                let id = owned_foreign_handle(ctx, &data)
+                    .map_err(|e| HostError::message(format!("wrap_proto: {e:?}")))?;
+                with_services(|services| services.com_table_mut().get_raw_qi(id, requested_uuid))?
+                    .ok_or_else(|| {
+                        HostError::message("owned carrier does not expose requested interface")
+                    })
+            })
+            .ok_or_else(|| HostError::message("wrap_proto: runtime dropped"))?;
+    }
 
-    // Resolve the slot list. For `ProtoBoxRef`, we consult the
-    // script struct's `conforming_to` to enumerate every interface
-    // the impl supports — that's what gives QI to sibling interfaces
-    // its real (vtable-distinct) backing. For `BoxRef` (no
-    // conformance info), the slot list is just the requested UUID.
-    let mut slot_uuids = collect_slot_uuids(handle, &data);
+    // Validate ownership and inspect dispatch without extracting or copying
+    // a projection's current target. The exact reference becomes the root.
+    let (data, mut slot_uuids) = handle
+        .try_with_ctx(|ctx| {
+            let data = ctx.retain_reference(&data)?;
+            let tags = match ctx.inspect_protocol_value(&data)? {
+                ProtocolValue::Foreign { type_tag, .. } => vec![type_tag],
+                ProtocolValue::Script {
+                    foreign_type_tags, ..
+                } => foreign_type_tags,
+            };
+            let mut uuids = Vec::with_capacity(tags.len());
+            for tag in tags {
+                // Legacy manually registered protocols may omit a UUID;
+                // their explicitly requested ProtoSpec still supplies it.
+                let Some(uuid) = ctx.foreign_uuid(&tag) else {
+                    continue;
+                };
+                uuids.push(
+                    *uuid::Uuid::parse_str(uuid)
+                        .map_err(|e| {
+                            p7::errors::RuntimeError::Other(format!(
+                                "wrap_proto: invalid UUID for foreign protocol '{tag}': {e}"
+                            ))
+                        })?
+                        .as_bytes(),
+                );
+            }
+            Ok::<_, p7::errors::RuntimeError>((data, uuids))
+        })
+        .ok_or_else(|| HostError::message("wrap_proto: runtime dropped before validation"))?
+        .map_err(|e| HostError::message(format!("wrap_proto: invalid retained receiver: {e:?}")))?;
     // Always ensure the requested UUID is satisfiable. If the
     // conformance list doesn't include it (e.g. the script struct
     // conforms to a DIFFERENT registered proto but the caller asked
@@ -680,6 +755,11 @@ fn wrap_proto_raw(
             ))
         })?;
 
+    let root = handle
+        .try_with_ctx(|ctx| ctx.root_value(data.clone()))
+        .ok_or_else(|| HostError::message("wrap_proto: runtime gone before rooting"))?
+        .map_err(|e| HostError::message(format!("wrap_proto: cannot root receiver: {e:?}")))?;
+
     // Allocate the CCW buffer with the fat layout.
     let num_slots = plans.len();
     let (layout, slot_offset) = ccw_layout(num_slots);
@@ -688,16 +768,6 @@ fn wrap_proto_raw(
     if alloc_ptr.is_null() {
         std::alloc::handle_alloc_error(layout);
     }
-
-    // Root the script data once for the whole CCW.
-    let root_idx = handle
-        .try_with_ctx(|ctx| ctx.add_external_root(data.clone()))
-        .ok_or_else(|| {
-            // SAFETY: we never published the alloc; dealloc with the
-            // same layout is sound.
-            unsafe { dealloc(alloc_ptr, layout) };
-            HostError::message("wrap_proto: runtime gone before rooting")
-        })?;
 
     // Build the per-slot metadata Box before writing into the
     // buffer; that way a panic during allocation surfaces as a
@@ -720,7 +790,7 @@ fn wrap_proto_raw(
                 ref_count: AtomicU32::new(1),
                 num_slots,
                 payload: ProtoCcwPayload {
-                    root_idx,
+                    root,
                     handle: handle.clone(),
                     slots: slots_box,
                 },
@@ -738,34 +808,6 @@ fn wrap_proto_raw(
 
         Ok(ccw_slot_ptr(slot_array_base, selected_slot))
     }
-}
-
-/// Collect every foreign-tagged proto UUID that the script-side
-/// struct backing `data` conforms to, in declaration order. Empty
-/// for non-proto boxes (plain `BoxRef`) — those carry no
-/// conformance information.
-fn collect_slot_uuids(handle: &RuntimeHandle, data: &Data) -> Vec<[u8; 16]> {
-    let (concrete_type_id, origin_module_idx) = match data {
-        Data::ProtoBoxRef {
-            concrete_type_id,
-            origin_module_idx,
-            ..
-        } => (*concrete_type_id, *origin_module_idx),
-        _ => return Vec::new(),
-    };
-
-    handle
-        .try_with_ctx(|ctx| {
-            ctx.struct_foreign_proto_tags(origin_module_idx as usize, concrete_type_id)
-                .into_iter()
-                .filter_map(|tag| {
-                    ctx.foreign_uuid(tag)
-                        .and_then(|s| uuid::Uuid::parse_str(s).ok())
-                        .map(|u| *u.as_bytes())
-                })
-                .collect::<Vec<[u8; 16]>>()
-        })
-        .unwrap_or_default()
 }
 
 // ---------------------------------------------------------------------------
@@ -809,7 +851,12 @@ unsafe extern "C" fn method_thunk_void(
     userdata: &MethodUserdata,
 ) {
     unsafe {
-        let _ = dispatch_method(args, userdata);
+        if let DispatchOutcome::Error(error) = dispatch_method(args, userdata) {
+            eprintln!(
+                "dispatch '{}.{}' failed: {error}",
+                userdata.iface_type_tag, userdata.method_name
+            );
+        }
     }
 }
 
@@ -823,7 +870,14 @@ unsafe extern "C" fn method_thunk_int(
         match dispatch_method(args, userdata) {
             DispatchOutcome::Int(i) => *result = i as c_int,
             DispatchOutcome::Bool(b) => *result = b as c_int,
-            DispatchOutcome::Error(_) | _ => *result = 0,
+            DispatchOutcome::Error(error) => {
+                eprintln!(
+                    "dispatch '{}.{}' failed: {error}",
+                    userdata.iface_type_tag, userdata.method_name
+                );
+                *result = 0;
+            }
+            _ => *result = 0,
         }
     }
 }
@@ -839,7 +893,14 @@ unsafe extern "C" fn method_thunk_float(
             DispatchOutcome::Float(f) => *result = f as c_float,
             DispatchOutcome::OptionalFloat(Some(v)) => *result = v,
             DispatchOutcome::OptionalFloat(None) => *result = f32::NAN,
-            DispatchOutcome::Error(_) | _ => *result = 0.0,
+            DispatchOutcome::Error(error) => {
+                eprintln!(
+                    "dispatch '{}.{}' failed: {error}",
+                    userdata.iface_type_tag, userdata.method_name
+                );
+                *result = 0.0;
+            }
+            _ => *result = 0.0,
         }
     }
 }
@@ -920,7 +981,7 @@ unsafe fn dispatch_method(
         // installs `scope` + `scope_context` for the duration of the
         // closure, which is exactly what marshalling and the subsequent
         // `push_proto_method`/`resume` both need.
-        let root_idx = header.payload.root_idx;
+        let root = header.payload.root.clone();
         let method_name = userdata.method_name.clone();
         let ret_kind = userdata.ret.clone();
         let arg_kinds = userdata.args.clone();
@@ -943,7 +1004,7 @@ unsafe fn dispatch_method(
                         Err(err) => return DispatchOutcome::Error(err),
                     }
                 }
-                invoke_script_method(ctx, root_idx, &method_name, marshalled, &ret_kind)
+                invoke_script_method(ctx, &root, &method_name, marshalled, &ret_kind)
             })
             .unwrap_or(DispatchOutcome::Error(HostError::message(
                 "runtime dropped before method dispatch",
@@ -954,63 +1015,45 @@ unsafe fn dispatch_method(
 
 fn invoke_script_method(
     ctx: &mut Context,
-    root_idx: usize,
+    root: &RootedValue,
     method_name: &str,
     args: Vec<Data>,
     ret: &RetKind,
 ) -> DispatchOutcome {
-    let receiver = match ctx.external_root(root_idx) {
-        Some(r) => r,
-        None => {
+    let receiver = match root.get(ctx) {
+        Ok(receiver) => receiver,
+        Err(error) => {
             return DispatchOutcome::Error(HostError::message(format!(
-                "{}: external root {} is empty",
-                method_name, root_idx
+                "{method_name}: cannot resolve retained root: {error:?}"
             )));
         }
     };
-    if let Err(e) = ctx.push_proto_method(receiver, method_name, args) {
-        return DispatchOutcome::Error(HostError::message(format!(
-            "{}: push_proto_method failed: {:?}",
-            method_name, e
-        )));
-    }
-    if let Err(e) = ctx.resume() {
-        return DispatchOutcome::Error(HostError::message(format!(
-            "{}: resume failed: {:?}",
-            method_name, e
-        )));
-    }
-
-    // Pop the script return per ret_kind.
-    let frame = match ctx.stack_frame_mut() {
-        Ok(f) => f,
+    let result = match ctx.call_proto_method(receiver, method_name, args) {
+        Ok(value) => value,
         Err(e) => {
             return DispatchOutcome::Error(HostError::message(format!(
-                "{}: stack_frame_mut: {:?}",
+                "{}: call_proto_method: {:?}",
                 method_name, e
             )));
         }
     };
     match ret {
-        RetKind::Void => {
-            let _ = frame.stack.pop();
-            DispatchOutcome::Void
-        }
-        RetKind::Int => match frame.stack.pop() {
+        RetKind::Void => DispatchOutcome::Void,
+        RetKind::Int => match result {
             Some(Data::Int(i)) => DispatchOutcome::Int(i),
             other => DispatchOutcome::Error(HostError::message(format!(
                 "{}: expected Int return, got {:?}",
                 method_name, other
             ))),
         },
-        RetKind::Float => match frame.stack.pop() {
+        RetKind::Float => match result {
             Some(Data::Float(f)) => DispatchOutcome::Float(f),
             other => DispatchOutcome::Error(HostError::message(format!(
                 "{}: expected Float return, got {:?}",
                 method_name, other
             ))),
         },
-        RetKind::OptionalFloat => match frame.stack.pop() {
+        RetKind::OptionalFloat => match result {
             Some(Data::Null) => DispatchOutcome::OptionalFloat(None),
             Some(Data::Some(inner)) => match &*inner {
                 Data::Float(f) => DispatchOutcome::OptionalFloat(Some(*f as f32)),
@@ -1025,41 +1068,38 @@ fn invoke_script_method(
                 method_name, other
             ))),
         },
-        RetKind::Bool => match frame.stack.pop() {
+        RetKind::Bool => match result {
             Some(Data::Int(i)) => DispatchOutcome::Bool(i != 0),
             other => DispatchOutcome::Error(HostError::message(format!(
                 "{}: expected Bool (Int) return, got {:?}",
                 method_name, other
             ))),
         },
-        RetKind::OptionalForeign { uuid: ret_uuid, .. } => match frame.stack.pop() {
+        RetKind::OptionalForeign { uuid: ret_uuid, .. } => match result {
             Some(Data::Null) => DispatchOutcome::OptionalForeign(None),
             Some(Data::Some(inner)) => {
                 // `inner: Rc<Data>`; clone the inner Data out (the
                 // recursive wrap_proto will root it again).
                 classify_foreign_return(ctx, (*inner).clone(), *ret_uuid)
             }
-            Some(d @ Data::ProtoBoxRef { .. }) | Some(d @ Data::BoxRef { .. }) => {
-                // Tolerate bare-box returns (the script's `return self` /
-                // `return some_box` pattern); director.md A2 flags this
-                // as an explicit p7 ergonomic gap.
-                classify_foreign_return(ctx, d, *ret_uuid)
-            }
+            Some(d @ Data::ProtoBoxRef { .. })
+            | Some(d @ Data::BoxRef { .. })
+            | Some(d @ Data::ManagedReference { .. }) => classify_foreign_return(ctx, d, *ret_uuid),
             other => DispatchOutcome::Error(HostError::message(format!(
                 "{}: expected OptionalForeign return, got {:?}",
                 method_name, other
             ))),
         },
-        RetKind::Foreign { uuid: ret_uuid, .. } => match frame.stack.pop() {
+        RetKind::Foreign { uuid: ret_uuid, .. } => match result {
             // Non-optional: a null / absent return violates the contract.
             Some(Data::Null) => DispatchOutcome::Error(HostError::message(format!(
                 "{}: non-optional foreign return was null",
                 method_name
             ))),
             Some(Data::Some(inner)) => classify_foreign_return(ctx, (*inner).clone(), *ret_uuid),
-            Some(d @ Data::ProtoBoxRef { .. }) | Some(d @ Data::BoxRef { .. }) => {
-                classify_foreign_return(ctx, d, *ret_uuid)
-            }
+            Some(d @ Data::ProtoBoxRef { .. })
+            | Some(d @ Data::BoxRef { .. })
+            | Some(d @ Data::ManagedReference { .. }) => classify_foreign_return(ctx, d, *ret_uuid),
             other => DispatchOutcome::Error(HostError::message(format!(
                 "{}: expected Foreign return, got {:?}",
                 method_name, other
@@ -1068,44 +1108,27 @@ fn invoke_script_method(
     }
 }
 
-/// Classify the inner value of an `box<F>` / `?box<F>` return (used by
-/// both [`RetKind::Foreign`] and [`RetKind::OptionalForeign`] — the
-/// optionality is resolved by the caller before this point):
-///
-/// * If the underlying box wraps a foreign carrier (i.e. a
-///   `Data::Foreign{type_tag, handle, ...}` payload in the box heap),
-///   look up the carrier's interned `ComObjectTable` entry and return
-///   its raw COM pointer via `OptionalForeignRaw`. This is the path
-///   taken when a script `update` returns a `box<radiance.IDirector>`
-///   value that originated as a Rust `ComRc<IDirector>` handed to the
-///   script via `host.foreign_box(...)` — re-wrapping it in another
-///   CCW would create a CCW pointing at a foreign carrier whose
-///   script-side struct has no method impls, causing method dispatch
-///   to fail.
-///
-/// * Otherwise the box is a script-side struct conforming to the
-///   target proto; return `OptionalForeign(Some(data))` so the libffi
-///   thunk recursively builds a CCW around it.
+/// Legacy owned foreign boxes keep their QI pass-through. Managed references
+/// are rooted unchanged, even when their current target is foreign: caching
+/// that target's native pointer would lose field/parent replacement semantics.
 fn classify_foreign_return(ctx: &mut Context, data: Data, ret_uuid: [u8; 16]) -> DispatchOutcome {
-    // Read the box payload from p7's box heap. Foreign carriers store
-    // a `Data::Foreign` inside the box; script structs store a
-    // struct heap reference. Only the former needs the pass-through.
-    let (box_idx, generation) = match &data {
-        Data::ProtoBoxRef {
-            box_idx,
-            generation,
-            ..
-        } => (*box_idx, *generation),
-        Data::BoxRef { idx, generation } => (*idx, *generation),
-        _ => return DispatchOutcome::OptionalForeign(Some(data)),
+    if is_owned_proto(ret_uuid)
+        && let Err(error) = owned_foreign_handle(ctx, &data)
+    {
+        return DispatchOutcome::Error(HostError::message(format!("foreign-return: {error:?}")));
+    }
+    let value = match ctx.inspect_protocol_value(&data) {
+        Ok(value) => value,
+        Err(e) => {
+            return DispatchOutcome::Error(HostError::message(format!(
+                "foreign-return: invalid retained value: {e:?}"
+            )));
+        }
     };
-    let payload = match ctx.box_heap.get(box_idx, generation) {
-        Ok(p) => p.clone(),
-        Err(_) => return DispatchOutcome::OptionalForeign(Some(data)),
-    };
-    if let Data::Foreign {
-        handle: com_handle, ..
-    } = payload
+    if matches!(data, Data::BoxRef { .. } | Data::ProtoBoxRef { .. })
+        && let ProtocolValue::Foreign {
+            handle: com_handle, ..
+        } = value
     {
         // Bypass wrap_proto: fetch the ComObjectTable entry's raw COM
         // pointer for the target interface UUID, add_ref it so the
@@ -1164,6 +1187,9 @@ unsafe fn marshal_arg_in(
                         type_tag
                     )));
                 }
+                // Native callers transfer this reference to the CCW, just as
+                // generated Rust implementations consume interface parameters.
+                let _argument_owner = ComRc::<IUnknown>::from_raw_pointer(com_ptr);
                 let unk_vtbl = *(com_ptr as *const *const crosscom::IUnknownVirtualTable);
                 let guid = uuid::Uuid::from_bytes(IUnknown::INTERFACE_ID);
                 let mut raw_unk: *const *const c_void = std::ptr::null();

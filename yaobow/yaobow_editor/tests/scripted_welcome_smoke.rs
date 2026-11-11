@@ -147,7 +147,7 @@ fn resource_tree_change_helpers_choose_green_orange_and_plain_widgets() {
 import radiance;
 import yaobow_editor.resource_tree;
 
-pub fn entry(ui: box<radiance.IUiHost>) -> int {
+pub fn entry(ui: &radiance.IUiHost) -> int {
     resource_tree.tree_leaf_for_change(ui, "add", true, 0);
     resource_tree.tree_leaf_for_change(ui, "replace", false, 1);
     resource_tree.tree_leaf_for_change(ui, "plain", false, -1);

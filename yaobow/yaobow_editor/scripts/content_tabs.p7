@@ -26,54 +26,54 @@ pub struct ContentTab(
     pub close_cmd: int,
     pub kind: editor_consts.ContentKind,
     pub text_content: string = "",
-    pub image_handle: ?box<yaobow_editor_services.IImageHandle> = null,
-    pub audio_handle: ?box<yaobow_editor_services.IAudioHandle> = null,
-    pub video_handle: ?box<scripting_services.IVideoHandle> = null,
-    pub model_handle: ?box<yaobow_editor_services.IModelHandle> = null,
-    pub preview_session: ?box<yaobow_editor_services.IPreviewSession> = null,
-    pub scene_handle: ?box<yaobow_editor_services.ISceneHandle> = null,
-    pub scene_session: ?box<yaobow_editor_services.IScenePreviewSession> = null,
-    pub ui_layout_handle: ?box<scripting_services.IUiLayoutHandle> = null,
+    pub image_handle: ?&yaobow_editor_services.IImageHandle = null,
+    pub audio_handle: ?&yaobow_editor_services.IAudioHandle = null,
+    pub video_handle: ?&scripting_services.IVideoHandle = null,
+    pub model_handle: ?&yaobow_editor_services.IModelHandle = null,
+    pub preview_session: ?&yaobow_editor_services.IPreviewSession = null,
+    pub scene_handle: ?&yaobow_editor_services.ISceneHandle = null,
+    pub scene_session: ?&yaobow_editor_services.IScenePreviewSession = null,
+    pub ui_layout_handle: ?&scripting_services.IUiLayoutHandle = null,
 );
 
 fn make_text_tab(label: string, close_cmd: int, content: string, kind: editor_consts.ContentKind) -> ContentTab {
     ContentTab(label = label, close_cmd = close_cmd, kind = kind, text_content = content)
 }
 
-fn make_image_tab(label: string, close_cmd: int, handle: box<yaobow_editor_services.IImageHandle>) -> ContentTab {
+fn make_image_tab(label: string, close_cmd: int, handle: &yaobow_editor_services.IImageHandle) -> ContentTab {
     ContentTab(label = label, close_cmd = close_cmd,
                kind = editor_consts.ContentKind.Image, image_handle = handle)
 }
 
-fn make_audio_tab(label: string, close_cmd: int, handle: box<yaobow_editor_services.IAudioHandle>) -> ContentTab {
+fn make_audio_tab(label: string, close_cmd: int, handle: &yaobow_editor_services.IAudioHandle) -> ContentTab {
     ContentTab(label = label, close_cmd = close_cmd,
                kind = editor_consts.ContentKind.Audio, audio_handle = handle)
 }
 
-fn make_video_tab(label: string, close_cmd: int, handle: box<scripting_services.IVideoHandle>) -> ContentTab {
+fn make_video_tab(label: string, close_cmd: int, handle: &scripting_services.IVideoHandle) -> ContentTab {
     ContentTab(label = label, close_cmd = close_cmd,
                kind = editor_consts.ContentKind.Video, video_handle = handle)
 }
 
-fn make_model_tab(label: string, close_cmd: int, content: string, handle: box<yaobow_editor_services.IModelHandle>) -> ContentTab {
+fn make_model_tab(label: string, close_cmd: int, content: string, handle: &yaobow_editor_services.IModelHandle) -> ContentTab {
     ContentTab(label = label, close_cmd = close_cmd,
                kind = editor_consts.ContentKind.Model,
                text_content = content, model_handle = handle)
 }
 
-pub fn make_scene_tab(label: string, close_cmd: int, handle: box<yaobow_editor_services.ISceneHandle>) -> ContentTab {
+pub fn make_scene_tab(label: string, close_cmd: int, handle: &yaobow_editor_services.ISceneHandle) -> ContentTab {
     ContentTab(label = label, close_cmd = close_cmd,
                kind = editor_consts.ContentKind.Scene, scene_handle = handle)
 }
 
-fn make_ui_layout_tab(label: string, close_cmd: int, handle: box<scripting_services.IUiLayoutHandle>) -> ContentTab {
+fn make_ui_layout_tab(label: string, close_cmd: int, handle: &scripting_services.IUiLayoutHandle) -> ContentTab {
     ContentTab(label = label, close_cmd = close_cmd,
                kind = editor_consts.ContentKind.UiLayout, ui_layout_handle = handle)
 }
 
 // Returns null if the path could not be opened (unsupported extension or
 // loader failure). Caller pushes the value only when non-null.
-pub fn open_content_tab(hub: box<yaobow_editor_services.IPreviewerHub>, path: string, close_cmd: int) -> ?ContentTab {
+pub fn open_content_tab(hub: &yaobow_editor_services.IPreviewerHub, path: string, close_cmd: int) -> ?ContentTab {
     // Try the multi-entity scene path first (PAL4-only in v1). If the
     // hub recognizes it as a scene, open the dedicated scene tab; the
     // model previewer would otherwise fight the same `.bsp` path and
@@ -144,7 +144,7 @@ pub fn open_content_tab(hub: box<yaobow_editor_services.IPreviewerHub>, path: st
 // director's `update` opens the actual preview session (which mutates
 // the owning tab via indexed array assignment — not legal through a
 // `ref<ContentTab>` capture).
-fn render_text_buffer_with_copy(ui: box<radiance.IUiHost>, key: int, content: string) {
+fn render_text_buffer_with_copy(ui: &radiance.IUiHost, key: int, content: string) {
     if ui.button("Copy", 80.0, 24.0) {
         ui.copy_text_buffer(key);
     }
@@ -172,8 +172,8 @@ fn format_mmss(ms: int) -> string {
 // controls) for an open scene session. Used by `main_editor`'s main
 // scene view region in the Scene layout.
 pub fn render_scene_offscreen_im(
-    ui: box<radiance.IUiHost>,
-    session: box<yaobow_editor_services.IScenePreviewSession>,
+    ui: &radiance.IUiHost,
+    session: &yaobow_editor_services.IScenePreviewSession,
 ) {
     let s = session;
     let t = s.target();
@@ -213,8 +213,8 @@ pub fn render_scene_offscreen_im(
 }
 
 pub fn render_import_replace_button(
-    ui: box<radiance.IUiHost>,
-    project: box<yaobow_editor_services.IProjectService>,
+    ui: &radiance.IUiHost,
+    project: &yaobow_editor_services.IProjectService,
     path: string,
     import_replace_intents: box<array<string>>,
 ) {
@@ -225,12 +225,12 @@ pub fn render_import_replace_button(
 }
 
 pub fn render_tab_body_im(
-    ui: box<radiance.IUiHost>,
+    ui: &radiance.IUiHost,
     tab: ref<ContentTab>,
     preview_intents: box<array<int>>,
     scene_open_intents: box<array<int>>,
     import_replace_intents: box<array<string>>,
-    host: box<yaobow_editor_services.IEditorHostContext>,
+    host: &yaobow_editor_services.IEditorHostContext,
 ) {
     match tab.kind {
         editor_consts.ContentKind.Text => {

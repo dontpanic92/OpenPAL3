@@ -24,8 +24,8 @@ pub fn make_project_panel_state() -> ProjectPanelState {
 }
 
 pub fn render_file_menu(
-    ui: box<radiance.IUiHost>,
-    host: box<yaobow_editor_services.IEditorHostContext>,
+    ui: &radiance.IUiHost,
+    host: &yaobow_editor_services.IEditorHostContext,
     state: &ProjectPanelState,
 ) {
     ui.menu("File", () => {
@@ -73,7 +73,7 @@ pub fn render_file_menu(
 }
 
 pub fn render_view_menu_item(
-    ui: box<radiance.IUiHost>,
+    ui: &radiance.IUiHost,
     state: &ProjectPanelState,
 ) {
     let shown = state.show_changes_panel;
@@ -88,8 +88,8 @@ pub fn render_view_menu_item(
 // action (e.g. staging a file with no active project) is visible
 // without needing a separate status bar.
 pub fn render_project_changes_panel(
-    ui: box<radiance.IUiHost>,
-    host: box<yaobow_editor_services.IEditorHostContext>,
+    ui: &radiance.IUiHost,
+    host: &yaobow_editor_services.IEditorHostContext,
     state: &ProjectPanelState,
 ) {
     if !state.show_changes_panel {
@@ -139,8 +139,8 @@ fn kind_label(kind: int) -> string {
 }
 
 fn render_change_row(
-    ui: box<radiance.IUiHost>,
-    proj: box<yaobow_editor_services.IProjectService>,
+    ui: &radiance.IUiHost,
+    proj: &yaobow_editor_services.IProjectService,
     row: int,
 ) {
     let kind = kind_label(proj.change_kind(row));

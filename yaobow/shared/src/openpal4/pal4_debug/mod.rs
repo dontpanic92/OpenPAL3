@@ -1,6 +1,6 @@
 //! Protosept-authored PAL4 debug overlay bridge.
 //!
-//! The script side (`box<pal4_debug.IPal4DebugOverlay>`) owns the imgui
+//! The script side (`&pal4_debug.IPal4DebugOverlay`) owns the imgui
 //! window. Rust only owns the data — see [`context::Pal4DebugContext`]
 //! — and a one-shot reverse-wrap helper that turns the script box into
 //! a `ComRc<IPal4DebugOverlay>` the `OpenPAL4Director` can call each

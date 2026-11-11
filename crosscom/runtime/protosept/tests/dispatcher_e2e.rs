@@ -21,6 +21,10 @@ const COUNTER_UUID_BYTES: [u8; 16] = [
 struct ICounterVtbl {
     iunk: IUnknownVirtualTable,
     add: unsafe extern "system" fn(this: *const *const c_void, delta: c_long) -> c_long,
+    add_other: unsafe extern "system" fn(
+        this: *const *const c_void,
+        other: *const *const c_void,
+    ) -> c_long,
 }
 
 unsafe extern "system" fn fake_qi(
@@ -58,6 +62,20 @@ unsafe extern "system" fn fake_add(this: *const *const c_void, delta: c_long) ->
     prev
 }
 
+unsafe extern "system" fn fake_add_other(
+    this: *const *const c_void,
+    other: *const *const c_void,
+) -> c_long {
+    let _argument_owner = unsafe { crosscom::ComRc::<IUnknown>::from_raw_pointer(other) };
+    let other = unsafe { &*(other as *const FakeCounter) };
+    assert_eq!(
+        other.refcount, 3,
+        "table, call-scoped QI and transferred argument"
+    );
+    unsafe { fake_add(this, other.value) };
+    unsafe { fake_add(this, 0) }
+}
+
 #[repr(C)]
 struct FakeCounter {
     vtable: *const ICounterVtbl,
@@ -72,6 +90,7 @@ static COUNTER_VTBL: ICounterVtbl = ICounterVtbl {
         release: fake_release,
     },
     add: fake_add,
+    add_other: fake_add_other,
 };
 
 struct TestServices {
@@ -90,6 +109,7 @@ const SOURCE: &str = r#"
          uuid="deadbeef-cafe-babe-0000-000000000001")
 pub proto ICounter {
     fn add(self: ref<ICounter>, delta: int) -> int;
+    fn add_other(self: ref<ICounter>, other: box<ICounter>) -> int;
 }
 
 @intrinsic(name="test.make_counter")
@@ -111,6 +131,13 @@ pub fn run_retained() -> int {
 
 pub fn make_retained() -> &ICounter { make_counter() }
 pub fn read_retained(c: &ICounter) -> int { c.add(0) }
+
+pub fn run_pair() -> int {
+    let receiver = make_counter();
+    let other = make_counter();
+    other.add(7);
+    receiver.add_other(other)
+}
 "#;
 
 fn host_make_counter(ctx: &mut Context) -> Result<(), p7::errors::RuntimeError> {
@@ -165,6 +192,28 @@ fn dispatcher_calls_through_owned_retained_foreign_reference() {
         assert_eq!(ctx.stack[0].stack.pop(), Some(Data::Int(15)));
         ctx.collect_garbage().expect("collect");
     });
+}
+
+#[test]
+fn same_interface_argument_is_not_mistaken_for_the_receiver() {
+    let mut ctx = Context::new();
+    install_com_dispatcher(&mut ctx);
+    ctx.register_host_function("test.make_counter".into(), host_make_counter);
+    ctx.load_module(p7::compile(SOURCE.into()).unwrap());
+    let mut services = TestServices {
+        com: ComObjectTable::new(),
+    };
+    scope(&mut services, || {
+        ctx.push_function("run_pair", vec![]);
+        ctx.resume().unwrap();
+        assert_eq!(ctx.stack[0].stack.pop(), Some(Data::Int(7)));
+        ctx.collect_garbage().unwrap();
+    });
+    assert_eq!(
+        services.com.live(),
+        0,
+        "no argument is permanently interned"
+    );
 }
 
 #[test]

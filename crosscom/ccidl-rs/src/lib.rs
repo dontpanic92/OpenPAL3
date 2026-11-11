@@ -1726,10 +1726,33 @@ mod tests {
             out.contains("fn activate(self: &IDirector) -> int"),
             "{out}"
         );
-        // Foreign-aware return type now uses ?box<IDirector>, not ?int.
+        // Interface returns expose retained references, not foreign carrier boxes.
         assert!(
-            out.contains("fn update(self: &IDirector, delta_sec: float) -> ?box<IDirector>"),
+            out.contains("fn update(self: &IDirector, delta_sec: float) -> ?&IDirector"),
             "{out}"
+        );
+        assert!(
+            out.contains("director: &IDirector"),
+            "interface arguments must retain identity: {out}"
+        );
+        assert!(
+            !out.replace("box<IScene>", "").contains("box<"),
+            "only explicitly owned interfaces expose carriers: {out}"
+        );
+        assert!(out.contains("scene: box<IScene>"), "{out}");
+        assert!(out.contains("-> ?box<IScene>"), "{out}");
+        let bridge = generate_script_bridge(
+            idl_dir.join("radiance.idl"),
+            "radiance_scripting",
+            "script_bridges",
+        )
+        .unwrap()
+        .source;
+        assert!(bridge.contains("register_scene_owned_proto"), "{bridge}");
+        assert!(!bridge.contains("pub fn wrap_scene("), "{bridge}");
+        assert!(
+            out.contains("self: refmut<IUiHost>"),
+            "host-only receivers remain synchronous views: {out}"
         );
 
         // No more class Handle structs.
@@ -1744,6 +1767,24 @@ mod tests {
             .collect::<Vec<_>>()
             .join("\n");
         assert!(!body.contains("::"), "body still contains ::\n{body}");
+    }
+
+    #[test]
+    fn protosept_interface_collections_keep_their_array_shape() {
+        let unit = parse_source(
+            r#"
+module(rust) test;
+[uuid(6ac46481-7efa-45ff-a279-687b4603c746)]
+interface IItem {
+    IItem[] children();
+    IItem? selected();
+}
+"#,
+        )
+        .unwrap();
+        let out = protosept::generate(unit).unwrap();
+        assert!(out.contains("-> array<&IItem>"), "{out}");
+        assert!(out.contains("-> ?&IItem"), "{out}");
     }
 
     #[test]

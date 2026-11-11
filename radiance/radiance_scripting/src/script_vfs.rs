@@ -80,7 +80,7 @@ impl ModuleProvider for ScriptVfsProvider {
 /// [`ScriptHost::set_script_assets`]), compiles it if not already
 /// loaded, then interns `ctx` as a foreign box and calls
 /// `root_fn(ctx_box)`. Returns the resulting `Data` (typically a
-/// `box<IScriptApp>`).
+/// `&IScriptApp`).
 ///
 /// `ctx_type_tag` is the IDL-derived type tag of `ctx`'s interface
 /// (e.g. [`HOST_CONTEXT_TYPE_TAG`] for the canonical host context;

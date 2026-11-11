@@ -126,7 +126,8 @@ fn comrc_invokes_without_outer_scope_context() {
     // script handle via the captured runtime handle.
     runtime.with_ctx_mut(|ctx| {
         // Root index 0 was used by wrap_proto; after Drop it should
-        // be `None`.
+        // be `None` at the next collection boundary.
+        ctx.collect_garbage().unwrap();
         assert!(ctx.external_root(0).is_none(), "drop should unroot");
     });
 }
@@ -154,6 +155,7 @@ fn drop_outside_scope_clears_external_root() {
     drop(action);
 
     runtime.with_ctx_mut(|ctx| {
+        ctx.collect_garbage().unwrap();
         assert!(
             ctx.external_root(0).is_none(),
             "drop must unroot via RuntimeHandle"

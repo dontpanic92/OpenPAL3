@@ -23,7 +23,7 @@ import yaobow_editor.project_panel;
 import yaobow_editor.import_wizard;
 
 pub struct[radiance.IUiLayer, radiance.IDirector] MainEditorDirector(
-    pub host: box<yaobow_editor_services.IEditorHostContext>,
+    pub host: &yaobow_editor_services.IEditorHostContext,
     // Single shared preview pane: holds 0 or 1 ContentTab.
     pub preview: box<array<content_tabs.ContentTab>>,
     // Active scene loaded into the Scene layout's main scene view: 0 or 1.
@@ -44,7 +44,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] MainEditorDirector(
     pub fn activate(self: &Self) -> int { 0 }
     pub fn deactivate(self: &Self) -> int { 0 }
 
-    pub fn render(self: &Self, ui: box<radiance.IUiHost>, dt: float) -> int {
+    pub fn render(self: &Self, ui: &radiance.IUiHost, dt: float) -> int {
         ui.main_menu_bar(() => {
             project_panel.render_file_menu(ui, self.host, &self.project_panel);
             ui.menu("View", () => {
@@ -71,7 +71,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] MainEditorDirector(
     pub fn update(
         self: &Self,
         dt: float,
-    ) -> ?box<radiance.IDirector> {
+    ) -> ?&radiance.IDirector {
         // Drive offscreen preview passes for any active sessions BEFORE
         // the next imgui frame samples their color textures.
         self.host.render_pending_previews();
@@ -129,12 +129,12 @@ pub struct[radiance.IUiLayer, radiance.IDirector] MainEditorDirector(
     }
 }
 
-fn empty_transitions() -> ?box<radiance.IDirector> {
+fn empty_transitions() -> ?&radiance.IDirector {
     return null;
 }
 
 // Menu import always adds beside the currently previewed asset.
-fn render_import_menu(ui: box<radiance.IUiHost>, dir: &MainEditorDirector) {
+fn render_import_menu(ui: &radiance.IUiHost, dir: &MainEditorDirector) {
     ui.menu("Import", () => {
         let context_path = preview_selected_path(dir.preview);
         render_import_menu_item(
@@ -148,9 +148,9 @@ fn render_import_menu(ui: box<radiance.IUiHost>, dir: &MainEditorDirector) {
 }
 
 pub fn render_import_menu_item(
-    ui: box<radiance.IUiHost>,
-    project: box<yaobow_editor_services.IProjectService>,
-    imports: box<yaobow_editor_services.IImportService>,
+    ui: &radiance.IUiHost,
+    project: &yaobow_editor_services.IProjectService,
+    imports: &yaobow_editor_services.IImportService,
     state: &import_wizard.ImportWizardState,
     context_path: string,
 ) {
@@ -161,7 +161,7 @@ pub fn render_import_menu_item(
 }
 
 // Right-aligned layout selector rendered inside `main_menu_bar`.
-fn render_layout_tabs(ui: box<radiance.IUiHost>, dir: &MainEditorDirector) {
+fn render_layout_tabs(ui: &radiance.IUiHost, dir: &MainEditorDirector) {
     let assets_label = "资源浏览";
     let scene_label = "场景编辑";
     let project_label = project_status_label(dir.host.project());
@@ -189,7 +189,7 @@ fn render_layout_tabs(ui: box<radiance.IUiHost>, dir: &MainEditorDirector) {
     }
 }
 
-pub fn project_status_label(proj: box<yaobow_editor_services.IProjectService>) -> string {
+pub fn project_status_label(proj: &yaobow_editor_services.IProjectService) -> string {
     if !proj.has_active_project() {
         return "项目: 未打开";
     }
@@ -200,7 +200,7 @@ pub fn project_status_label(proj: box<yaobow_editor_services.IProjectService>) -
     return f"项目: {name}";
 }
 
-fn render_assets_layout(ui: box<radiance.IUiHost>, dir: &MainEditorDirector) {
+fn render_assets_layout(ui: &radiance.IUiHost, dir: &MainEditorDirector) {
     ui.dock_space(editor_consts.DOCK_ROOT_ASSETS, () => {
         ui.dock_layout_assets_once(
             editor_consts.DOCK_ROOT_ASSETS,
@@ -219,7 +219,7 @@ fn render_assets_layout(ui: box<radiance.IUiHost>, dir: &MainEditorDirector) {
     });
 }
 
-fn render_scene_layout(ui: box<radiance.IUiHost>, dir: &MainEditorDirector) {
+fn render_scene_layout(ui: &radiance.IUiHost, dir: &MainEditorDirector) {
     ui.dock_space(editor_consts.DOCK_ROOT_SCENE, () => {
         ui.dock_layout_scene_once(
             editor_consts.DOCK_ROOT_SCENE,
@@ -294,7 +294,7 @@ fn preview_window_title(base: string, preview: box<array<content_tabs.ContentTab
     return f"{prefix} - {name}###{id}";
 }
 
-fn render_preview_pane(ui: box<radiance.IUiHost>, dir: &MainEditorDirector) {
+fn render_preview_pane(ui: &radiance.IUiHost, dir: &MainEditorDirector) {
     let mut any = false;
     for t in dir.preview {
         any = true;
@@ -307,7 +307,7 @@ fn render_preview_pane(ui: box<radiance.IUiHost>, dir: &MainEditorDirector) {
 }
 
 fn render_main_scene_view(
-    ui: box<radiance.IUiHost>,
+    ui: &radiance.IUiHost,
     slot: box<array<content_tabs.ContentTab>>,
 ) {
     let mut any = false;
@@ -325,15 +325,15 @@ fn render_main_scene_view(
 }
 
 pub fn make_main_editor_director(
-    host: box<yaobow_editor_services.IEditorHostContext>,
-) -> box<radiance.IDirector> {
+    host: &yaobow_editor_services.IEditorHostContext,
+) -> &radiance.IDirector {
     let preview: array<content_tabs.ContentTab> = [];
     let scene_tab: array<content_tabs.ContentTab> = [];
     let picks: array<string> = [];
     let preview_intents: array<int> = [];
     let scene_open_intents: array<int> = [];
     let import_replace_intents: array<string> = [];
-    return box(MainEditorDirector(
+    return &MainEditorDirector(
         host,
         box(preview),
         box(scene_tab),
@@ -346,7 +346,7 @@ pub fn make_main_editor_director(
         box(import_replace_intents),
         editor_consts.EditorLayout.Assets,
         0,
-    )) as box<radiance.IDirector>;
+    ) as &radiance.IDirector;
 }
 
 // Replace the single preview, closing any sessions the previous preview
@@ -414,7 +414,7 @@ fn open_scene_in_view(
 
 fn scene_slot_session(
     slot: box<array<content_tabs.ContentTab>>,
-) -> ?box<yaobow_editor_services.IScenePreviewSession> {
+) -> ?&yaobow_editor_services.IScenePreviewSession {
     for t in slot {
         if t.scene_session != null {
             return t.scene_session;
@@ -426,7 +426,7 @@ fn scene_slot_session(
 
 fn scene_slot_handle(
     slot: box<array<content_tabs.ContentTab>>,
-) -> ?box<yaobow_editor_services.ISceneHandle> {
+) -> ?&yaobow_editor_services.ISceneHandle {
     for t in slot {
         if t.scene_handle != null {
             return t.scene_handle;

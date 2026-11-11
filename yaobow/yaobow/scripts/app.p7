@@ -27,40 +27,40 @@ import yaobow.openpal4.actor_controller;
 import yaobow.title.title;
 
 pub struct[yaobow_services.IYaobowScriptApp, openpal3.IPal3ScriptFactory, openpal4.IPal4ScriptFactory] YaobowScriptApp(
-    pub ctx: box<yaobow_services.IYaobowHostContext>,
+    pub ctx: &yaobow_services.IYaobowHostContext,
 ) {
-    pub fn make_title_director(self: &Self) -> box<radiance.IDirector> {
+    pub fn make_title_director(self: &Self) -> &radiance.IDirector {
         return title.make_title_director(self.ctx);
     }
 
     pub fn make_pal4_debug_overlay(
         self: &Self,
-        ctx: box<pal4_debug.IPal4DebugContext>,
-    ) -> box<pal4_debug.IPal4DebugOverlay> {
+        ctx: &pal4_debug.IPal4DebugContext,
+    ) -> &pal4_debug.IPal4DebugOverlay {
         return debug_overlay.make_overlay(ctx);
     }
 
     pub fn make_pal4_loading_overlay(
         self: &Self,
-    ) -> box<openpal4.IPal4LoadingOverlay> {
+    ) -> &openpal4.IPal4LoadingOverlay {
         return loading_overlay.make_loading_overlay(self.ctx);
     }
 
     pub fn make_actor_controller(
         self: &Self,
-        game_ctx: box<openpal4.IPal4GameContext>,
-        input: box<scripting_services.IInputService>,
-        entity_0: box<radiance.IEntity>,
-        entity_1: box<radiance.IEntity>,
-        entity_2: box<radiance.IEntity>,
-        entity_3: box<radiance.IEntity>,
-        anim_0: box<openpal4.IPal4ActorAnimationController>,
-        anim_1: box<openpal4.IPal4ActorAnimationController>,
-        anim_2: box<openpal4.IPal4ActorAnimationController>,
-        anim_3: box<openpal4.IPal4ActorAnimationController>,
-        camera: box<radiance.ICameraControl>,
-        ray_caster: box<radiance.IRayCaster>,
-    ) -> box<openpal4.IPal4ActorController> {
+        game_ctx: &openpal4.IPal4GameContext,
+        input: &scripting_services.IInputService,
+        entity_0: &radiance.IEntity,
+        entity_1: &radiance.IEntity,
+        entity_2: &radiance.IEntity,
+        entity_3: &radiance.IEntity,
+        anim_0: &openpal4.IPal4ActorAnimationController,
+        anim_1: &openpal4.IPal4ActorAnimationController,
+        anim_2: &openpal4.IPal4ActorAnimationController,
+        anim_3: &openpal4.IPal4ActorAnimationController,
+        camera: &radiance.ICameraControl,
+        ray_caster: &radiance.IRayCaster,
+    ) -> &openpal4.IPal4ActorController {
         return actor_controller.make_actor_controller(
             game_ctx, input,
             entity_0, entity_1, entity_2, entity_3,
@@ -78,7 +78,7 @@ pub struct[yaobow_services.IYaobowScriptApp, openpal3.IPal3ScriptFactory, openpa
     pub fn make_pal4_start_menu(
         self: &Self,
         asset_path: string,
-    ) -> box<radiance.IDirector> {
+    ) -> &radiance.IDirector {
         return start_menu.make_pal4_start_menu(self.ctx, asset_path);
     }
 
@@ -90,7 +90,7 @@ pub struct[yaobow_services.IYaobowScriptApp, openpal3.IPal3ScriptFactory, openpa
     pub fn make_pal3_start_menu(
         self: &Self,
         asset_path: string,
-    ) -> box<radiance.IDirector> {
+    ) -> &radiance.IDirector {
         return pal3_start_menu.make_pal3_start_menu(self.ctx, asset_path);
     }
 
@@ -100,20 +100,20 @@ pub struct[yaobow_services.IYaobowScriptApp, openpal3.IPal3ScriptFactory, openpa
     // which forwards events + per-frame draw calls.
     pub fn make_pal3_dialog_renderer(
         self: &Self,
-        sprites: box<scripting_services.ISpriteService>,
-    ) -> box<openpal3.IPal3DialogRenderer> {
+        sprites: &scripting_services.ISpriteService,
+    ) -> &openpal3.IPal3DialogRenderer {
         return pal3_dlg_box.make_pal3_dialog_renderer(sprites);
     }
 
     pub fn make_pal3_status_renderer(
         self: &Self,
-        sprites: box<scripting_services.ISpriteService>,
-        atlas: box<openpal3.IPal3UiAtlas>,
-    ) -> box<openpal3.IPal3StatusRenderer> {
+        sprites: &scripting_services.ISpriteService,
+        atlas: &openpal3.IPal3UiAtlas,
+    ) -> &openpal3.IPal3StatusRenderer {
         return pal3_status_ui.make_pal3_status_renderer(sprites, atlas);
     }
 }
 
-pub fn init(ctx: box<yaobow_services.IYaobowHostContext>) -> box<yaobow_services.IYaobowScriptApp> {
-    return box(YaobowScriptApp(ctx)) as box<yaobow_services.IYaobowScriptApp>;
+pub fn init(ctx: &yaobow_services.IYaobowHostContext) -> &yaobow_services.IYaobowScriptApp {
+    return &YaobowScriptApp(ctx) as &yaobow_services.IYaobowScriptApp;
 }

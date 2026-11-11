@@ -21,8 +21,8 @@ pub fn make_resources_state() -> ResourcesPanelState {
 }
 
 pub fn render_resources_panel_im(
-    ui: box<radiance.IUiHost>,
-    host: box<yaobow_editor_services.IEditorHostContext>,
+    ui: &radiance.IUiHost,
+    host: &yaobow_editor_services.IEditorHostContext,
     state: &ResourcesPanelState,
     picks: box<array<string>>,
     selected_path: string,
@@ -55,9 +55,9 @@ pub fn render_resources_panel_im(
 }
 
 fn render_category_view(
-    ui: box<radiance.IUiHost>,
-    rm: box<yaobow_editor_services.IResourceManager>,
-    project: box<yaobow_editor_services.IProjectService>,
+    ui: &radiance.IUiHost,
+    rm: &yaobow_editor_services.IResourceManager,
+    project: &yaobow_editor_services.IProjectService,
     state: &ResourcesPanelState,
     picks: box<array<string>>,
     selected_path: string,

@@ -82,8 +82,8 @@ import radiance;
 pub struct[radiance.IUiLayer, radiance.IDirector] First(pub trigger: box<array<int>>) {
     pub fn activate(self: &Self) -> int { 0 }
     pub fn deactivate(self: &Self) -> int { 0 }
-    pub fn render(self: &Self, ui: box<radiance.IUiHost>, dt: float) -> int { 0 }
-    pub fn update(self: &Self, dt: float) -> ?box<radiance.IDirector> {
+    pub fn render(self: &Self, ui: &radiance.IUiHost, dt: float) -> int { 0 }
+    pub fn update(self: &Self, dt: float) -> ?&radiance.IDirector {
         if self.trigger[0] != 0 {
             self.trigger[0] = 0;
             return make_second();
@@ -95,19 +95,19 @@ pub struct[radiance.IUiLayer, radiance.IDirector] First(pub trigger: box<array<i
 pub struct[radiance.IUiLayer, radiance.IDirector] Second() {
     pub fn activate(self: &Self) -> int { 0 }
     pub fn deactivate(self: &Self) -> int { 0 }
-    pub fn render(self: &Self, ui: box<radiance.IUiHost>, dt: float) -> int { 0 }
-    pub fn update(self: &Self, dt: float) -> ?box<radiance.IDirector> {
+    pub fn render(self: &Self, ui: &radiance.IUiHost, dt: float) -> int { 0 }
+    pub fn update(self: &Self, dt: float) -> ?&radiance.IDirector {
         return null;
     }
 }
 
-fn make_second() -> box<radiance.IDirector> {
-    return box(Second()) as box<radiance.IDirector>;
+fn make_second() -> &radiance.IDirector {
+    return box(Second()) as &radiance.IDirector;
 }
 
-pub fn init() -> box<radiance.IDirector> {
+pub fn init() -> &radiance.IDirector {
     let trigger: array<int> = [1];
-    return box(First(box(trigger))) as box<radiance.IDirector>;
+    return box(First(box(trigger))) as &radiance.IDirector;
 }
 "#,
         )
@@ -120,12 +120,12 @@ pub fn init() -> box<radiance.IDirector> {
         .call_method_returning_data(director, "update", vec![Data::Float(0.016)])
         .expect("update director");
 
-    // Phase 6: update returns `?box<radiance.IDirector>`
+    // Phase 6: update returns `?&radiance.IDirector`
     // instead of the legacy 0-or-1 array shape. First's trigger is
     // initially 1, so the first update returns Some(next).
     match result {
         Data::Some(_) => {}
-        Data::ProtoBoxRef { .. } | Data::BoxRef { .. } => {}
+        Data::ManagedReference { .. } | Data::ProtoBoxRef { .. } | Data::BoxRef { .. } => {}
         other => panic!("expected Some/box return for transition, got {other:?}"),
     }
 }

@@ -82,18 +82,18 @@ let ANIM_CFG_LOOPING: int = 1;
 // ----- Party controller ---------------------------------------------------
 
 pub struct[openpal4.IPal4ActorController] Pal4PartyController(
-    pub game_ctx: box<openpal4.IPal4GameContext>,
-    pub input: box<scripting_services.IInputService>,
-    pub entity_0: box<radiance.IEntity>,
-    pub entity_1: box<radiance.IEntity>,
-    pub entity_2: box<radiance.IEntity>,
-    pub entity_3: box<radiance.IEntity>,
-    pub anim_0: box<openpal4.IPal4ActorAnimationController>,
-    pub anim_1: box<openpal4.IPal4ActorAnimationController>,
-    pub anim_2: box<openpal4.IPal4ActorAnimationController>,
-    pub anim_3: box<openpal4.IPal4ActorAnimationController>,
-    pub camera: box<radiance.ICameraControl>,
-    pub ray_caster: box<radiance.IRayCaster>,
+    pub game_ctx: &openpal4.IPal4GameContext,
+    pub input: &scripting_services.IInputService,
+    pub entity_0: &radiance.IEntity,
+    pub entity_1: &radiance.IEntity,
+    pub entity_2: &radiance.IEntity,
+    pub entity_3: &radiance.IEntity,
+    pub anim_0: &openpal4.IPal4ActorAnimationController,
+    pub anim_1: &openpal4.IPal4ActorAnimationController,
+    pub anim_2: &openpal4.IPal4ActorAnimationController,
+    pub anim_3: &openpal4.IPal4ActorAnimationController,
+    pub camera: &radiance.ICameraControl,
+    pub ray_caster: &radiance.IRayCaster,
     pub locked: bool,
     pub camera_rotation: float,
     pub camera_height: float,
@@ -132,13 +132,13 @@ pub struct[openpal4.IPal4ActorController] Pal4PartyController(
         if leader > 3 {
             return 0;
         }
-        let entity: box<radiance.IEntity> = match leader {
+        let entity: &radiance.IEntity = match leader {
             0 => self.entity_0,
             1 => self.entity_1,
             2 => self.entity_2,
             _ => self.entity_3,
         };
-        let anim: box<openpal4.IPal4ActorAnimationController> = match leader {
+        let anim: &openpal4.IPal4ActorAnimationController = match leader {
             0 => self.anim_0,
             1 => self.anim_1,
             2 => self.anim_2,
@@ -347,25 +347,25 @@ pub struct[openpal4.IPal4ActorController] Pal4PartyController(
 // ----- Factory ------------------------------------------------------------
 
 pub fn make_actor_controller(
-    game_ctx: box<openpal4.IPal4GameContext>,
-    input: box<scripting_services.IInputService>,
-    entity_0: box<radiance.IEntity>,
-    entity_1: box<radiance.IEntity>,
-    entity_2: box<radiance.IEntity>,
-    entity_3: box<radiance.IEntity>,
-    anim_0: box<openpal4.IPal4ActorAnimationController>,
-    anim_1: box<openpal4.IPal4ActorAnimationController>,
-    anim_2: box<openpal4.IPal4ActorAnimationController>,
-    anim_3: box<openpal4.IPal4ActorAnimationController>,
-    camera: box<radiance.ICameraControl>,
-    ray_caster: box<radiance.IRayCaster>,
-) -> box<openpal4.IPal4ActorController> {
-    box(Pal4PartyController(
+    game_ctx: &openpal4.IPal4GameContext,
+    input: &scripting_services.IInputService,
+    entity_0: &radiance.IEntity,
+    entity_1: &radiance.IEntity,
+    entity_2: &radiance.IEntity,
+    entity_3: &radiance.IEntity,
+    anim_0: &openpal4.IPal4ActorAnimationController,
+    anim_1: &openpal4.IPal4ActorAnimationController,
+    anim_2: &openpal4.IPal4ActorAnimationController,
+    anim_3: &openpal4.IPal4ActorAnimationController,
+    camera: &radiance.ICameraControl,
+    ray_caster: &radiance.IRayCaster,
+) -> &openpal4.IPal4ActorController {
+    &Pal4PartyController(
         game_ctx, input,
         entity_0, entity_1, entity_2, entity_3,
         anim_0, anim_1, anim_2, anim_3,
         camera, ray_caster,
         true, 0.0, 300.0, 300.0,
         0.0, 1.0, false, 0.0,
-    )) as box<openpal4.IPal4ActorController>
+    ) as &openpal4.IPal4ActorController
 }

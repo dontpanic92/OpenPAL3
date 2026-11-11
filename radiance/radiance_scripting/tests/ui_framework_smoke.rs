@@ -22,7 +22,7 @@ const SCREEN: &str = r#"
 import radiance;
 import radiance_scripting.ui;
 
-pub fn entry(host: box<radiance.IUiHost>) -> int {
+pub fn entry(host: &radiance.IUiHost) -> int {
     let ctx = ui.make_ctx();
     let items: array<box<ui.Element>> = [
         ui.Text("a", ui.Color.WHITE),

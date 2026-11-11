@@ -28,7 +28,7 @@ pub let CHANGE_ADD: int = 0;
 pub let CHANGE_REPLACE: int = 1;
 
 pub fn tree_leaf_for_change(
-    ui: box<radiance.IUiHost>,
+    ui: &radiance.IUiHost,
     label: string,
     selected: bool,
     change_kind: int,
@@ -43,7 +43,7 @@ pub fn tree_leaf_for_change(
 }
 
 pub fn tree_node_open_for_change(
-    ui: box<radiance.IUiHost>,
+    ui: &radiance.IUiHost,
     label: string,
     change_kind: int,
 ) -> bool {
@@ -64,9 +64,9 @@ fn join_tree_path(parent: string, name: string) -> string {
 }
 
 fn render_tree_dir(
-    ui: box<radiance.IUiHost>,
-    vfs: box<scripting_services.IVfsService>,
-    project: box<yaobow_editor_services.IProjectService>,
+    ui: &radiance.IUiHost,
+    vfs: &scripting_services.IVfsService,
+    project: &yaobow_editor_services.IProjectService,
     path: string,
     picks: box<array<string>>,
     selected_path: string,
@@ -116,9 +116,9 @@ fn render_tree_dir(
 }
 
 pub fn render_resource_tree_im(
-    ui: box<radiance.IUiHost>,
-    vfs: box<scripting_services.IVfsService>,
-    project: box<yaobow_editor_services.IProjectService>,
+    ui: &radiance.IUiHost,
+    vfs: &scripting_services.IVfsService,
+    project: &yaobow_editor_services.IProjectService,
     picks: box<array<string>>,
     selected_path: string,
 ) {

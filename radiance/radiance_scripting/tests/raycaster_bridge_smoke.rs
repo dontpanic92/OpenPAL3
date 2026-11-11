@@ -14,7 +14,7 @@ const SCRIPT: &str = r#"
 import radiance;
 
 // Hit case: origin above the floor mesh — returns the (Some) depth.
-pub fn depth_above(rc: box<radiance.IRayCaster>, ox: float, oy: float, oz: float) -> float {
+pub fn depth_above(rc: &radiance.IRayCaster, ox: float, oy: float, oz: float) -> float {
     let hit: ?float = rc.cast_aa_ny(ox, oy, oz);
     if hit == null {
         return -1.0;
@@ -23,7 +23,7 @@ pub fn depth_above(rc: box<radiance.IRayCaster>, ox: float, oy: float, oz: float
 }
 
 // Miss case: origin outside the mesh footprint — returns null.
-pub fn is_miss(rc: box<radiance.IRayCaster>, ox: float, oy: float, oz: float) -> bool {
+pub fn is_miss(rc: &radiance.IRayCaster, ox: float, oy: float, oz: float) -> bool {
     let hit: ?float = rc.cast_aa_ny(ox, oy, oz);
     hit == null
 }

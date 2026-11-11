@@ -59,3 +59,94 @@ fn vfs_service_classifies_cached_entry_paths() {
 
     std::fs::remove_dir_all(root).ok();
 }
+
+#[test]
+fn native_scene_transfer_keeps_original_carrier_and_rejects_managed_and_script_proxies() {
+    use crosscom::ComRc;
+    use crosscom_protosept::wrap_proto;
+    use radiance::comdef::{IScene, ISceneManager};
+    use radiance::scene::{CoreScene, DefaultSceneManager, ISceneExt};
+    use radiance_scripting::{RuntimeAccess, ScriptHost, with_services};
+
+    let runtime = ScriptHost::new();
+    runtime.load_source(r#"
+import radiance;
+pub fn transfer(manager: &radiance.ISceneManager, scene: box<radiance.IScene>) -> box<radiance.IScene> {
+    manager.push_scene(scene);
+    manager.camera()!.set_position(7.0, 8.0, 9.0);
+    manager.pop_scene()!
+}
+
+@foreign(dispatcher="com.invoke", type_tag="test.NativeScene",
+         uuid="27e705f1-d035-4e91-8735-3a006fab870d")
+proto NativeScene {}
+struct[NativeScene] ScriptScene() {}
+pub fn fake_scene() -> box<NativeScene> { box(ScriptScene()) }
+"#).unwrap();
+    let scene = CoreScene::create();
+    let manager = ComRc::<ISceneManager>::from_object(DefaultSceneManager::new());
+    let scene_id = runtime.intern(scene.clone());
+    let manager_id = runtime.intern(manager.clone());
+    let scene_data = runtime
+        .foreign_box("radiance.comdef.IScene", scene_id)
+        .unwrap();
+    let manager_data = runtime
+        .foreign_box("radiance.comdef.ISceneManager", manager_id)
+        .unwrap();
+    let retained = runtime.with_ctx_mut(|ctx| ctx.retain_reference(&scene_data).unwrap());
+    let result = runtime
+        .call_returning_data("transfer", vec![manager_data.clone(), scene_data])
+        .unwrap();
+    let original = wrap_proto::<IScene>(&runtime.runtime_handle(), result).unwrap();
+    assert_eq!(
+        original.ptr_value(),
+        scene.ptr_value(),
+        "native extensions must see the original CoreScene layout"
+    );
+    let position = scene.camera().transform().position();
+    assert_eq!((position.x, position.y, position.z), (7.0, 8.0, 9.0));
+    assert!(manager.scene().is_none());
+    let error = runtime
+        .call_method_void(manager_data.clone(), "push_scene", vec![retained.clone()])
+        .unwrap_err();
+    assert!(
+        error.to_string().contains("original owned foreign carrier"),
+        "{error}"
+    );
+    let error = wrap_proto::<IScene>(&runtime.runtime_handle(), retained)
+        .err()
+        .unwrap();
+    assert!(
+        error.to_string().contains("original owned foreign carrier"),
+        "{error}"
+    );
+    let fake = runtime.call_returning_data("fake_scene", vec![]).unwrap();
+    let error = runtime
+        .call_method_void(manager_data, "push_scene", vec![fake.clone()])
+        .unwrap_err();
+    assert!(
+        error.to_string().contains("original owned foreign carrier"),
+        "{error}"
+    );
+    let error = wrap_proto::<IScene>(&runtime.runtime_handle(), fake)
+        .err()
+        .unwrap();
+    assert!(
+        error.to_string().contains("original owned foreign carrier"),
+        "{error}"
+    );
+    assert!(
+        manager.scene().is_none(),
+        "rejected exports never reach native scene storage"
+    );
+    drop(original);
+    <ScriptHost as RuntimeAccess>::with_ctx(&runtime, &mut |ctx| {
+        ctx.collect_garbage().unwrap();
+        with_services(|services| {
+            assert!(services.com_table_mut().release(scene_id));
+            assert!(services.com_table_mut().release(manager_id));
+            assert_eq!(services.com_table_mut().live(), 0);
+        })
+        .unwrap();
+    });
+}

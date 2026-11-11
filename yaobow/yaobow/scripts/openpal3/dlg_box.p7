@@ -57,23 +57,23 @@ let DLG_DECORATION_BOTTOM_OVER_DIALOG: float = 6.0;
 let DLG_TEXT_TOP_PAD_FACTOR: float        = 0.026;
 
 pub struct[openpal3.IPal3DialogRenderer] Pal3DialogRendererImpl(
-    pub sprites: box<scripting_services.ISpriteService>,
+    pub sprites: &scripting_services.ISpriteService,
     // 9-slice chrome, by role (held for lifetime). null when missing.
-    pub tl: ?box<scripting_services.ISprite>,
-    pub bl: ?box<scripting_services.ISprite>,
-    pub br: ?box<scripting_services.ISprite>,
-    pub tr: ?box<scripting_services.ISprite>,
-    pub left: ?box<scripting_services.ISprite>,
-    pub bottom: ?box<scripting_services.ISprite>,
-    pub right: ?box<scripting_services.ISprite>,
-    pub top: ?box<scripting_services.ISprite>,
-    pub center: ?box<scripting_services.ISprite>,
-    pub deco: ?box<scripting_services.ISprite>,
+    pub tl: ?&scripting_services.ISprite,
+    pub bl: ?&scripting_services.ISprite,
+    pub br: ?&scripting_services.ISprite,
+    pub tr: ?&scripting_services.ISprite,
+    pub left: ?&scripting_services.ISprite,
+    pub bottom: ?&scripting_services.ISprite,
+    pub right: ?&scripting_services.ISprite,
+    pub top: ?&scripting_services.ISprite,
+    pub center: ?&scripting_services.ISprite,
+    pub deco: ?&scripting_services.ISprite,
     // Blinking page-advance indicator frames.
-    pub page0: ?box<scripting_services.ISprite>,
-    pub page1: ?box<scripting_services.ISprite>,
+    pub page0: ?&scripting_services.ISprite,
+    pub page1: ?&scripting_services.ISprite,
     // Avatar portrait (loaded on `set_avatar`) + side (0=left, 1=right).
-    pub avatar: ?box<scripting_services.ISprite>,
+    pub avatar: ?&scripting_services.ISprite,
     pub avatar_side: int,
     // Curtain/fade level in [-1, 1] and the indicator blink accumulator.
     pub curtain: float,
@@ -98,7 +98,7 @@ pub struct[openpal3.IPal3DialogRenderer] Pal3DialogRendererImpl(
 
     pub fn render_dialog(
         self: &Self,
-        ui: box<radiance.IUiHost>,
+        ui: &radiance.IUiHost,
         text: string,
         dt: float,
     ) -> int {
@@ -230,7 +230,7 @@ pub struct[openpal3.IPal3DialogRenderer] Pal3DialogRendererImpl(
             dialog_right - avatar_width, lh - avatar_height, dialog_right, lh);
     }
 
-    pub fn render_curtain(self: &Self, ui: box<radiance.IUiHost>) -> int {
+    pub fn render_curtain(self: &Self, ui: &radiance.IUiHost) -> int {
         let c = self.curtain;
         if c == 0.0 { return 0; }
 
@@ -254,18 +254,18 @@ pub struct[openpal3.IPal3DialogRenderer] Pal3DialogRendererImpl(
 // (a piece that failed to load) — `SpriteRect` then paints nothing, so a
 // partial asset set degrades cleanly.
 fn sprite_rect(
-    s: ?box<scripting_services.ISprite>,
+    s: ?&scripting_services.ISprite,
     x0: float, y0: float, x1: float, y1: float,
 ) -> box<gui.Element> {
     return gui.Positioned(x0, y0, x1 - x0, y1 - y0, gui.Sprite(s));
 }
 
 // Native pixel width / height of a (possibly null) sprite, as a float.
-fn sprite_w(s: ?box<scripting_services.ISprite>) -> float {
+fn sprite_w(s: ?&scripting_services.ISprite) -> float {
     if s == null { return 0.0; }
     return s!.width() as float;
 }
-fn sprite_h(s: ?box<scripting_services.ISprite>) -> float {
+fn sprite_h(s: ?&scripting_services.ISprite) -> float {
     if s == null { return 0.0; }
     return s!.height() as float;
 }
@@ -280,11 +280,11 @@ fn sprite_h(s: ?box<scripting_services.ISprite>) -> float {
 // come from the enclosing `gui.Positioned`. Lifted from the legacy
 // `render_text`.
 pub struct[gui.Element] DialogText(content: string) {
-    fn measure(self: ref<Self>, avail: gui.Size, ui: box<radiance.IUiHost>) -> gui.Size {
+    fn measure(self: ref<Self>, avail: gui.Size, ui: &radiance.IUiHost) -> gui.Size {
         return avail;
     }
     fn paint(self: ref<Self>, rect: gui.Rect,
-             ui: box<radiance.IUiHost>, ctx: box<gui.UiCtx>) {
+             ui: &radiance.IUiHost, ctx: box<gui.UiCtx>) {
         let font_size = ui.game_font_size_small();
         if font_size <= 0.0 { return; }
 
@@ -342,19 +342,19 @@ pub struct[gui.Element] DialogText(content: string) {
 // Fullscreen fade curtain: a flat `(shade,shade,shade,opacity)` rect over
 // the whole viewport. Replaces the legacy `render_curtain` `fill_rect`.
 pub struct[gui.Element] Curtain(shade: float, opacity: float) {
-    fn measure(self: ref<Self>, avail: gui.Size, ui: box<radiance.IUiHost>) -> gui.Size {
+    fn measure(self: ref<Self>, avail: gui.Size, ui: &radiance.IUiHost) -> gui.Size {
         return avail;
     }
     fn paint(self: ref<Self>, rect: gui.Rect,
-             ui: box<radiance.IUiHost>, ctx: box<gui.UiCtx>) {
+             ui: &radiance.IUiHost, ctx: box<gui.UiCtx>) {
         ui.fill_rect(rect.x, rect.y, rect.right(), rect.bottom(),
                      self.shade, self.shade, self.shade, self.opacity);
     }
 }
 
 pub fn make_pal3_dialog_renderer(
-    sprites: box<scripting_services.ISpriteService>,
-) -> box<openpal3.IPal3DialogRenderer> {
+    sprites: &scripting_services.ISpriteService,
+) -> &openpal3.IPal3DialogRenderer {
     // Load the fixed chrome / indicator sprites once; each handle is
     // held by the renderer so its texture stays uploaded.
     let tl = sprites.load_sprite("/basedata/basedata/ui/flex/dlg0.tga");
@@ -370,11 +370,11 @@ pub fn make_pal3_dialog_renderer(
     let page0 = sprites.load_sprite("/basedata/basedata/ui/scene/page0.tga");
     let page1 = sprites.load_sprite("/basedata/basedata/ui/scene/page1.tga");
 
-    return box(Pal3DialogRendererImpl(
+    return &Pal3DialogRendererImpl(
         sprites,
         tl, bl, br, tr, left, bottom, right, top, center, deco,
         page0, page1,
         null, 0,
         0.0, 0.0,
-    ));
+    );
 }

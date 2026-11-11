@@ -6,8 +6,8 @@ import yaobow_editor.yaobow_editor_services;
 import radiance;
 
 pub fn render_inspector_im(
-    ui: box<radiance.IUiHost>,
-    session: ?box<yaobow_editor_services.IScenePreviewSession>,
+    ui: &radiance.IUiHost,
+    session: ?&yaobow_editor_services.IScenePreviewSession,
 ) {
     if session == null {
         ui.text("当前没有打开的场景。");

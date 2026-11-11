@@ -23,7 +23,7 @@ const SCREEN: &str = r#"
 import radiance;
 import radiance_scripting.ui;
 
-pub fn entry(host: box<radiance.IUiHost>) -> int {
+pub fn entry(host: &radiance.IUiHost) -> int {
     let ctx = ui.make_ctx();
     let btn: box<ui.Element> = ui.LayoutImage(
         7, 100, 0.0, 0.0, 1.0, 1.0, true,
@@ -118,7 +118,7 @@ import radiance_scripting.ui;
 
 // One "frame": build a brand-new ctx, then paint. Mirrors a screen that calls
 // `gui.make_ctx()` inside `render`.
-fn frame(host: box<radiance.IUiHost>) {
+fn frame(host: &radiance.IUiHost) {
     let ctx = ui.make_ctx();
     let btn: box<ui.Element> = ui.LayoutImage(
         7, 100, 0.0, 0.0, 1.0, 1.0, true,
@@ -128,7 +128,7 @@ fn frame(host: box<radiance.IUiHost>) {
     ui.paint_root(root, host, ctx);
 }
 
-pub fn entry(host: box<radiance.IUiHost>) -> int {
+pub fn entry(host: &radiance.IUiHost) -> int {
     frame(host);
     frame(host);
     0
@@ -178,7 +178,7 @@ fn negative_ints_round_trip_from_the_host() {
     host.load_source(
         r#"
 import radiance;
-pub fn entry(host: box<radiance.IUiHost>) -> int {
+pub fn entry(host: &radiance.IUiHost) -> int {
     host.set_press_latch(-1);
     host.text(f"a={host.press_latch()}");
     host.set_press_latch(-2147483648);

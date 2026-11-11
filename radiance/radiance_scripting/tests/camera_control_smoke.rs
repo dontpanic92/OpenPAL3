@@ -15,7 +15,7 @@ import radiance;
 // Position then look-at; report the right-axis y component (should
 // be ~0 for a level look-at along world X).
 pub fn position_camera_and_get_right_y(
-    cam: box<radiance.ICameraControl>,
+    cam: &radiance.ICameraControl,
     px: float, py: float, pz: float,
     tx: float, ty: float, tz: float,
 ) -> float {
@@ -26,7 +26,7 @@ pub fn position_camera_and_get_right_y(
 
 // Returns the camera-forward Z component after look-at(0,0,0) from
 // (0, 0, 10): forward = normalize(pos - target) = (0,0,1).
-pub fn forward_z_after_look_at_origin(cam: box<radiance.ICameraControl>) -> float {
+pub fn forward_z_after_look_at_origin(cam: &radiance.ICameraControl) -> float {
     cam.set_position(0.0, 0.0, 10.0);
     cam.look_at(0.0, 0.0, 0.0);
     cam.forward_z()

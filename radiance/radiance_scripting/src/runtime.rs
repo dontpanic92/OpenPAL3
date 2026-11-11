@@ -193,6 +193,7 @@ impl ScriptHost {
         crate::script_bridges::radiance::register_component_proto();
         crate::script_bridges::radiance::register_director_proto();
         crate::script_bridges::radiance::register_ui_layer_proto();
+        crate::script_bridges::radiance::register_scene_owned_proto();
         // scripting_services.idl declares no [protosept(scriptable)]
         // interfaces, so it has nothing to eagerly register.
     }
@@ -568,8 +569,10 @@ impl ScriptHost {
             scope(services, || {
                 scope_context(ctx, || {
                     with_context(|ctx| {
-                        ctx.push_proto_method(receiver, method_name, args)?;
-                        ctx.resume()
+                        if let Some(value) = ctx.call_proto_method(receiver, method_name, args)? {
+                            ctx.stack_frame_mut()?.stack.push(value);
+                        }
+                        Ok::<(), p7::errors::RuntimeError>(())
                     })
                     .map_err(|err| {
                         p7::errors::RuntimeError::Other(format!(

@@ -10,8 +10,8 @@ director swap is a return value from `update`.
 1. **`ScriptHost` is installed once on the radiance engine** (`ScriptHost::install(engine)`)
    and lives until the process exits. There is no second host, no swap, no per-screen runtime.
 2. **Each user package loads exactly one script source** via `host.load_source(SRC)`.
-   The package's main module must define a `pub fn init(host: box<IHostContext>) -> box<radiance.IDirector>`
-   that returns the root director box. A screen director's underlying struct
+   The package's main module must define a `pub fn init(host: &IHostContext) -> &radiance.IDirector`
+   that returns a retained root director reference. A screen director's underlying struct
    typically also conforms to `radiance.IUiLayer` (a sibling of
    `radiance.IDirector`, not a base) so the engine can draw it.
 3. **The root director is reverse-wrapped via `wrap_director`** into a
@@ -22,9 +22,9 @@ director swap is a return value from `update`.
    `additional_query_uuids` list includes `IUiLayer::INTERFACE_ID` when the
    struct conforms to it).
 4. **Transitions are return values.** Every
-   `update(dt) -> ?box<radiance.IDirector>` returns either `null` (stay)
-   or a bare box for the next director. The CCW's libffi thunk recursively
-   `wrap_proto_unknown`s the returned box, so the engine receives a fresh
+   `update(dt) -> ?&radiance.IDirector` returns either `null` (stay)
+   or a retained reference to the next director. The CCW's libffi thunk recursively
+   `wrap_proto_unknown`s the returned reference, so the engine receives a fresh
    `ComRc<IDirector>` for the next director.
 5. **UI rendering is decoupled from directors.** The engine owns a UI-layer
    stack ([`UiLayerStack`](../radiance/src/radiance/ui_layer.rs)) and drives
@@ -51,7 +51,7 @@ A Rust `ComObject` that implements `IDirector` can be returned to a script as
 the next director by:
 
 1. Interning it on the host: `let id = host.intern(rust_director);`.
-2. Pushing it as a foreign box: `let b = host.foreign_box("radiance.comdef.IDirector", id)?;`.
+2. Creating its internal owned carrier: `let b = host.foreign_box("radiance.comdef.IDirector", id)?;`.
 3. Returning it from a host-service method (e.g. `IAppService::open_game`).
 
 The receiving script wraps it in a local `HostDirectorIm`-style adapter
@@ -68,6 +68,23 @@ do not use `--remote` for a reproducible build. Cargo uses this submodule's
 `p7` path dependency. Rebuild and restart after updating it so scripts and
 bindings are recompiled with the new reference lowering.
 
+IDL interface arguments, results and fields use retained `&I` references
+(`?&I` for nullable results and `array<&I>` for interface collections).
+Owned foreign boxes are an internal carrier, not an ordinary API requirement.
+For example:
+
+```p7
+// Before: fn init(host: box<IHostContext>) -> box<radiance.IDirector>
+pub fn init(host: &IHostContext) -> &radiance.IDirector {
+    &Screen(host) as &radiance.IDirector
+}
+```
+
+`&Screen(...)` creates fresh managed storage; `&self.panel` retains an existing
+field, without allocating a replacement object. Existing owned `box(...)`
+values remain supported for compatibility. A bare struct does not implicitly
+allocate storage when converted to a retained protocol reference.
+
 IDL interfaces marked `[protosept(scriptable)]` generate retained `self: &I`
 receivers. Implement these as `self: &Self`: UI callbacks may retain that
 receiver, unlike scoped `ref<Self>` / `refmut<Self>` views. Host-only methods
@@ -79,10 +96,31 @@ Shared editor state can live directly in the director. Instead of storing
 taking `state: &ProjectPanelState`. Callbacks retain the existing field location
 and its owner; they do not capture a fresh copy of the panel.
 
-Keep `box(...)` where fresh identity or foreign ownership is intended. Director
-factories still return fresh `box<IDirector>` values; `foreign_box` still owns
-the interned COM reference. External callbacks are rooted by their CCW until its
-final `ComRc` is dropped. A raw Rust `Data` clone alone is not a GC root.
+Keep `box(...)` where explicit cell identity or foreign ownership is intended;
+`foreign_box` still owns the interned COM reference. External callbacks root the
+exact validated reference in their CCW until its final `ComRc` is dropped.
+The released root is reclaimed at the next collection/runtime boundary.
+Each invocation resolves that reference again, so a retained fixed-field
+projection observes field and parent replacement. Call arguments hold temporary
+COM references; a native callee retaining a callback must retain its own
+`ComRc`. No callback is permanently interned merely because it crossed a call.
+A raw Rust `Data` clone alone is not a GC root. Scoped views, unowned foreign
+cells and values from another runtime cannot become retained CCWs.
+
+Foreign projected references also require a registered `ProtoSpec` for native
+proxy dispatch. Missing proxy metadata is an error, never a cached snapshot
+pointer or a reboxed copy. Existing owned foreign-box contracts retain their
+legacy QI pass-through behavior.
+
+`[protosept(owned)]` is an explicit, opt-in IDL exception for interfaces whose
+native ownership contract requires the original foreign carrier. Currently only
+`IScene` uses it: PAL4's `load_menu_scene`, `push_scene`, `scene` and `pop_scene`
+retain `box<IScene>` / `?box<IScene>` contracts because engine scene extensions
+access the original `CoreScene` layout. Codegen also emits
+`register_scene_owned_proto`, installed by `ScriptHost`; this prevents a script
+implementation or managed projection from being exported as an owned native
+scene. It is not a way to bypass checked managed-reference validation, and it
+cannot be combined with `[protosept(scriptable)]`.
 
 ## File Map
 

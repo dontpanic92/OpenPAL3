@@ -49,7 +49,7 @@ import yaobow_editor.main_editor;
 import yaobow_editor.content_tabs;
 
 pub struct[radiance.IUiLayer, radiance.IDirector] Harness(
-    pub host: box<yaobow_editor_services.IEditorHostContext>,
+    pub host: &yaobow_editor_services.IEditorHostContext,
     pub state: box<import_wizard.ImportWizardState>,
     pub picks: box<array<string>>,
 ) {
@@ -62,12 +62,12 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Harness(
     // `IUiLayer`/`IDirector` surface (custom instance methods aren't
     // reachable via `ScriptHost::call_method_*` — only methods on a
     // proto box's declared interfaces are).
-    pub fn render(self: &Self, ui: box<radiance.IUiHost>, dt: float) -> int {
+    pub fn render(self: &Self, ui: &radiance.IUiHost, dt: float) -> int {
         import_wizard.render_import_wizard(ui, self.host, self.state, self.picks);
         return self.picks.len();
     }
 
-    pub fn update(self: &Self, dt: float) -> ?box<radiance.IDirector> {
+    pub fn update(self: &Self, dt: float) -> ?&radiance.IDirector {
         return null;
     }
 }
@@ -80,12 +80,12 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Harness(
 // fixed Add entry seeded from a current-preview context path, and the
 // model/resource-context
 // "Import glTF (Replace)..." entry.
-pub fn init(host: box<yaobow_editor_services.IEditorHostContext>) -> box<radiance.IDirector> {
+pub fn init(host: &yaobow_editor_services.IEditorHostContext) -> &radiance.IDirector {
     let picks: array<string> = [];
     return box(Harness(host, box(import_wizard.make_import_wizard_state()), box(picks)));
 }
 
-pub fn init_shown(host: box<yaobow_editor_services.IEditorHostContext>) -> box<radiance.IDirector> {
+pub fn init_shown(host: &yaobow_editor_services.IEditorHostContext) -> &radiance.IDirector {
     let picks: array<string> = [];
     let state = box(import_wizard.make_import_wizard_state());
     state.show = true;
@@ -93,9 +93,9 @@ pub fn init_shown(host: box<yaobow_editor_services.IEditorHostContext>) -> box<r
 }
 
 pub fn init_add(
-    host: box<yaobow_editor_services.IEditorHostContext>,
+    host: &yaobow_editor_services.IEditorHostContext,
     context_vfs_path: string,
-) -> box<radiance.IDirector> {
+) -> &radiance.IDirector {
     let picks: array<string> = [];
     let state = box(import_wizard.make_import_wizard_state());
     import_wizard.open_wizard_for_add(state, host.imports(), context_vfs_path);
@@ -103,9 +103,9 @@ pub fn init_add(
 }
 
 pub fn init_replace(
-    host: box<yaobow_editor_services.IEditorHostContext>,
+    host: &yaobow_editor_services.IEditorHostContext,
     vfs_path: string,
-) -> box<radiance.IDirector> {
+) -> &radiance.IDirector {
     let picks: array<string> = [];
     let state = box(import_wizard.make_import_wizard_state());
     import_wizard.open_wizard_for_replace(state, host.imports(), vfs_path);
@@ -113,8 +113,8 @@ pub fn init_replace(
 }
 
 pub fn render_menu_import_entry(
-    ui: box<radiance.IUiHost>,
-    host: box<yaobow_editor_services.IEditorHostContext>,
+    ui: &radiance.IUiHost,
+    host: &yaobow_editor_services.IEditorHostContext,
     context_vfs_path: string,
 ) -> int {
     let state = box(import_wizard.make_import_wizard_state());
@@ -132,8 +132,8 @@ pub fn render_menu_import_entry(
 }
 
 pub fn render_preview_import_entry(
-    ui: box<radiance.IUiHost>,
-    host: box<yaobow_editor_services.IEditorHostContext>,
+    ui: &radiance.IUiHost,
+    host: &yaobow_editor_services.IEditorHostContext,
     vfs_path: string,
 ) -> int {
     let intents: array<string> = [];

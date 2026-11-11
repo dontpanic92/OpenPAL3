@@ -7,15 +7,15 @@
 import radiance;
 import scripting_services;
 
-pub fn render_theme_menu(ui: box<radiance.IUiHost>, config: box<scripting_services.IConfigService>) {
+pub fn render_theme_menu(ui: &radiance.IUiHost, config: &scripting_services.IConfigService) {
     ui.menu("View", () => {
         render_theme_submenu(ui, config);
     });
 }
 
 pub fn render_theme_submenu(
-    ui: box<radiance.IUiHost>,
-    config: box<scripting_services.IConfigService>,
+    ui: &radiance.IUiHost,
+    config: &scripting_services.IConfigService,
 ) {
     ui.menu("Theme", () => {
         let current = config.get_theme("editor");

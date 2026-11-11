@@ -7,13 +7,13 @@ import shared.pal4_debug;
 import radiance;
 
 pub struct[pal4_debug.IPal4DebugOverlay] Pal4DebugOverlay(
-    pub ctx_ref: box<pal4_debug.IPal4DebugContext>,
+    pub ctx_ref: &pal4_debug.IPal4DebugContext,
 ) {
     pub fn render(
         self: &Self,
-        ui: box<radiance.IUiHost>,
+        ui: &radiance.IUiHost,
         dt: float,
-        ctx: box<pal4_debug.IPal4DebugContext>,
+        ctx: &pal4_debug.IPal4DebugContext,
     ) -> int {
         ui.with_font(1, () => {
             ui.window("PAL4 Debug (`)", 320.0, 260.0, 0, () => {
@@ -49,7 +49,7 @@ fn on_off(b: bool) -> string {
 }
 
 pub fn make_overlay(
-    ctx: box<pal4_debug.IPal4DebugContext>,
-) -> box<pal4_debug.IPal4DebugOverlay> {
-    return box(Pal4DebugOverlay(ctx));
+    ctx: &pal4_debug.IPal4DebugContext,
+) -> &pal4_debug.IPal4DebugOverlay {
+    return &Pal4DebugOverlay(ctx);
 }

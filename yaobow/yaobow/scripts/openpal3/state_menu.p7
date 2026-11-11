@@ -117,7 +117,7 @@ let SPR_EXIT: string    = "ui/GameMainUI/Communal/StpCtl/Exit";
 // Compose the menu over the live scene + HUD. `mx`/`my` are the cursor,
 // `click` is the left-button rising edge this frame.
 pub fn paint_state_menu(
-    ui: box<radiance.IUiHost>, atlas: box<openpal3.IPal3UiAtlas>,
+    ui: &radiance.IUiHost, atlas: &openpal3.IPal3UiAtlas,
     mx: float, my: float, down: bool, click: bool,
 ) -> bool {
     let lw = ui.display_size_x() as float;
@@ -235,7 +235,7 @@ pub fn paint_state_menu(
 }
 
 // Blit an atlas sprite stretched into the screen rect (x0,y0)-(x1,y1).
-fn blit(ui: box<radiance.IUiHost>, atlas: box<openpal3.IPal3UiAtlas>, name: string,
+fn blit(ui: &radiance.IUiHost, atlas: &openpal3.IPal3UiAtlas, name: string,
         x0: float, y0: float, x1: float, y1: float) {
     let osp = atlas.sprite(name);
     if osp == null { return; }

@@ -24,7 +24,7 @@ import radiance;
 // `count` cells are submitted into a `cols`-wide table, each preceded by the
 // required `table_next_column()`. `cell(i)` draws cell `i`.
 pub fn grid(
-    ui: box<radiance.IUiHost>,
+    ui: &radiance.IUiHost,
     id: string,
     cols: int,
     count: int,
@@ -45,7 +45,7 @@ pub fn grid(
 // them as data: `cells[i]` draws cell `i`, each preceded by the required
 // `table_next_column()`.
 pub fn grid_cells(
-    ui: box<radiance.IUiHost>,
+    ui: &radiance.IUiHost,
     id: string,
     cols: int,
     cells: array<fn()>,
@@ -66,7 +66,7 @@ pub fn grid_cells(
 // bespoke ordering. Passing the ordinals as data preserves that while still
 // using a loop; `blank` marks a cell that should render empty.
 pub fn grid_of(
-    ui: box<radiance.IUiHost>,
+    ui: &radiance.IUiHost,
     id: string,
     cols: int,
     ordinals: array<int>,

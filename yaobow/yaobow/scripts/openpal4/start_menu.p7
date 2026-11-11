@@ -102,13 +102,13 @@ fn is_back_name(name: string) -> bool {
 }
 
 pub struct[radiance.IUiLayer, radiance.IDirector] Pal4StartMenuDirector(
-    pub host: box<yaobow_services.IYaobowHostContext>,
+    pub host: &yaobow_services.IYaobowHostContext,
     pub asset_path: string,
-    pub layout: ?box<scripting_services.IUiLayoutHandle>,
+    pub layout: ?&scripting_services.IUiLayoutHandle,
     // loadWindow.xml, rendered while `mode == MODE_LOAD`. Null when
     // the asset is missing — "Load Game" then stays inert.
-    pub load_layout: ?box<scripting_services.IUiLayoutHandle>,
-    pub bgm: ?box<scripting_services.IAudioSource>,
+    pub load_layout: ?&scripting_services.IUiLayoutHandle,
+    pub bgm: ?&scripting_services.IAudioSource,
     pub intent: Intent,
     // True once `activate()` has successfully pushed the ZJM
     // backdrop scene; `deactivate()` pops + unloads only when set
@@ -160,7 +160,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal4StartMenuDirector(
 
     pub fn render(
         self: &Self,
-        ui: box<radiance.IUiHost>,
+        ui: &radiance.IUiHost,
         dt: float,
     ) -> int {
         if self.bgm != null {
@@ -279,7 +279,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal4StartMenuDirector(
     pub fn update(
         self: &Self,
         dt: float,
-    ) -> ?box<radiance.IDirector> {
+    ) -> ?&radiance.IDirector {
         let code = self.intent;
         self.intent = Intent.None;
         match code {
@@ -306,9 +306,9 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal4StartMenuDirector(
 }
 
 pub fn make_pal4_start_menu(
-    host: box<yaobow_services.IYaobowHostContext>,
+    host: &yaobow_services.IYaobowHostContext,
     asset_path: string,
-) -> box<radiance.IDirector> {
+) -> &radiance.IDirector {
     // `open_layout` may return null when PAL4 assets aren't installed
     // at this path. We still construct the menu director — it renders
     // a fallback "layout not found" message and keeps Exit/back-to-
@@ -318,8 +318,8 @@ pub fn make_pal4_start_menu(
     let layout = host.pal4().open_layout(MENU_LAYOUT_PATH);
     let load_layout = host.pal4().open_layout(LOAD_LAYOUT_PATH);
     let bgm = host.pal4().load_music(MENU_BGM_NAME);
-    return box(Pal4StartMenuDirector(
+    return &Pal4StartMenuDirector(
         host, asset_path, layout, load_layout, bgm,
         Intent.None, false, MODE_MAIN, NO_SLOT, gui.make_ctx(),
-    )) as box<radiance.IDirector>;
+    ) as &radiance.IDirector;
 }

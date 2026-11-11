@@ -19,7 +19,7 @@ const SOURCE: &str = r#"
 import crosscom;
 
 @intrinsic(name="test.capture_action")
-fn capture_action(body: box<crosscom.IAction>);
+fn capture_action(body: &crosscom.IAction);
 
 @intrinsic(name="test.record_invocation")
 fn record_invocation();
@@ -33,7 +33,7 @@ struct[crosscom.IAction] Callback() {
 
 pub fn save_callback() {
     let cb = box(Callback());
-    capture_action(cb as box<crosscom.IAction>);
+    capture_action(cb as &crosscom.IAction);
 }
 
 pub fn run_unrelated() {
@@ -55,6 +55,39 @@ pub fn save_stateful_callback() -> &int {
 }
 
 pub fn read_count(count: &int) -> int { *count }
+
+@foreign(dispatcher="com.invoke", finalizer="test.release_token",
+         type_tag="test.IToken", uuid="bce08588-7248-46ae-b520-9761aa38cc27")
+proto IToken {}
+
+@intrinsic(name="test.make_token")
+fn make_token() -> &IToken;
+
+@intrinsic(name="test.record_projection")
+fn record_projection(value: int);
+
+struct[crosscom.IAction] ProjectedAction(pub value: int, token: &IToken) {
+    pub fn invoke(self: &Self) -> int {
+        record_projection(self.value);
+        0
+    }
+}
+
+struct Owner(pub callback: ProjectedAction);
+
+pub fn capture_projected() -> &Owner {
+    let mut owner = Owner(ProjectedAction(1, make_token()));
+    capture_action(&owner.callback);
+    &owner
+}
+
+pub fn replace_field(owner: &Owner) {
+    owner.callback = ProjectedAction(2, make_token());
+}
+
+pub fn replace_parent(owner: &Owner) {
+    *owner = Owner(ProjectedAction(3, make_token()));
+}
 "#;
 
 // Thread-local because tests in cargo's harness run in parallel; we
@@ -63,6 +96,8 @@ pub fn read_count(count: &int) -> int { *count }
 thread_local! {
     static CAPTURED: RefCell<Vec<ComRc<IAction>>> = const { RefCell::new(Vec::new()) };
     static INVOCATIONS: RefCell<i64> = const { RefCell::new(0) };
+    static PROJECTIONS: RefCell<Vec<i64>> = const { RefCell::new(Vec::new()) };
+    static TOKENS: RefCell<(i64, Vec<i64>)> = const { RefCell::new((0, Vec::new())) };
 }
 
 // Global lock so we only ever drive one ScriptHost-driven test at a
@@ -89,6 +124,39 @@ fn record_invocation_host_fn(_ctx: &mut Context) -> Result<(), RuntimeError> {
     Ok(())
 }
 
+fn make_token(ctx: &mut Context) -> Result<(), RuntimeError> {
+    let id = TOKENS.with(|tokens| {
+        let mut tokens = tokens.borrow_mut();
+        tokens.0 += 1;
+        tokens.0
+    });
+    ctx.push_foreign("test.IToken", id)
+}
+
+fn release_token(ctx: &mut Context) -> Result<(), RuntimeError> {
+    let frame = ctx.stack_frame_mut()?;
+    assert!(matches!(
+        frame.stack.pop(),
+        Some(p7::interpreter::context::Data::String(_))
+    ));
+    let Some(p7::interpreter::context::Data::Int(id)) = frame.stack.pop() else {
+        return Err(RuntimeError::Other("release_token: missing handle".into()));
+    };
+    TOKENS.with(|tokens| tokens.borrow_mut().1.push(id));
+    Ok(())
+}
+
+fn record_projection(ctx: &mut Context) -> Result<(), RuntimeError> {
+    let Some(p7::interpreter::context::Data::Int(value)) = ctx.stack_frame_mut()?.stack.pop()
+    else {
+        return Err(RuntimeError::Other(
+            "record_projection: missing value".into(),
+        ));
+    };
+    PROJECTIONS.with(|values| values.borrow_mut().push(value));
+    Ok(())
+}
+
 #[test]
 fn captured_action_survives_across_script_host_calls() {
     let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
@@ -102,6 +170,9 @@ fn captured_action_survives_across_script_host_calls() {
             "test.record_invocation".to_string(),
             record_invocation_host_fn,
         );
+        ctx.register_host_function("test.make_token".into(), make_token);
+        ctx.register_host_function("test.release_token".into(), release_token);
+        ctx.register_host_function("test.record_projection".into(), record_projection);
     });
     host.load_source(SOURCE).expect("load_source");
 
@@ -141,6 +212,67 @@ fn captured_action_survives_across_script_host_calls() {
     // ScriptHost still alive and functional after drop.
     host.call_void("run_unrelated", vec![])
         .expect("run_unrelated again");
+}
+
+#[test]
+fn host_retains_exact_projection_across_gc_and_field_and_parent_replacement() {
+    let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    CAPTURED.with(|c| c.borrow_mut().clear());
+    PROJECTIONS.with(|values| values.borrow_mut().clear());
+    TOKENS.with(|tokens| *tokens.borrow_mut() = (0, Vec::new()));
+
+    let host = ScriptHost::new();
+    host.with_ctx_mut(|ctx| {
+        ctx.register_host_function("test.capture_action".into(), capture_action_host_fn);
+        ctx.register_host_function("test.record_invocation".into(), record_invocation_host_fn);
+        ctx.register_host_function("test.make_token".into(), make_token);
+        ctx.register_host_function("test.release_token".into(), release_token);
+        ctx.register_host_function("test.record_projection".into(), record_projection);
+    });
+    host.load_source(SOURCE).unwrap();
+    let owner = host
+        .call_returning_data("capture_projected", vec![])
+        .unwrap();
+    let callback = CAPTURED.with(|c| c.borrow().last().unwrap().clone());
+    host.with_ctx_mut(|ctx| ctx.collect_garbage().unwrap());
+    callback.invoke();
+    assert_eq!(PROJECTIONS.with(|values| values.borrow().clone()), vec![1]);
+    assert_eq!(TOKENS.with(|tokens| tokens.borrow().1.clone()), vec![]);
+
+    for (method, expected) in [("replace_field", 2), ("replace_parent", 3)] {
+        host.call_void(method, vec![owner.clone()]).unwrap();
+        host.call_void("run_unrelated", vec![]).unwrap();
+        host.with_ctx_mut(|ctx| ctx.collect_garbage().unwrap());
+        callback.invoke();
+        assert_eq!(
+            PROJECTIONS.with(|values| *values.borrow().last().unwrap()),
+            expected
+        );
+        assert_eq!(
+            TOKENS.with(|tokens| tokens.borrow().1.len()),
+            expected as usize - 1
+        );
+    }
+
+    drop(callback);
+    CAPTURED.with(|c| c.borrow_mut().clear());
+    host.with_ctx_mut(|ctx| {
+        ctx.collect_garbage().unwrap();
+        assert_eq!(
+            ctx.box_heap.live_count(),
+            0,
+            "last native owner releases projected state"
+        );
+    });
+    TOKENS.with(|tokens| {
+        let tokens = tokens.borrow();
+        assert_eq!(tokens.0, 3);
+        assert_eq!(
+            tokens.1,
+            vec![1, 2, 3],
+            "each foreign token finalizes exactly once"
+        );
+    });
 }
 
 #[test]

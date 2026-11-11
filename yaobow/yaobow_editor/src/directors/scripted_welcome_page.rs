@@ -86,7 +86,7 @@ impl ScriptedWelcomePage {
         )
         .expect("welcome script init must succeed");
 
-        // Reverse-wrap the script-side `box<radiance.IDirector>`
+        // Reverse-wrap the script-side `&radiance.IDirector`
         // through the runtime-typed CCW factory. The fat CCW gives us
         // both `IDirector` (for `SceneManager::set_director`) and
         // `IUiLayer` (for the engine UI renderer) from a single

@@ -13,9 +13,9 @@ import yaobow_editor.yaobow_editor_services;
 import radiance;
 
 pub fn render_scene_outline_im(
-    ui: box<radiance.IUiHost>,
-    session: ?box<yaobow_editor_services.IScenePreviewSession>,
-    snapshot: ?box<yaobow_editor_services.ISceneHandle>,
+    ui: &radiance.IUiHost,
+    session: ?&yaobow_editor_services.IScenePreviewSession,
+    snapshot: ?&yaobow_editor_services.ISceneHandle,
 ) {
     if session == null || snapshot == null {
         ui.text("当前没有打开的场景。");
@@ -43,7 +43,7 @@ pub fn render_scene_outline_im(
     });
 }
 
-fn compute_depth(h: box<yaobow_editor_services.ISceneHandle>, id: int) -> int {
+fn compute_depth(h: &yaobow_editor_services.ISceneHandle, id: int) -> int {
     let mut d = 0;
     let mut cur = id;
     while h.node_parent(cur) >= 0 {
@@ -54,7 +54,7 @@ fn compute_depth(h: box<yaobow_editor_services.ISceneHandle>, id: int) -> int {
     return d;
 }
 
-fn make_label(h: box<yaobow_editor_services.ISceneHandle>, id: int, depth: int, sel: int) -> string {
+fn make_label(h: &yaobow_editor_services.ISceneHandle, id: int, depth: int, sel: int) -> string {
     let name = h.node_name(id);
     let bullet = if id == sel { "● " } else { "○ " };
     let mut indent = "";

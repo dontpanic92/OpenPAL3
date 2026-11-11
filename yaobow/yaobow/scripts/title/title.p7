@@ -67,12 +67,12 @@ let PROMPT_TEXT_B: string = "按下任意键继续_";
 // retained receivers, so callbacks share the director's mutable field storage;
 // the per-frame scratch lives as plain fields on `TitleDirector`.
 pub struct[radiance.IUiLayer, radiance.IDirector] TitleDirector(
-    pub host: box<yaobow_services.IYaobowHostContext>,
-    pub bgm: ?box<scripting_services.IAudioSource>,
-    pub logo: ?box<scripting_services.ITexture>,
+    pub host: &yaobow_services.IYaobowHostContext,
+    pub bgm: ?&scripting_services.IAudioSource,
+    pub logo: ?&scripting_services.ITexture,
     pub logo_w: int,
     pub logo_h: int,
-    pub outlines: ?box<scripting_services.IGifAnimation>,
+    pub outlines: ?&scripting_services.IGifAnimation,
     pub time: float,
     pub prompt_phase: int,
     pub prompt_time: float,
@@ -86,7 +86,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] TitleDirector(
     pub pic_state: int,
     pub intent: title_consts.Intent,
     pub intent_arg: int,
-    pub current_pic: ?box<scripting_services.ITexture>,
+    pub current_pic: ?&scripting_services.ITexture,
 ) {
     pub fn activate(self: &Self) -> int {
         if self.bgm != null {
@@ -104,7 +104,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] TitleDirector(
 
     pub fn render(
         self: &Self,
-        ui: box<radiance.IUiHost>,
+        ui: &radiance.IUiHost,
         dt: float,
     ) -> int {
         ui.style_color(
@@ -136,7 +136,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] TitleDirector(
     // Declare the whole title screen as a widget tree. The fade-in alpha
     // (computed from `self.time`) wraps the logo / prompt / preview group
     // via `gui.Opacity`; the version label sits outside it at full opacity.
-    pub fn build(self: &Self, ui: box<radiance.IUiHost>) -> box<gui.Element> {
+    pub fn build(self: &Self, ui: &radiance.IUiHost) -> box<gui.Element> {
         let display_w = ui.display_size_x() as float;
         let display_h = ui.display_size_y() as float;
         let unit_w = display_w / 16.0;
@@ -318,7 +318,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] TitleDirector(
 
     // Runs BEFORE the tree is built: latch the preview pane on first
     // hover and lazy-load the chosen preview so it can paint this frame.
-    pub fn tick_pre(self: &Self, ui: box<radiance.IUiHost>) {
+    pub fn tick_pre(self: &Self, ui: &radiance.IUiHost) {
         if self.hovered_game != NO_HOVER {
             self.pic_state = PIC_SHOWING;
         }
@@ -343,13 +343,13 @@ pub struct[radiance.IUiLayer, radiance.IDirector] TitleDirector(
 
     // Runs AFTER the tree is painted: advance the prompt blink, the
     // outline GIF, and the master fade timer.
-    pub fn tick_post(self: &Self, ui: box<radiance.IUiHost>, dt: float) {
+    pub fn tick_post(self: &Self, ui: &radiance.IUiHost, dt: float) {
         self.tick_prompt(ui, dt);
         self.tick_outline(dt);
         self.time = self.time + dt;
     }
 
-    pub fn tick_prompt(self: &Self, ui: box<radiance.IUiHost>, dt: float) {
+    pub fn tick_prompt(self: &Self, ui: &radiance.IUiHost, dt: float) {
         let phase = self.prompt_phase;
         if phase == PROMPT_FIRST_TIME {
             let t = self.prompt_time - dt;
@@ -429,7 +429,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] TitleDirector(
     pub fn update(
         self: &Self,
         dt: float,
-    ) -> ?box<radiance.IDirector> {
+    ) -> ?&radiance.IDirector {
         let code = self.intent;
         let arg = self.intent_arg;
         self.intent = title_consts.Intent.None;
@@ -479,8 +479,8 @@ pub struct[radiance.IUiLayer, radiance.IDirector] TitleDirector(
 }
 
 pub fn make_title_director(
-    host: box<yaobow_services.IYaobowHostContext>,
-) -> box<radiance.IDirector> {
+    host: &yaobow_services.IYaobowHostContext,
+) -> &radiance.IDirector {
     let bgm = host.audio().load("/music/Grace.ogg", 1);
     let logo = host.textures().load_png("/images/yaobow.png");
     let mut logo_w: int = 0;
@@ -491,7 +491,7 @@ pub fn make_title_director(
     }
     let outlines = host.textures().load_gif_animation("/images/title/outlines/1.gif");
 
-    return box(TitleDirector(
+    return &TitleDirector(
         host, bgm, logo, logo_w, logo_h, outlines,
         0.0,                                            // time
         PROMPT_FIRST_TIME,                              // prompt_phase
@@ -507,7 +507,7 @@ pub fn make_title_director(
         title_consts.Intent.None,                       // intent
         0,                                              // intent_arg
         null,                                           // current_pic
-    )) as box<radiance.IDirector>;
+    ) as &radiance.IDirector;
 }
 
 // ---------------------------------------------------------------------------
@@ -518,7 +518,7 @@ pub fn make_title_director(
 // ---------------------------------------------------------------------------
 
 pub struct[radiance.IUiLayer, radiance.IDirector] TitleSettingsDirector(
-    pub host: box<yaobow_services.IYaobowHostContext>,
+    pub host: &yaobow_services.IYaobowHostContext,
     pub intent: title_consts.Intent,
     pub intent_arg: int,
 ) {
@@ -529,7 +529,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] TitleSettingsDirector(
     }
     pub fn deactivate(self: &Self) -> int { 0 }
 
-    pub fn render(self: &Self, ui: box<radiance.IUiHost>, dt: float) -> int {
+    pub fn render(self: &Self, ui: &radiance.IUiHost, dt: float) -> int {
         ui.style_color(
             title_consts.SC_WINDOW_BG,
             title_consts.BG_R, title_consts.BG_G, title_consts.BG_B, title_consts.BG_A,
@@ -567,7 +567,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] TitleSettingsDirector(
         0
     }
 
-    pub fn render_row(self: &Self, ui: box<radiance.IUiHost>, ordinal: int) {
+    pub fn render_row(self: &Self, ui: &radiance.IUiHost, ordinal: int) {
         ui.table_next_column();
         ui.text(settings_game_name(ordinal));
         ui.table_next_column();
@@ -590,7 +590,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] TitleSettingsDirector(
     // `SceneScaleMode` once at startup and builds its swapchain
     // accordingly; live-swapping render passes mid-frame is out of
     // scope for v1.
-    pub fn render_render_settings(self: &Self, ui: box<radiance.IUiHost>) {
+    pub fn render_render_settings(self: &Self, ui: &radiance.IUiHost) {
         let cfg = self.host.config();
         let current = cfg.get_scene_scale_mode();
         let is_logical = current == "logical";
@@ -612,7 +612,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] TitleSettingsDirector(
     pub fn update(
         self: &Self,
         dt: float,
-    ) -> ?box<radiance.IDirector> {
+    ) -> ?&radiance.IDirector {
         let code = self.intent;
         let arg = self.intent_arg;
         self.intent = title_consts.Intent.None;
@@ -648,18 +648,18 @@ pub struct[radiance.IUiLayer, radiance.IDirector] TitleSettingsDirector(
 }
 
 fn make_settings_director(
-    host: box<yaobow_services.IYaobowHostContext>,
-) -> box<radiance.IDirector> {
-    return box(TitleSettingsDirector(host, title_consts.Intent.None, 0))
-        as box<radiance.IDirector>;
+    host: &yaobow_services.IYaobowHostContext,
+) -> &radiance.IDirector {
+    return &TitleSettingsDirector(host, title_consts.Intent.None, 0)
+        as &radiance.IDirector;
 }
 
 // Re-entry to the yaobow.title page after saving/cancelling settings. The
 // returned director satisfies `radiance.IDirector`; the engine's UI
 // renderer will QI to `IUiLayer` and call `render`.
 fn make_title_director_as_director(
-    host: box<yaobow_services.IYaobowHostContext>,
-) -> ?box<radiance.IDirector> {
+    host: &yaobow_services.IYaobowHostContext,
+) -> ?&radiance.IDirector {
     let bgm = host.audio().load("/music/Grace.ogg", 1);
     let logo = host.textures().load_png("/images/yaobow.png");
     let mut logo_w: int = 0;
@@ -673,7 +673,7 @@ fn make_title_director_as_director(
     // The list is already showing because the user came from the yaobow.title
     // page; jump directly to it instead of replaying the press-any-key
     // intro.
-    let d = box(TitleDirector(
+    let d = &TitleDirector(
         host, bgm, logo, logo_w, logo_h, outlines,
         title_consts.FADE_RAMP_END,                     // time
         PROMPT_SHOWING_LIST,                            // prompt_phase
@@ -689,7 +689,7 @@ fn make_title_director_as_director(
         title_consts.Intent.None,                       // intent
         0,                                              // intent_arg
         null,                                           // current_pic
-    )) as box<radiance.IDirector>;
+    ) as &radiance.IDirector;
     return d;
 }
 
@@ -755,11 +755,11 @@ fn pic_folder(ordinal: int) -> string {
 // rect. Always wrapped in a `gui.Positioned`. Mirrors the legacy
 // `draw_fitted_image` helper.
 pub struct[gui.Element] FittedImg(tex: int, src_w: float, src_h: float) {
-    fn measure(self: ref<Self>, avail: gui.Size, ui: box<radiance.IUiHost>) -> gui.Size {
+    fn measure(self: ref<Self>, avail: gui.Size, ui: &radiance.IUiHost) -> gui.Size {
         return gui.Size.ZERO;
     }
     fn paint(self: ref<Self>, rect: gui.Rect,
-             ui: box<radiance.IUiHost>, ctx: box<gui.UiCtx>) {
+             ui: &radiance.IUiHost, ctx: box<gui.UiCtx>) {
         // Aspect-preserving centred fit — now one `Rect.fit` call instead of
         // hand-rolled scale selection plus centring arithmetic.
         let dst = rect.fit(gui.Size(self.src_w, self.src_h));
@@ -773,11 +773,11 @@ pub struct[gui.Element] FittedImg(tex: int, src_w: float, src_h: float) {
 // lib's background-draw-list `Text`) so it inherits the enclosing
 // `gui.Opacity` alpha, exactly like the legacy `draw_prompt_text`.
 pub struct[gui.Element] PromptLabel(text: string) {
-    fn measure(self: ref<Self>, avail: gui.Size, ui: box<radiance.IUiHost>) -> gui.Size {
+    fn measure(self: ref<Self>, avail: gui.Size, ui: &radiance.IUiHost) -> gui.Size {
         return gui.Size(ui.calc_text_size_x(self.text), ui.calc_text_size_y(self.text));
     }
     fn paint(self: ref<Self>, rect: gui.Rect,
-             ui: box<radiance.IUiHost>, ctx: box<gui.UiCtx>) {
+             ui: &radiance.IUiHost, ctx: box<gui.UiCtx>) {
         let label = self.text;
         let at = rect.center(gui.Size(ui.calc_text_size_x(label), ui.calc_text_size_y(label)));
         let c = gui.Color.BLACK;
@@ -790,11 +790,11 @@ pub struct[gui.Element] PromptLabel(text: string) {
 
 // Bottom-left version string (small grey font, full opacity).
 pub struct[gui.Element] VersionLabel(label: string) {
-    fn measure(self: ref<Self>, avail: gui.Size, ui: box<radiance.IUiHost>) -> gui.Size {
+    fn measure(self: ref<Self>, avail: gui.Size, ui: &radiance.IUiHost) -> gui.Size {
         return gui.Size.ZERO;
     }
     fn paint(self: ref<Self>, rect: gui.Rect,
-             ui: box<radiance.IUiHost>, ctx: box<gui.UiCtx>) {
+             ui: &radiance.IUiHost, ctx: box<gui.UiCtx>) {
         let label = self.label;
         let c = gui.Color.gray(0.5);
         ui.style_color(gui.SC_TEXT, c.r, c.g, c.b, c.a, () => {
@@ -818,11 +818,11 @@ pub struct[gui.Element] TitleGameButtonBody(
     on_hover: fn(int),
     on_click: fn(int),
 ) {
-    fn measure(self: ref<Self>, avail: gui.Size, ui: box<radiance.IUiHost>) -> gui.Size {
+    fn measure(self: ref<Self>, avail: gui.Size, ui: &radiance.IUiHost) -> gui.Size {
         return gui.Size(self.bw, self.bh);
     }
     fn paint(self: ref<Self>, rect: gui.Rect,
-             ui: box<radiance.IUiHost>, ctx: box<gui.UiCtx>) {
+             ui: &radiance.IUiHost, ctx: box<gui.UiCtx>) {
         let ord = self.ordinal;
         let lbl = self.label;
         let hb = self.on_hover;

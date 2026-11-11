@@ -2,9 +2,9 @@
 //! p7 plumbing through an `IUiHost` host service.
 //!
 //! Each test loads a tiny p7 module that declares a script struct with
-//! a `render(ui: box<IUiHost>, dt: float)` style entry point. The
+//! a `render(ui: &IUiHost, dt: float)` style entry point. The
 //! Rust test wires a `RecordingUiHost` ComObject, hands the script a
-//! `box<IUiHost>` foreign value, and verifies that:
+//! `&IUiHost` foreign value, and verifies that:
 //!
 //! 1. The script's calls to `ui.text(...)`, `ui.button(...)`, etc.
 //!    cross the host boundary and arrive in `RecordingUiHost` in the
@@ -26,7 +26,7 @@ use radiance_scripting::services::ui_host_recording::{RecordingUiHost, UiCall};
 const NO_CAPTURE_SOURCE: &str = r#"
 import radiance;
 
-pub fn entry(ui: box<radiance.IUiHost>) -> int {
+pub fn entry(ui: &radiance.IUiHost) -> int {
     ui.window_centered("hello", 100.0, 50.0, () => {
         ui.text("inside");
     });
@@ -38,7 +38,7 @@ pub fn entry(ui: box<radiance.IUiHost>) -> int {
 const WITH_CAPTURE_SOURCE: &str = r#"
 import radiance;
 
-pub fn entry(ui: box<radiance.IUiHost>) -> int {
+pub fn entry(ui: &radiance.IUiHost) -> int {
     let title: string = "妖弓编辑器";
     ui.window_centered(title, 200.0, 100.0, () => {
         ui.text(title);
@@ -51,7 +51,7 @@ pub fn entry(ui: box<radiance.IUiHost>) -> int {
 const BUTTON_RETURN_SOURCE: &str = r#"
 import radiance;
 
-pub fn entry(ui: box<radiance.IUiHost>) -> bool {
+pub fn entry(ui: &radiance.IUiHost) -> bool {
     let pressed: bool = ui.button("go", 80.0, 24.0);
     pressed
 }
@@ -60,7 +60,7 @@ pub fn entry(ui: box<radiance.IUiHost>) -> bool {
 const COLORED_TREE_SOURCE: &str = r#"
 import radiance;
 
-pub fn entry(ui: box<radiance.IUiHost>) -> bool {
+pub fn entry(ui: &radiance.IUiHost) -> bool {
     let clicked = ui.tree_leaf_colored("changed.pol", true, 0.35, 0.85, 0.45, 1.0);
     if ui.tree_node_open_colored("changed", 1.0, 0.62, 0.20, 1.0) {
         ui.tree_pop();
@@ -72,7 +72,7 @@ pub fn entry(ui: box<radiance.IUiHost>) -> bool {
 const ENABLED_AND_CLOSABLE_SOURCE: &str = r#"
 import radiance;
 
-pub fn entry(ui: box<radiance.IUiHost>) -> int {
+pub fn entry(ui: &radiance.IUiHost) -> int {
     ui.menu_item_enabled("disabled menu", false, false);
     ui.button_enabled("disabled button", 90.0, 24.0, false);
     let closed = ui.window_centered_closable("Closable", 320.0, 200.0, () => {
@@ -298,7 +298,7 @@ fn bool_return_does_not_coerce_to_int() {
     let src = r#"
 import radiance;
 
-pub fn entry(ui: box<radiance.IUiHost>) -> int {
+pub fn entry(ui: &radiance.IUiHost) -> int {
     let pressed: int = ui.button("nope", 80.0, 24.0);
     pressed
 }

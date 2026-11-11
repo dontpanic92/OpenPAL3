@@ -40,7 +40,7 @@ pub use adapter::{MinimalServices, P7HostContext};
 pub use dispatcher::install_com_dispatcher;
 pub use proto_ccw::{
     ArgKind, MethodSpec, ProtoSpec, RetKind, is_proto_registered, register_crosscom_iaction,
-    register_proto_ccw, wrap_proto, wrap_proto_unknown,
+    register_owned_proto, register_proto_ccw, wrap_proto, wrap_proto_unknown,
 };
 
 // ---------------------------------------------------------------------------

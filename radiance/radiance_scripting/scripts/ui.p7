@@ -239,11 +239,11 @@ pub struct UiCtx(
     pub unused: int = NO_PRESS,
 ) {
     // The key of the widget currently held down, or `NO_PRESS`.
-    pub fn pressed(self: ref<Self>, ui: box<radiance.IUiHost>) -> int {
+    pub fn pressed(self: ref<Self>, ui: &radiance.IUiHost) -> int {
         return ui.press_latch();
     }
 
-    pub fn set_pressed(self: ref<Self>, ui: box<radiance.IUiHost>, key: int) {
+    pub fn set_pressed(self: ref<Self>, ui: &radiance.IUiHost, key: int) {
         ui.set_press_latch(key);
     }
 
@@ -253,7 +253,7 @@ pub struct UiCtx(
     //
     // Every clickable widget used to open-code these six lines; four copies
     // had drifted apart in ordering.
-    pub fn track_press(self: ref<Self>, ui: box<radiance.IUiHost>, key: int,
+    pub fn track_press(self: ref<Self>, ui: &radiance.IUiHost, key: int,
                        hovered: bool, held: bool, on_click: fn()) {
         let was = self.pressed(ui);
         if hovered && held && was == NO_PRESS {
@@ -273,7 +273,7 @@ pub struct UiCtx(
     // still observe `was == self.key` on the release frame and fire its
     // `on_click` — clearing first would erase the latch before any
     // widget runs.
-    pub fn end_frame(self: ref<Self>, ui: box<radiance.IUiHost>) {
+    pub fn end_frame(self: ref<Self>, ui: &radiance.IUiHost) {
         if !ui.mouse_down(0) {
             self.set_pressed(ui, NO_PRESS);
         }
@@ -294,8 +294,8 @@ pub fn make_ctx() -> box<UiCtx> {
 // must draw into. `Size` and `Rect` are `[Copy]`, so a widget can measure a
 // child and then reuse the same `avail`/`rect` without tripping move checking.
 pub proto Element {
-    fn measure(self: ref<Element>, avail: Size, ui: box<radiance.IUiHost>) -> Size;
-    fn paint(self: ref<Element>, rect: Rect, ui: box<radiance.IUiHost>, ctx: box<UiCtx>);
+    fn measure(self: ref<Element>, avail: Size, ui: &radiance.IUiHost) -> Size;
+    fn paint(self: ref<Element>, rect: Rect, ui: &radiance.IUiHost, ctx: box<UiCtx>);
 }
 
 // ---------------------------------------------------------------------
@@ -306,10 +306,10 @@ pub struct[Element] Text(
     content: string,
     color: Color = Color.WHITE,
 ) {
-    fn measure(self: ref<Self>, avail: Size, ui: box<radiance.IUiHost>) -> Size {
+    fn measure(self: ref<Self>, avail: Size, ui: &radiance.IUiHost) -> Size {
         return Size(ui.calc_text_size_x(self.content), ui.calc_text_size_y(self.content));
     }
-    fn paint(self: ref<Self>, rect: Rect, ui: box<radiance.IUiHost>, ctx: box<UiCtx>) {
+    fn paint(self: ref<Self>, rect: Rect, ui: &radiance.IUiHost, ctx: box<UiCtx>) {
         // Drawn on the background draw list at an absolute position so it
         // composes with image chrome and ignores imgui auto-flow.
         let c = self.color;
@@ -326,10 +326,10 @@ pub struct[Element] Image(
     u1: float = 1.0,
     v1: float = 1.0,
 ) {
-    fn measure(self: ref<Self>, avail: Size, ui: box<radiance.IUiHost>) -> Size {
+    fn measure(self: ref<Self>, avail: Size, ui: &radiance.IUiHost) -> Size {
         return Size(self.w, self.h);
     }
-    fn paint(self: ref<Self>, rect: Rect, ui: box<radiance.IUiHost>, ctx: box<UiCtx>) {
+    fn paint(self: ref<Self>, rect: Rect, ui: &radiance.IUiHost, ctx: box<UiCtx>) {
         ui.image_rect(self.tex, rect.x, rect.y, rect.right(), rect.bottom(),
                       self.u0, self.v0, self.u1, self.v1);
     }
@@ -347,14 +347,14 @@ pub struct[Element] Image(
 // `Sprite` can either size itself inside a `Row`/`Column` or be stretched by
 // an enclosing `Positioned` / `NativeCanvas`. A null sprite paints nothing.
 pub struct[Element] Sprite(
-    sprite: ?box<scripting_services.ISprite>,
+    sprite: ?&scripting_services.ISprite,
 ) {
-    fn measure(self: ref<Self>, avail: Size, ui: box<radiance.IUiHost>) -> Size {
+    fn measure(self: ref<Self>, avail: Size, ui: &radiance.IUiHost) -> Size {
         if self.sprite == null { return Size.ZERO; }
         let s = self.sprite!;
         return Size(s.width() as float, s.height() as float);
     }
-    fn paint(self: ref<Self>, rect: Rect, ui: box<radiance.IUiHost>, ctx: box<UiCtx>) {
+    fn paint(self: ref<Self>, rect: Rect, ui: &radiance.IUiHost, ctx: box<UiCtx>) {
         if self.sprite == null || rect.is_empty() { return; }
         let s = self.sprite!;
         ui.image_rect(s.com_id(), rect.x, rect.y, rect.right(), rect.bottom(),
@@ -368,10 +368,10 @@ pub struct[Element] Button(
     h: float,
     on_click: fn(),
 ) {
-    fn measure(self: ref<Self>, avail: Size, ui: box<radiance.IUiHost>) -> Size {
+    fn measure(self: ref<Self>, avail: Size, ui: &radiance.IUiHost) -> Size {
         return Size(self.w, self.h);
     }
-    fn paint(self: ref<Self>, rect: Rect, ui: box<radiance.IUiHost>, ctx: box<UiCtx>) {
+    fn paint(self: ref<Self>, rect: Rect, ui: &radiance.IUiHost, ctx: box<UiCtx>) {
         ui.set_cursor_pos(rect.x, rect.y);
         let clicked = ui.button(self.label, rect.w, rect.h);
         if clicked {
@@ -382,10 +382,10 @@ pub struct[Element] Button(
 }
 
 pub struct[Element] SizedBox(w: float, h: float) {
-    fn measure(self: ref<Self>, avail: Size, ui: box<radiance.IUiHost>) -> Size {
+    fn measure(self: ref<Self>, avail: Size, ui: &radiance.IUiHost) -> Size {
         return Size(self.w, self.h);
     }
-    fn paint(self: ref<Self>, rect: Rect, ui: box<radiance.IUiHost>, ctx: box<UiCtx>) {}
+    fn paint(self: ref<Self>, rect: Rect, ui: &radiance.IUiHost, ctx: box<UiCtx>) {}
 }
 
 // A single image quad sourced from a host UI-layout draw list
@@ -418,10 +418,10 @@ pub struct[Element] LayoutImage(
     pu1: float = 1.0,
     pv1: float = 1.0,
 ) {
-    fn measure(self: ref<Self>, avail: Size, ui: box<radiance.IUiHost>) -> Size {
+    fn measure(self: ref<Self>, avail: Size, ui: &radiance.IUiHost) -> Size {
         return Size.ZERO;
     }
-    fn paint(self: ref<Self>, rect: Rect, ui: box<radiance.IUiHost>, ctx: box<UiCtx>) {
+    fn paint(self: ref<Self>, rect: Rect, ui: &radiance.IUiHost, ctx: box<UiCtx>) {
         ui.set_cursor_pos(rect.x, rect.y);
         ui.image_uv(self.tex, rect.w, rect.h, self.u0, self.v0, self.u1, self.v1);
         if !self.interactive {
@@ -466,18 +466,18 @@ pub struct[Element] LayoutImage(
 // PAL3's state menu.
 pub struct[Element] SpriteButton(
     key: int,
-    normal: ?box<scripting_services.ISprite>,
+    normal: ?&scripting_services.ISprite,
     on_click: fn(),
-    hover: ?box<scripting_services.ISprite> = null,
-    pressed: ?box<scripting_services.ISprite> = null,
+    hover: ?&scripting_services.ISprite = null,
+    pressed: ?&scripting_services.ISprite = null,
     enabled: bool = true,
 ) {
-    fn measure(self: ref<Self>, avail: Size, ui: box<radiance.IUiHost>) -> Size {
+    fn measure(self: ref<Self>, avail: Size, ui: &radiance.IUiHost) -> Size {
         if self.normal == null { return Size.ZERO; }
         let s = self.normal!;
         return Size(s.width() as float, s.height() as float);
     }
-    fn paint(self: ref<Self>, rect: Rect, ui: box<radiance.IUiHost>, ctx: box<UiCtx>) {
+    fn paint(self: ref<Self>, rect: Rect, ui: &radiance.IUiHost, ctx: box<UiCtx>) {
         if self.normal == null || rect.is_empty() { return; }
 
         let hovered = rect.contains(ui.mouse_pos_x(), ui.mouse_pos_y());
@@ -516,10 +516,10 @@ pub struct[Element] TextButton(
     on_click: fn(),
     color: Color = Color.WHITE,
 ) {
-    fn measure(self: ref<Self>, avail: Size, ui: box<radiance.IUiHost>) -> Size {
+    fn measure(self: ref<Self>, avail: Size, ui: &radiance.IUiHost) -> Size {
         return Size(ui.calc_text_size_x(self.label), ui.calc_text_size_y(self.label));
     }
-    fn paint(self: ref<Self>, rect: Rect, ui: box<radiance.IUiHost>, ctx: box<UiCtx>) {
+    fn paint(self: ref<Self>, rect: Rect, ui: &radiance.IUiHost, ctx: box<UiCtx>) {
         ui.set_cursor_pos(rect.x, rect.y);
         let lbl = self.label;
         let c = self.color;
@@ -546,22 +546,22 @@ pub struct[Element] Padding(
     right: float,
     bottom: float,
 ) {
-    fn measure(self: ref<Self>, avail: Size, ui: box<radiance.IUiHost>) -> Size {
+    fn measure(self: ref<Self>, avail: Size, ui: &radiance.IUiHost) -> Size {
         let hpad = self.left + self.right;
         let vpad = self.top + self.bottom;
         let inner = self.child.measure(avail.deflate(hpad, vpad), ui);
         return inner.inflate(hpad, vpad);
     }
-    fn paint(self: ref<Self>, rect: Rect, ui: box<radiance.IUiHost>, ctx: box<UiCtx>) {
+    fn paint(self: ref<Self>, rect: Rect, ui: &radiance.IUiHost, ctx: box<UiCtx>) {
         self.child.paint(rect.inset(self.left, self.top, self.right, self.bottom), ui, ctx);
     }
 }
 
 pub struct[Element] Center(child: box<Element>) {
-    fn measure(self: ref<Self>, avail: Size, ui: box<radiance.IUiHost>) -> Size {
+    fn measure(self: ref<Self>, avail: Size, ui: &radiance.IUiHost) -> Size {
         return self.child.measure(avail, ui);
     }
-    fn paint(self: ref<Self>, rect: Rect, ui: box<radiance.IUiHost>, ctx: box<UiCtx>) {
+    fn paint(self: ref<Self>, rect: Rect, ui: &radiance.IUiHost, ctx: box<UiCtx>) {
         let s = self.child.measure(rect.size(), ui);
         self.child.paint(rect.center(s), ui, ctx);
     }
@@ -582,10 +582,10 @@ pub struct[Element] Positioned(
     ph: float,
     child: box<Element>,
 ) {
-    fn measure(self: ref<Self>, avail: Size, ui: box<radiance.IUiHost>) -> Size {
+    fn measure(self: ref<Self>, avail: Size, ui: &radiance.IUiHost) -> Size {
         return Size(self.pw, self.ph);
     }
-    fn paint(self: ref<Self>, rect: Rect, ui: box<radiance.IUiHost>, ctx: box<UiCtx>) {
+    fn paint(self: ref<Self>, rect: Rect, ui: &radiance.IUiHost, ctx: box<UiCtx>) {
         self.child.paint(Rect(rect.x + self.px, rect.y + self.py, self.pw, self.ph), ui, ctx);
     }
 }
@@ -600,7 +600,7 @@ pub struct[Element] Column(
     main: int = 0,   // ALIGN_START
     cross: int = 1,  // ALIGN_CENTER
 ) {
-    fn measure(self: ref<Self>, avail: Size, ui: box<radiance.IUiHost>) -> Size {
+    fn measure(self: ref<Self>, avail: Size, ui: &radiance.IUiHost) -> Size {
         let mut total_h = 0.0;
         let mut max_w = 0.0;
         let mut first = true;
@@ -613,7 +613,7 @@ pub struct[Element] Column(
         }
         return Size(max_w, total_h);
     }
-    fn paint(self: ref<Self>, rect: Rect, ui: box<radiance.IUiHost>, ctx: box<UiCtx>) {
+    fn paint(self: ref<Self>, rect: Rect, ui: &radiance.IUiHost, ctx: box<UiCtx>) {
         let total = self.measure(rect.size(), ui).h;
         let cross_f = align_factor(self.cross);
         let mut cy = rect.y + (rect.h - total) * align_factor(self.main);
@@ -632,7 +632,7 @@ pub struct[Element] Row(
     main: int = 0,   // ALIGN_START
     cross: int = 1,  // ALIGN_CENTER
 ) {
-    fn measure(self: ref<Self>, avail: Size, ui: box<radiance.IUiHost>) -> Size {
+    fn measure(self: ref<Self>, avail: Size, ui: &radiance.IUiHost) -> Size {
         let mut total_w = 0.0;
         let mut max_h = 0.0;
         let mut first = true;
@@ -645,7 +645,7 @@ pub struct[Element] Row(
         }
         return Size(total_w, max_h);
     }
-    fn paint(self: ref<Self>, rect: Rect, ui: box<radiance.IUiHost>, ctx: box<UiCtx>) {
+    fn paint(self: ref<Self>, rect: Rect, ui: &radiance.IUiHost, ctx: box<UiCtx>) {
         let total = self.measure(rect.size(), ui).w;
         let cross_f = align_factor(self.cross);
         let mut cx = rect.x + (rect.w - total) * align_factor(self.main);
@@ -659,10 +659,10 @@ pub struct[Element] Row(
 }
 
 pub struct[Element] Stack(children: array<box<Element>>) {
-    fn measure(self: ref<Self>, avail: Size, ui: box<radiance.IUiHost>) -> Size {
+    fn measure(self: ref<Self>, avail: Size, ui: &radiance.IUiHost) -> Size {
         return avail;
     }
-    fn paint(self: ref<Self>, rect: Rect, ui: box<radiance.IUiHost>, ctx: box<UiCtx>) {
+    fn paint(self: ref<Self>, rect: Rect, ui: &radiance.IUiHost, ctx: box<UiCtx>) {
         for c in self.children {
             c.paint(rect, ui, ctx);
         }
@@ -681,10 +681,10 @@ pub struct[Element] Align(
     ax: float = 0.5,
     ay: float = 0.5,
 ) {
-    fn measure(self: ref<Self>, avail: Size, ui: box<radiance.IUiHost>) -> Size {
+    fn measure(self: ref<Self>, avail: Size, ui: &radiance.IUiHost) -> Size {
         return avail;
     }
-    fn paint(self: ref<Self>, rect: Rect, ui: box<radiance.IUiHost>, ctx: box<UiCtx>) {
+    fn paint(self: ref<Self>, rect: Rect, ui: &radiance.IUiHost, ctx: box<UiCtx>) {
         let s = self.child.measure(rect.size(), ui);
         self.child.paint(rect.align(s, self.ax, self.ay), ui, ctx);
     }
@@ -701,10 +701,10 @@ pub struct[Element] FittedBox(
     native: Size,
     child: box<Element>,
 ) {
-    fn measure(self: ref<Self>, avail: Size, ui: box<radiance.IUiHost>) -> Size {
+    fn measure(self: ref<Self>, avail: Size, ui: &radiance.IUiHost) -> Size {
         return avail;
     }
-    fn paint(self: ref<Self>, rect: Rect, ui: box<radiance.IUiHost>, ctx: box<UiCtx>) {
+    fn paint(self: ref<Self>, rect: Rect, ui: &radiance.IUiHost, ctx: box<UiCtx>) {
         let fitted = rect.fit(self.native);
         if fitted.is_empty() { return; }
         self.child.paint(fitted, ui, ctx);
@@ -733,10 +733,10 @@ pub struct[Element] NativeCanvas(
     children: array<box<Element>>,
     clip: bool = true,
 ) {
-    fn measure(self: ref<Self>, avail: Size, ui: box<radiance.IUiHost>) -> Size {
+    fn measure(self: ref<Self>, avail: Size, ui: &radiance.IUiHost) -> Size {
         return avail;
     }
-    fn paint(self: ref<Self>, rect: Rect, ui: box<radiance.IUiHost>, ctx: box<UiCtx>) {
+    fn paint(self: ref<Self>, rect: Rect, ui: &radiance.IUiHost, ctx: box<UiCtx>) {
         let fitted = rect.fit(self.native);
         if fitted.is_empty() { return; }
         let scale = rect.fit_scale(self.native);
@@ -779,10 +779,10 @@ pub struct[Element] NativeRect(
     nh: float,
     child: box<Element>,
 ) {
-    fn measure(self: ref<Self>, avail: Size, ui: box<radiance.IUiHost>) -> Size {
+    fn measure(self: ref<Self>, avail: Size, ui: &radiance.IUiHost) -> Size {
         return Size(self.nw, self.nh);
     }
-    fn paint(self: ref<Self>, rect: Rect, ui: box<radiance.IUiHost>, ctx: box<UiCtx>) {
+    fn paint(self: ref<Self>, rect: Rect, ui: &radiance.IUiHost, ctx: box<UiCtx>) {
         if self.canvas_w <= 0.0 { return; }
         let scale = rect.w / self.canvas_w;
         self.child.paint(
@@ -801,10 +801,10 @@ pub struct[Element] NativeRect(
 // for its drifting clouds and sliding taiji discs (~40 lines of per-edge trim
 // plus proportional UV adjustment).
 pub struct[Element] ClipRect(child: box<Element>) {
-    fn measure(self: ref<Self>, avail: Size, ui: box<radiance.IUiHost>) -> Size {
+    fn measure(self: ref<Self>, avail: Size, ui: &radiance.IUiHost) -> Size {
         return self.child.measure(avail, ui);
     }
-    fn paint(self: ref<Self>, rect: Rect, ui: box<radiance.IUiHost>, ctx: box<UiCtx>) {
+    fn paint(self: ref<Self>, rect: Rect, ui: &radiance.IUiHost, ctx: box<UiCtx>) {
         if rect.is_empty() { return; }
         let child = self.child;
         ui.clip_rect(rect.x, rect.y, rect.right(), rect.bottom(), () => {
@@ -816,10 +816,10 @@ pub struct[Element] ClipRect(child: box<Element>) {
 // Apply an imgui global-alpha multiplier to a whole subtree. Used for
 // fade-ins and cross-fades; composes with nested `style_color` pushes.
 pub struct[Element] Opacity(child: box<Element>, alpha: float) {
-    fn measure(self: ref<Self>, avail: Size, ui: box<radiance.IUiHost>) -> Size {
+    fn measure(self: ref<Self>, avail: Size, ui: &radiance.IUiHost) -> Size {
         return self.child.measure(avail, ui);
     }
-    fn paint(self: ref<Self>, rect: Rect, ui: box<radiance.IUiHost>, ctx: box<UiCtx>) {
+    fn paint(self: ref<Self>, rect: Rect, ui: &radiance.IUiHost, ctx: box<UiCtx>) {
         let child = self.child;
         ui.style_alpha(self.alpha, () => {
             child.paint(rect, ui, ctx);
@@ -845,10 +845,10 @@ pub struct[Element] StyleColor(
     slot: int,
     color: Color,
 ) {
-    fn measure(self: ref<Self>, avail: Size, ui: box<radiance.IUiHost>) -> Size {
+    fn measure(self: ref<Self>, avail: Size, ui: &radiance.IUiHost) -> Size {
         return self.child.measure(avail, ui);
     }
-    fn paint(self: ref<Self>, rect: Rect, ui: box<radiance.IUiHost>, ctx: box<UiCtx>) {
+    fn paint(self: ref<Self>, rect: Rect, ui: &radiance.IUiHost, ctx: box<UiCtx>) {
         let child = self.child;
         let c = self.color;
         ui.style_color(self.slot, c.r, c.g, c.b, c.a, () => {
@@ -882,10 +882,10 @@ pub struct[Element] ListView(
     item_builder: fn(int) -> box<Element>,
     spacing: float = 0.0,
 ) {
-    fn measure(self: ref<Self>, avail: Size, ui: box<radiance.IUiHost>) -> Size {
+    fn measure(self: ref<Self>, avail: Size, ui: &radiance.IUiHost) -> Size {
         return avail;
     }
-    fn paint(self: ref<Self>, rect: Rect, ui: box<radiance.IUiHost>, ctx: box<UiCtx>) {
+    fn paint(self: ref<Self>, rect: Rect, ui: &radiance.IUiHost, ctx: box<UiCtx>) {
         if self.count <= 0 {
             return;
         }
@@ -912,13 +912,13 @@ pub struct[Element] ListView(
 // loop so a screen just declares `ui.UiLayout(handle, on_click)`. The
 // press latch is keyed by the layout `window_id` in `ctx`.
 pub struct[Element] UiLayout(
-    handle: box<scripting_services.IUiLayoutHandle>,
+    handle: &scripting_services.IUiLayoutHandle,
     on_click: fn(string),
 ) {
-    fn measure(self: ref<Self>, avail: Size, ui: box<radiance.IUiHost>) -> Size {
+    fn measure(self: ref<Self>, avail: Size, ui: &radiance.IUiHost) -> Size {
         return avail;
     }
-    fn paint(self: ref<Self>, rect: Rect, ui: box<radiance.IUiHost>, ctx: box<UiCtx>) {
+    fn paint(self: ref<Self>, rect: Rect, ui: &radiance.IUiHost, ctx: box<UiCtx>) {
         let h_ = self.handle;
         let native = Size(h_.native_width() as float, h_.native_height() as float);
         let fitted = rect.fit(native);
@@ -983,14 +983,14 @@ pub struct[Element] UiLayout(
 // hosted layout's panel. Falls back to a centred region when the window
 // is absent.
 pub struct[Element] LayoutAnchor(
-    handle: box<scripting_services.IUiLayoutHandle>,
+    handle: &scripting_services.IUiLayoutHandle,
     window_name: string,
     child: box<Element>,
 ) {
-    fn measure(self: ref<Self>, avail: Size, ui: box<radiance.IUiHost>) -> Size {
+    fn measure(self: ref<Self>, avail: Size, ui: &radiance.IUiHost) -> Size {
         return Size.ZERO;
     }
-    fn paint(self: ref<Self>, rect: Rect, ui: box<radiance.IUiHost>, ctx: box<UiCtx>) {
+    fn paint(self: ref<Self>, rect: Rect, ui: &radiance.IUiHost, ctx: box<UiCtx>) {
         let h_ = self.handle;
         let native = Size(h_.native_width() as float, h_.native_height() as float);
         let fitted = rect.fit(native);
@@ -1020,7 +1020,7 @@ pub struct[Element] LayoutAnchor(
 // Lay out and paint `root` to fill the full logical viewport. Call once
 // per frame from a screen's `render`. Returns 0 so it can be the tail of
 // an `IUiLayer.render` body.
-pub fn paint_root(root: box<Element>, ui: box<radiance.IUiHost>, ctx: box<UiCtx>) -> int {
+pub fn paint_root(root: box<Element>, ui: &radiance.IUiHost, ctx: box<UiCtx>) -> int {
     let viewport = Rect(0.0, 0.0, ui.display_size_x() as float, ui.display_size_y() as float);
     if viewport.is_empty() { return 0; }
     root.paint(viewport, ui, ctx);

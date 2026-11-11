@@ -1,7 +1,7 @@
 //! Verifies welcome.p7 parses and loads against the same
 //! module-provider as production, and exercises the typed host services
 //! (`IAppService`, `IConfigService`) the welcome flow depends on.
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use crosscom::ComRc;
@@ -41,13 +41,67 @@ mod comdef {
 }
 
 struct StubDirector;
+thread_local! {
+    static NATIVE_ACTIVATIONS: Cell<usize> = const { Cell::new(0) };
+    static NATIVE_DROPS: Cell<usize> = const { Cell::new(0) };
+}
+impl Drop for StubDirector {
+    fn drop(&mut self) {
+        NATIVE_DROPS.with(|count| count.set(count.get() + 1));
+    }
+}
 yaobow_editor::ComObject_StubDirector!(crate::StubDirector);
 impl IDirectorImpl for StubDirector {
-    fn activate(&self) {}
+    fn activate(&self) {
+        NATIVE_ACTIVATIONS.with(|count| count.set(count.get() + 1));
+    }
     fn update(&self, _delta_sec: f32) -> Option<ComRc<IDirector>> {
         None
     }
     fn deactivate(&self) {}
+}
+
+#[test]
+fn returned_native_director_uses_a_checked_managed_proxy_and_releases_its_carrier() {
+    use radiance_scripting::{RuntimeAccess, with_services, wrap_director};
+    let runtime = radiance_scripting::ScriptHost::new();
+    runtime
+        .load_source("import radiance; import scripting_services;")
+        .unwrap();
+    NATIVE_ACTIVATIONS.with(|count| count.set(0));
+    NATIVE_DROPS.with(|count| count.set(0));
+    let app = ComRc::<IAppService>::from_object(RecordingAppService {
+        open_calls: Rc::new(RefCell::new(Vec::new())),
+    });
+    let id = runtime.intern(app);
+    let app = runtime
+        .foreign_box("radiance_scripting.comdef.services.IAppService", id)
+        .unwrap();
+    let result = runtime
+        .call_method_returning_data(app, "open_game", vec![Data::Int(0)])
+        .unwrap();
+    let Data::Some(result) = result else {
+        panic!("expected nullable native director")
+    };
+    assert!(matches!(&*result, Data::ManagedReference { .. }));
+    let director = wrap_director(&runtime.runtime_handle(), (*result).clone()).unwrap();
+    <radiance_scripting::ScriptHost as RuntimeAccess>::with_ctx(&runtime, &mut |ctx| {
+        ctx.collect_garbage().unwrap();
+    });
+    director.activate();
+    assert!(director.update(0.016).is_none());
+    assert_eq!(NATIVE_ACTIVATIONS.with(Cell::get), 1);
+    assert_eq!(NATIVE_DROPS.with(Cell::get), 0);
+    drop(director);
+    <radiance_scripting::ScriptHost as RuntimeAccess>::with_ctx(&runtime, &mut |ctx| {
+        ctx.collect_garbage().unwrap();
+        with_services(|services| {
+            assert!(services.com_table_mut().release(id));
+            assert_eq!(services.com_table_mut().live(), 0);
+        })
+        .unwrap();
+    });
+    assert_eq!(NATIVE_DROPS.with(Cell::get), 1);
 }
 
 struct RecordingAppService {
@@ -375,7 +429,10 @@ fn welcome_script_settings_button_routes_to_settings_director() {
         .expect("update should return after a settings click");
 
     match next {
-        Data::Some(_) | Data::ProtoBoxRef { .. } | Data::BoxRef { .. } => {}
+        Data::Some(_)
+        | Data::ManagedReference { .. }
+        | Data::ProtoBoxRef { .. }
+        | Data::BoxRef { .. } => {}
         other => panic!("expected one transition, got {other:?}"),
     }
 }
@@ -435,7 +492,10 @@ fn welcome_script_game_button_with_configured_path_calls_open_game() {
         .expect("update should return after a game click");
 
     match next {
-        Data::Some(_) | Data::ProtoBoxRef { .. } | Data::BoxRef { .. } => {}
+        Data::Some(_)
+        | Data::ManagedReference { .. }
+        | Data::ProtoBoxRef { .. }
+        | Data::BoxRef { .. } => {}
         other => panic!("expected one wrapped host director, got {other:?}"),
     }
     assert_eq!(*env.open_calls.borrow(), vec![0]);
@@ -501,7 +561,10 @@ fn welcome_script_game_button_with_configured_path_returns_open_game_director() 
         .expect("welcome.p7 update should return");
 
     match result {
-        Data::Some(_) | Data::ProtoBoxRef { .. } | Data::BoxRef { .. } => {}
+        Data::Some(_)
+        | Data::ManagedReference { .. }
+        | Data::ProtoBoxRef { .. }
+        | Data::BoxRef { .. } => {}
         other => panic!("expected a transition box, got {other:?}"),
     }
     assert_eq!(*env.open_calls.borrow(), vec![0]);

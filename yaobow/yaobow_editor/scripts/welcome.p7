@@ -37,7 +37,7 @@ pub enum Intent(
 );
 
 pub struct[radiance.IUiLayer, radiance.IDirector] WelcomeDirector(
-    pub host: box<yaobow_editor_services.IEditorHostContext>,
+    pub host: &yaobow_editor_services.IEditorHostContext,
     pub games: box<array<int>>,
     pub names: box<array<string>>,
     pub intent: Intent,
@@ -50,7 +50,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] WelcomeDirector(
     }
     pub fn deactivate(self: &Self) -> int { 0 }
 
-    pub fn render(self: &Self, ui: box<radiance.IUiHost>, dt: float) -> int {
+    pub fn render(self: &Self, ui: &radiance.IUiHost, dt: float) -> int {
         ui.main_menu_bar(() => {
             theme_menu.render_theme_menu(ui, self.host.config());
         });
@@ -83,7 +83,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] WelcomeDirector(
         0
     }
 
-    pub fn render_game_cell(self: &Self, ui: box<radiance.IUiHost>, ordinal: int) {
+    pub fn render_game_cell(self: &Self, ui: &radiance.IUiHost, ordinal: int) {
         let name = welcome_game_name(self, ordinal);
         let label = f"运行《{name}》编辑器";
         if ui.button(label, -1.0, 60.0) {
@@ -95,7 +95,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] WelcomeDirector(
     pub fn update(
         self: &Self,
         dt: float,
-    ) -> ?box<radiance.IDirector> {
+    ) -> ?&radiance.IDirector {
         let code = self.intent;
         let arg = self.intent_arg;
         self.intent = Intent.None;
@@ -133,7 +133,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] WelcomeDirector(
 }
 
 pub struct[radiance.IUiLayer, radiance.IDirector] SettingsDirector(
-    pub host: box<yaobow_editor_services.IEditorHostContext>,
+    pub host: &yaobow_editor_services.IEditorHostContext,
     pub games: box<array<int>>,
     pub names: box<array<string>>,
     pub intent: Intent,
@@ -146,7 +146,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] SettingsDirector(
     }
     pub fn deactivate(self: &Self) -> int { 0 }
 
-    pub fn render(self: &Self, ui: box<radiance.IUiHost>, dt: float) -> int {
+    pub fn render(self: &Self, ui: &radiance.IUiHost, dt: float) -> int {
         ui.window_centered("游戏路径设置", 820.0, 560.0, () => {
             ui.text_with_font(0, "游戏资源路径设置");
             ui.dummy(0.0, 12.0);
@@ -175,7 +175,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] SettingsDirector(
         0
     }
 
-    pub fn render_settings_row(self: &Self, ui: box<radiance.IUiHost>, ordinal: int) {
+    pub fn render_settings_row(self: &Self, ui: &radiance.IUiHost, ordinal: int) {
         ui.table_next_column();
         ui.text(settings_game_name(self, ordinal));
         ui.table_next_column();
@@ -196,7 +196,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] SettingsDirector(
     pub fn update(
         self: &Self,
         dt: float,
-    ) -> ?box<radiance.IDirector> {
+    ) -> ?&radiance.IDirector {
         let code = self.intent;
         let arg = self.intent_arg;
         self.intent = Intent.None;
@@ -231,21 +231,21 @@ pub struct[radiance.IUiLayer, radiance.IDirector] SettingsDirector(
 }
 
 pub fn make_welcome_director(
-    host: box<yaobow_editor_services.IEditorHostContext>,
+    host: &yaobow_editor_services.IEditorHostContext,
     games: box<array<int>>,
     names: box<array<string>>,
-) -> box<radiance.IDirector> {
-    return box(WelcomeDirector(host, games, names, Intent.None, 0))
-        as box<radiance.IDirector>;
+) -> &radiance.IDirector {
+    return &WelcomeDirector(host, games, names, Intent.None, 0)
+        as &radiance.IDirector;
 }
 
 fn make_settings_director(
-    host: box<yaobow_editor_services.IEditorHostContext>,
+    host: &yaobow_editor_services.IEditorHostContext,
     games: box<array<int>>,
     names: box<array<string>>,
-) -> box<radiance.IDirector> {
-    return box(SettingsDirector(host, games, names, Intent.None, 0))
-        as box<radiance.IDirector>;
+) -> &radiance.IDirector {
+    return &SettingsDirector(host, games, names, Intent.None, 0)
+        as &radiance.IDirector;
 }
 
 fn welcome_game_name(d: &WelcomeDirector, ordinal: int) -> string {

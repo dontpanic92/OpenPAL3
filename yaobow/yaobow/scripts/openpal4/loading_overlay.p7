@@ -91,8 +91,8 @@ let FAIRY_FPS: float = 8.0;
 let PAINT_TIMEOUT_SECS: float = 0.1;
 
 pub struct[openpal4.IPal4LoadingOverlay] Pal4LoadingOverlayImpl(
-    pub host: box<yaobow_services.IYaobowHostContext>,
-    pub layout: ?box<scripting_services.IUiLayoutHandle>,
+    pub host: &yaobow_services.IYaobowHostContext,
+    pub layout: ?&scripting_services.IUiLayoutHandle,
     pub phase: int,
     pub hold_remaining: float,
     pub frames_drawn: int,
@@ -252,7 +252,7 @@ pub struct[openpal4.IPal4LoadingOverlay] Pal4LoadingOverlayImpl(
 
     pub fn render(
         self: &Self,
-        ui: box<radiance.IUiHost>,
+        ui: &radiance.IUiHost,
         dt: float,
     ) -> int {
         if self.phase == LOAD_IDLE {
@@ -328,15 +328,15 @@ pub struct[openpal4.IPal4LoadingOverlay] Pal4LoadingOverlayImpl(
 // Lifted verbatim from the legacy `render_layout`, with `progress` and
 // `fairy_index` passed in instead of read from `self`.
 pub struct[gui.Element] Pal4LoadingLayout(
-    handle: box<scripting_services.IUiLayoutHandle>,
+    handle: &scripting_services.IUiLayoutHandle,
     progress: float,
     fairy_index: int,
 ) {
-    fn measure(self: ref<Self>, avail: gui.Size, ui: box<radiance.IUiHost>) -> gui.Size {
+    fn measure(self: ref<Self>, avail: gui.Size, ui: &radiance.IUiHost) -> gui.Size {
         return avail;
     }
     fn paint(self: ref<Self>, rect: gui.Rect,
-             ui: box<radiance.IUiHost>, ctx: box<gui.UiCtx>) {
+             ui: &radiance.IUiHost, ctx: box<gui.UiCtx>) {
         let h_ = self.handle;
         let native = gui.Size(h_.native_width() as float, h_.native_height() as float);
         let avail_w = rect.w;
@@ -487,9 +487,9 @@ pub struct[gui.Element] Pal4LoadingLayout(
 }
 
 pub fn make_loading_overlay(
-    host: box<yaobow_services.IYaobowHostContext>,
-) -> box<openpal4.IPal4LoadingOverlay> {
-    return box(Pal4LoadingOverlayImpl(
+    host: &yaobow_services.IYaobowHostContext,
+) -> &openpal4.IPal4LoadingOverlay {
+    return &Pal4LoadingOverlayImpl(
         host,
         null,
         LOAD_IDLE,
@@ -503,5 +503,5 @@ pub fn make_loading_overlay(
         0.0,
         0,
         1,
-    ));
+    );
 }

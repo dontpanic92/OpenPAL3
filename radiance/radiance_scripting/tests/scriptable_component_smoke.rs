@@ -48,9 +48,9 @@ struct[radiance.IComponent] StubComp(
     }
 }
 
-pub fn make_stub(seed: int) -> box<radiance.IComponent> {
+pub fn make_stub(seed: int) -> &radiance.IComponent {
     let c = box(StubComp(seed));
-    c as box<radiance.IComponent>
+    c as &radiance.IComponent
 }
 "#;
 

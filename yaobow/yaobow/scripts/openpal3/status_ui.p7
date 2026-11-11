@@ -48,22 +48,22 @@ let ST_MP_W: float       = 64.0;
 let ST_MP_H: float       = 64.0;
 
 pub struct[openpal3.IPal3StatusRenderer] Pal3StatusRendererImpl(
-    pub sprites: box<scripting_services.ISpriteService>,
+    pub sprites: &scripting_services.ISpriteService,
     // In-game menu (state) atlas: resolves `ui/gamemainui/*` sprites.
-    pub atlas: box<openpal3.IPal3UiAtlas>,
-    pub bk: ?box<scripting_services.ISprite>,
-    pub hp: ?box<scripting_services.ISprite>,
-    pub mp: ?box<scripting_services.ISprite>,
+    pub atlas: &openpal3.IPal3UiAtlas,
+    pub bk: ?&scripting_services.ISprite,
+    pub hp: ?&scripting_services.ISprite,
+    pub mp: ?&scripting_services.ISprite,
     // Team-lead avatar variants: 0 normal, 1 hover, 2 click.
-    pub face_n: ?box<scripting_services.ISprite>,
-    pub face_h: ?box<scripting_services.ISprite>,
-    pub face_c: ?box<scripting_services.ISprite>,
+    pub face_n: ?&scripting_services.ISprite,
+    pub face_h: ?&scripting_services.ISprite,
+    pub face_c: ?&scripting_services.ISprite,
     // Whether the full-screen character-status menu is open.
     pub menu_open: bool = false,
     // Previous-frame left-button state, for click rising-edge detection.
     pub prev_down: bool = false,
 ) {
-    pub fn render_status(self: &Self, ui: box<radiance.IUiHost>, dt: float) -> int {
+    pub fn render_status(self: &Self, ui: &radiance.IUiHost, dt: float) -> int {
         let lw = ui.display_size_x() as float;
         let lh = ui.display_size_y() as float;
         if lw <= 0.0 || lh <= 0.0 { return 0; }
@@ -149,16 +149,16 @@ pub struct[openpal3.IPal3StatusRenderer] Pal3StatusRendererImpl(
 // widget for "blit an `ISprite` into the rect the parent assigns", and it is
 // null-safe, so the caller no longer needs its own guard.
 fn sprite_rect(
-    s: ?box<scripting_services.ISprite>,
+    s: ?&scripting_services.ISprite,
     x0: float, y0: float, x1: float, y1: float,
 ) -> box<gui.Element> {
     return gui.Positioned(x0, y0, x1 - x0, y1 - y0, gui.Sprite(s));
 }
 
 pub fn make_pal3_status_renderer(
-    sprites: box<scripting_services.ISpriteService>,
-    atlas: box<openpal3.IPal3UiAtlas>,
-) -> box<openpal3.IPal3StatusRenderer> {
+    sprites: &scripting_services.ISpriteService,
+    atlas: &openpal3.IPal3UiAtlas,
+) -> &openpal3.IPal3StatusRenderer {
     let face = "/basedata/basedata/ui/scene/face/";
     let bk = sprites.load_sprite(face + "bk.tga");
     let hp = sprites.load_sprite(face + "mp.tga");
@@ -166,6 +166,6 @@ pub fn make_pal3_status_renderer(
     let face_n = sprites.load_sprite(face + "face0/face00.tga");
     let face_h = sprites.load_sprite(face + "face0/face01.tga");
     let face_c = sprites.load_sprite(face + "face0/face02.tga");
-    return box(Pal3StatusRendererImpl(sprites, atlas, bk, hp, mp, face_n, face_h, face_c,
-        false, false));
+    return &Pal3StatusRendererImpl(sprites, atlas, bk, hp, mp, face_n, face_h, face_c,
+        false, false);
 }

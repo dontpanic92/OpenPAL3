@@ -112,6 +112,13 @@ pub fn make() -> box<IFoo> {
     let x = box(X(7));
     x as box<IFoo>
 }
+
+struct Owner(pub child: X);
+
+pub fn make_projected() -> &IFoo {
+    let mut owner = Owner(X(7));
+    &owner.child as &IFoo
+}
 "#;
 
 static EVENTS: Mutex<Vec<(i64, i64)>> = Mutex::new(Vec::new());
@@ -221,6 +228,36 @@ fn sibling_interfaces_each_have_their_own_slot_and_dispatch_correctly() {
 
     drop(bar);
     drop(foo);
+}
+
+#[test]
+fn projected_protocol_retains_sibling_dispatch_metadata_after_gc() {
+    let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    register_both();
+    EVENTS.lock().unwrap().clear();
+    let mut ctx = Context::new();
+    ctx.register_host_function("test.record".into(), record_host_fn);
+    ctx.load_module(p7::compile(SCRIPT.into()).unwrap());
+    ctx.push_function("make_projected", vec![]);
+    ctx.resume().unwrap();
+    let data = ctx.stack[0].stack.pop().unwrap();
+    let runtime = TestRuntime::new(ctx);
+    let handle = RuntimeHandle::from_rc(&runtime);
+    let foo = wrap_proto::<IFooInst>(&handle, data).unwrap();
+    let bar = unsafe { qi_to_ibar(&foo) }.expect("projection keeps sibling conformance");
+    handle
+        .try_with_ctx(|ctx| ctx.collect_garbage().unwrap())
+        .unwrap();
+    assert_eq!(unsafe { call_foo(&foo) }, 107);
+    assert_eq!(unsafe { call_bar(&bar, 5) }, 75);
+    drop(foo);
+    drop(bar);
+    handle
+        .try_with_ctx(|ctx| {
+            ctx.collect_garbage().unwrap();
+            assert_eq!(ctx.box_heap.live_count(), 0);
+        })
+        .unwrap();
 }
 
 #[test]

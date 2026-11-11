@@ -53,7 +53,7 @@ fn grid_advances_a_column_before_every_cell() {
 import radiance;
 import radiance_scripting.im;
 
-pub fn entry(host: box<radiance.IUiHost>) -> int {
+pub fn entry(host: &radiance.IUiHost) -> int {
     im.grid(host, "t", 2, 3, (i: int) => {
         host.button(f"cell{i}", 10.0, 10.0);
     });
@@ -97,7 +97,7 @@ import radiance_scripting.im;
 
 let BLANK: int = -1;
 
-pub fn entry(host: box<radiance.IUiHost>) -> int {
+pub fn entry(host: &radiance.IUiHost) -> int {
     let cells: array<int> = [0, 8, BLANK, 5];
     im.grid_of(host, "games", 3, cells, BLANK, (ord: int) => {
         host.button(f"g{ord}", 10.0, 10.0);
@@ -133,7 +133,7 @@ fn grid_with_zero_count_emits_an_empty_table() {
 import radiance;
 import radiance_scripting.im;
 
-pub fn entry(host: box<radiance.IUiHost>) -> int {
+pub fn entry(host: &radiance.IUiHost) -> int {
     im.grid(host, "t", 2, 0, (i: int) => {
         host.button(f"cell{i}", 10.0, 10.0);
     });
@@ -159,7 +159,7 @@ fn grid_cells_emits_each_closure_in_order() {
 import radiance;
 import radiance_scripting.im;
 
-pub fn entry(host: box<radiance.IUiHost>) -> int {
+pub fn entry(host: &radiance.IUiHost) -> int {
     let cells: array<fn()> = [
         () => { host.button("name", 10.0, 10.0); },
         () => { host.dummy(0.0, 0.0); },
@@ -200,7 +200,7 @@ fn grid_cells_with_no_cells_emits_an_empty_table() {
 import radiance;
 import radiance_scripting.im;
 
-pub fn entry(host: box<radiance.IUiHost>) -> int {
+pub fn entry(host: &radiance.IUiHost) -> int {
     let cells: array<fn()> = [];
     im.grid_cells(host, "t", 2, cells);
     0

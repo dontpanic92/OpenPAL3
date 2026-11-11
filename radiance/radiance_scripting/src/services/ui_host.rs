@@ -336,7 +336,7 @@ const NO_PRESS: i32 = -1;
 
 /// Stateless production `IUiHost` ComObject. Construct once per
 /// scripting session and intern via `ScriptHost::intern` so scripts
-/// can hold a stable `box<IUiHost>` handle across frames.
+/// can hold a stable `&IUiHost` reference across frames.
 pub struct ImguiUiHost {
     /// Tracks which `dock_layout_once(root_id, ...)` invocations have
     /// already seeded their dock-builder layout this session, so the

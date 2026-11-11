@@ -213,13 +213,13 @@ let WID_LOAD_BACK: int      = 100;
 let SLOT_KEY_BASE: int      = 1000000;
 
 pub struct[radiance.IUiLayer, radiance.IDirector] Pal3StartMenuDirector(
-    pub host: box<yaobow_services.IYaobowHostContext>,
+    pub host: &yaobow_services.IYaobowHostContext,
     pub asset_path: string,
     // Generic UI atlas (name -> ISprite) + menu BGM. Null when the
     // per-launch vfs cannot mount UI_opt.tli; the menu then degrades to
     // a "missing assets" text screen but keeps Exit functional.
-    pub atlas: ?box<openpal3.IPal3UiAtlas>,
-    pub bgm: ?box<scripting_services.IAudioSource>,
+    pub atlas: ?&openpal3.IPal3UiAtlas,
+    pub bgm: ?&scripting_services.IAudioSource,
     pub intent: Intent,
     pub mode: int,
     pub load_slot: int,
@@ -251,7 +251,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal3StartMenuDirector(
     // render paints the video full-canvas, the menu is hidden,
     // and BGM/taiji animation are deferred. Esc OR stream-stopped
     // sets this to null and starts BGM + resets taiji_t.
-    pub intro: ?box<scripting_services.IVideoHandle>,
+    pub intro: ?&scripting_services.IVideoHandle,
     pub activated: bool,
     // Cross-frame press latch for the declarative widget tree (the
     // pressed widget's key, or NO_PRESS). Replaces the old
@@ -290,7 +290,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal3StartMenuDirector(
 
     pub fn render(
         self: &Self,
-        ui: box<radiance.IUiHost>,
+        ui: &radiance.IUiHost,
         dt: float,
     ) -> int {
         self.time_sec = self.time_sec + dt;
@@ -375,7 +375,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal3StartMenuDirector(
     // Declare the whole screen as a widget tree. Dispatches on the
     // current state: intro video, missing-assets fallback, or the cover
     // (optionally with the load overlay stacked on top).
-    pub fn build(self: &Self, ui: box<radiance.IUiHost>) -> box<gui.Element> {
+    pub fn build(self: &Self, ui: &radiance.IUiHost) -> box<gui.Element> {
         if self.intro != null {
             return self.build_intro(ui);
         }
@@ -407,7 +407,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal3StartMenuDirector(
 
     // Intro `LOGO.bik` frame, letterboxed full-canvas. The source aspect
     // is preserved against the imgui window's pixel extent.
-    pub fn build_intro(self: &Self, ui: box<radiance.IUiHost>) -> box<gui.Element> {
+    pub fn build_intro(self: &Self, ui: &radiance.IUiHost) -> box<gui.Element> {
         let v = self.intro!;
         let viewport = gui.Rect(0.0, 0.0,
             ui.display_size_x() as float, ui.display_size_y() as float);
@@ -433,7 +433,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal3StartMenuDirector(
     // Load-mode overlay: a title, a `ListView` of clickable save rows,
     // and a Back affordance — all anchored at the cover's letterbox-fit
     // panel rect. Mirrors PAL4's synthetic save-slot list.
-    pub fn build_load_overlay(self: &Self, ui: box<radiance.IUiHost>) -> box<gui.Element> {
+    pub fn build_load_overlay(self: &Self, ui: &radiance.IUiHost) -> box<gui.Element> {
         let atlas = self.atlas!;
         let native = native_size(atlas);
         let viewport = gui.Rect(0.0, 0.0,
@@ -511,7 +511,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal3StartMenuDirector(
     pub fn update(
         self: &Self,
         dt: float,
-    ) -> ?box<radiance.IDirector> {
+    ) -> ?&radiance.IDirector {
         // Already closing: do not honour new intents; just fire
         // exit_app once the reverse taiji animation has fully played.
         if self.closing {
@@ -561,7 +561,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal3StartMenuDirector(
 //                                adjustment are gone entirely
 //   * `paint_button`          -> `gui.SpriteButton`
 fn build_cover(
-    atlas: box<openpal3.IPal3UiAtlas>,
+    atlas: &openpal3.IPal3UiAtlas,
     cloud_x: box<array<float>>,
     cloud_y: box<array<float>>,
     cloud_names: box<array<string>>,
@@ -616,14 +616,14 @@ fn build_cover(
 }
 
 // The atlas's native canvas size (800x600 for PAL3's cover).
-fn native_size(atlas: box<openpal3.IPal3UiAtlas>) -> gui.Size {
+fn native_size(atlas: &openpal3.IPal3UiAtlas) -> gui.Size {
     return gui.Size(atlas.native_width() as float, atlas.native_height() as float);
 }
 
 // Place an atlas sprite at native `(nx, ny)` at its natural pixel size.
 // A missing sprite yields a zero-size placeholder that paints nothing.
 fn spr(
-    atlas: box<openpal3.IPal3UiAtlas>,
+    atlas: &openpal3.IPal3UiAtlas,
     name: string,
     nx: float, ny: float,
 ) -> box<gui.Element> {
@@ -639,7 +639,7 @@ fn spr(
 // that ship only a subset degrade cleanly — `gui.SpriteButton` falls back to
 // the base art for any missing state.
 fn btn(
-    atlas: box<openpal3.IPal3UiAtlas>,
+    atlas: &openpal3.IPal3UiAtlas,
     base: string,
     wid: int,
     nx: float, ny: float,
@@ -660,11 +660,11 @@ fn btn(
 }
 
 // Native pixel width / height of a (possibly null) sprite, as a float.
-fn sprite_w(s: ?box<scripting_services.ISprite>) -> float {
+fn sprite_w(s: ?&scripting_services.ISprite) -> float {
     if s == null { return 0.0; }
     return s!.width() as float;
 }
-fn sprite_h(s: ?box<scripting_services.ISprite>) -> float {
+fn sprite_h(s: ?&scripting_services.ISprite) -> float {
     if s == null { return 0.0; }
     return s!.height() as float;
 }
@@ -720,9 +720,9 @@ fn advance_cloud(x: float, speed: float, dt: float, nat_w: float, sprite_w: floa
 }
 
 pub fn make_pal3_start_menu(
-    host: box<yaobow_services.IYaobowHostContext>,
+    host: &yaobow_services.IYaobowHostContext,
     asset_path: string,
-) -> box<radiance.IDirector> {
+) -> &radiance.IDirector {
     // `create_ui_atlas` returns null when the texture cache isn't
     // wired yet or `UI_opt.tli` is missing — the director then renders
     // a "missing assets" fallback so the user can still Exit.
@@ -762,7 +762,7 @@ pub fn make_pal3_start_menu(
         cloud_names.push(SPR_YUN_PREFIX + int_to_str(i) + ".tga");
     }
 
-    return box(Pal3StartMenuDirector(
+    return &Pal3StartMenuDirector(
         host, asset_path, atlas, bgm,
         Intent.None, MODE_MAIN, NO_SLOT,
         0.0,
@@ -779,5 +779,5 @@ pub fn make_pal3_start_menu(
         false,
         // Press latch for the declarative widget tree.
         gui.make_ctx(),
-    )) as box<radiance.IDirector>;
+    ) as &radiance.IDirector;
 }

@@ -3,7 +3,7 @@
 //! Wires the protosept runtime up to the crosscom Rust runtime by way of
 //! two host functions:
 //!
-//! - `com.invoke`  — dispatches every method call on a `box<I>` value,
+//! - `com.invoke`  — dispatches calls on retained `&I` and legacy `box<I>` values,
 //!   regardless of which IDL it came from. The runtime pushes the
 //!   metadata it discovered at compile time (`type_tag`, `method_name`,
 //!   `vtable_slot`, `return_ty`) on top of the args; the dispatcher
@@ -40,7 +40,7 @@ use crate::proto_ccw::wrap_proto_unknown;
 use crate::{ComObjectTable, with_services};
 use libffi::middle::{Arg, Cif, CodePtr, Type, arg};
 use p7::errors::RuntimeError;
-use p7::interpreter::context::{Context, Data};
+use p7::interpreter::context::{Context, Data, ProtocolValue};
 use p7::semantic::HostReturnTy;
 
 /// Register the generic crosscom dispatcher and finalizer on `ctx`. Any
@@ -51,9 +51,9 @@ use p7::semantic::HostReturnTy;
 /// As a side effect this also registers the well-known
 /// `crosscom.IAction` interface with the runtime-typed CCW factory
 /// (`register_proto_ccw`). That registration is required for the
-/// dispatcher's `classify_script_impl_arg` path to wrap any
+/// dispatcher's interface-argument path to wrap any
 /// SAM-coerced script closure crossing the host boundary as a
-/// `box<crosscom.IAction>`.
+/// retained `&crosscom.IAction`.
 ///
 /// Use after `Context::new()` and before loading any modules whose
 /// `@foreign` protos use these dispatcher names.
@@ -80,7 +80,7 @@ pub fn install_com_dispatcher(ctx: &mut Context) {
 ///   arg_N
 ///   ...
 ///   arg_1
-///   receiver:    Data::ProtoBoxRef → Data::Foreign { type_tag, handle }
+///   receiver:    owned foreign box or owner-backed managed reference
 /// ```
 fn com_invoke(ctx: &mut Context) -> Result<(), RuntimeError> {
     let type_tag = pop_string(ctx, "com.invoke: type_tag")?;
@@ -88,24 +88,23 @@ fn com_invoke(ctx: &mut Context) -> Result<(), RuntimeError> {
     let vtable_slot = pop_int(ctx, "com.invoke: vtable_slot")? as usize;
     let return_ty = pop_return_ty(ctx)?;
 
-    // Pop any preceding arguments. We don't get a separate arg count
-    // pushed by p7, so we walk down the stack until we hit something
-    // that looks like a foreign-receiver — the receiver is always the
-    // bottom of the call's frame portion. Concretely: pop Data values
-    // and classify each. The first `ProtoBoxRef → Data::Foreign` whose
-    // tag matches `type_tag` is the receiver.
-    let mut popped_args: Vec<MarshalledArg> = Vec::new();
-    let recv_handle = loop {
+    let argument_count = ctx.foreign_method_argument_count(&type_tag, vtable_slot as u32)?;
+    let argument_tags = ctx.foreign_method_argument_tags(&type_tag, vtable_slot as u32)?;
+    let mut popped_args = Vec::with_capacity(argument_count);
+    for tag in argument_tags.iter().rev() {
         let data = ctx
             .stack_frame_mut()?
             .stack
             .pop()
             .ok_or(RuntimeError::StackUnderflow)?;
-        match classify_pop(ctx, data, &type_tag)? {
-            ClassifiedPop::Receiver(handle) => break handle,
-            ClassifiedPop::Arg(arg) => popped_args.push(arg),
-        }
-    };
+        popped_args.push(classify_arg(ctx, data, tag.as_deref())?);
+    }
+    let receiver = ctx
+        .stack_frame_mut()?
+        .stack
+        .pop()
+        .ok_or(RuntimeError::StackUnderflow)?;
+    let recv_handle = ctx.foreign_handle(&receiver, &type_tag)?;
     // We popped args in reverse declaration order; reverse so arg_1 is
     // first in the libffi-style call list.
     popped_args.reverse();
@@ -132,6 +131,9 @@ fn com_invoke(ctx: &mut Context) -> Result<(), RuntimeError> {
                     recv_handle, type_tag
                 ))
             })?;
+    // QI returns a strong reference, including on an error path below.
+    let _receiver_owner =
+        unsafe { crosscom::ComRc::<crosscom::IUnknown>::from_raw_pointer(this_ptr) };
 
     // Compute the vtable function pointer. The +3 skips IUnknown's
     // prefix slots; p7's `vtable_slot` is the method's index *within
@@ -151,12 +153,6 @@ fn com_invoke(ctx: &mut Context) -> Result<(), RuntimeError> {
             ))
         })?
     };
-
-    // Drop the QI'd strong ref (the COM table still holds the original).
-    unsafe {
-        let unk_vtbl = *(this_ptr as *const *const crosscom::IUnknownVirtualTable);
-        ((*unk_vtbl).release)(this_ptr);
-    }
 
     push_return(ctx, &return_ty, raw)?;
     Ok(())
@@ -221,11 +217,14 @@ fn com_release(ctx: &mut Context) -> Result<(), RuntimeError> {
 /// One marshalled argument value, classified by its C-ABI kind. The
 /// dispatcher builds the libffi CIF from the [`Type`] of each variant
 /// and the call's `Arg` slice from `as_ffi_arg`.
-#[derive(Debug)]
 enum MarshalledArg {
     Long(c_long),
     Float(c_float),
     Pointer(*const c_void),
+    Interface {
+        _owner: crosscom::ComRc<crosscom::IUnknown>,
+        pointer: *const c_void,
+    },
     /// Owns the C string for the duration of the call; lifetime is the
     /// dispatcher's stack frame (this Rust fn's locals).
     Str(CString),
@@ -237,67 +236,32 @@ impl MarshalledArg {
         match self {
             MarshalledArg::Long(_) => Type::c_long(),
             MarshalledArg::Float(_) => Type::f32(),
-            MarshalledArg::Pointer(_) | MarshalledArg::Str(_) => Type::pointer(),
+            MarshalledArg::Pointer(_) | MarshalledArg::Interface { .. } | MarshalledArg::Str(_) => {
+                Type::pointer()
+            }
         }
     }
 }
 
-enum ClassifiedPop {
-    Receiver(i64),
-    Arg(MarshalledArg),
-}
-
-/// Decide whether the popped `Data` is the receiver (a foreign cell of
-/// `recv_tag`) or an ordinary argument, marshalling args to their C-ABI
-/// form along the way. Foreign args of *other* tags are also accepted —
-/// they are interface arguments to this method, marshalled to a raw
-/// `*const *const c_void` via `ComObjectTable + QI`.
-fn classify_pop(
+fn classify_arg(
     ctx: &mut Context,
     data: Data,
-    recv_tag: &str,
-) -> Result<ClassifiedPop, RuntimeError> {
+    expected_tag: Option<&str>,
+) -> Result<MarshalledArg, RuntimeError> {
     match data {
-        Data::Int(i) => Ok(ClassifiedPop::Arg(MarshalledArg::Long(i as c_long))),
-        Data::Float(f) => Ok(ClassifiedPop::Arg(MarshalledArg::Float(f as c_float))),
+        Data::Int(i) => Ok(MarshalledArg::Long(i as c_long)),
+        Data::Float(f) => Ok(MarshalledArg::Float(f as c_float)),
         Data::String(s) => {
             let c = CString::new(s.as_bytes()).map_err(|_| {
                 RuntimeError::Other("com.invoke: string arg contained interior NUL".into())
             })?;
-            Ok(ClassifiedPop::Arg(MarshalledArg::Str(c)))
+            Ok(MarshalledArg::Str(c))
         }
-        Data::Null => Ok(ClassifiedPop::Arg(MarshalledArg::Pointer(std::ptr::null()))),
-        Data::Some(inner) => classify_pop(ctx, (*inner).clone(), recv_tag),
-        Data::ProtoBoxRef {
-            box_idx,
-            generation,
-            concrete_type_id,
-            origin_module_idx,
-        } => classify_foreign_box(
-            ctx,
-            box_idx,
-            generation,
-            Some((concrete_type_id, origin_module_idx)),
-            recv_tag,
-        ),
-        Data::ProtoRefRef {
-            ref_idx: box_idx,
-            generation,
-            concrete_type_id,
-            origin_module_idx,
-        } => classify_foreign_box(
-            ctx,
-            box_idx,
-            generation,
-            Some((concrete_type_id, origin_module_idx)),
-            recv_tag,
-        ),
-        Data::BoxRef { idx, generation } => {
-            classify_foreign_box(ctx, idx, generation, None, recv_tag)
+        Data::Null => Ok(MarshalledArg::Pointer(std::ptr::null())),
+        Data::Some(inner) => classify_arg(ctx, (*inner).clone(), expected_tag),
+        data @ (Data::ProtoBoxRef { .. } | Data::BoxRef { .. } | Data::ManagedReference { .. }) => {
+            classify_interface_arg(ctx, data, expected_tag)
         }
-        data @ Data::ManagedReference { .. } => Ok(ClassifiedPop::Receiver(
-            ctx.foreign_handle(&data, recv_tag)?,
-        )),
         other => Err(RuntimeError::Other(format!(
             "com.invoke: unsupported argument shape: {:?}",
             other
@@ -305,115 +269,17 @@ fn classify_pop(
     }
 }
 
-fn classify_foreign_box(
+fn classify_interface_arg(
     ctx: &mut Context,
-    box_idx: u32,
-    generation: u32,
-    proto_origin: Option<(u32, u32)>,
-    recv_tag: &str,
-) -> Result<ClassifiedPop, RuntimeError> {
-    let payload = ctx.box_heap.get(box_idx, generation)?.clone();
-    match payload {
-        Data::Foreign {
-            type_tag, handle, ..
-        } => {
-            if type_tag == recv_tag {
-                return Ok(ClassifiedPop::Receiver(handle));
-            }
-            // Interface argument: QI to the arg's own UUID and pass the
-            // raw pointer.
-            let uuid_str = ctx
-                .foreign_uuid(&type_tag)
-                .ok_or_else(|| {
-                    RuntimeError::Other(format!(
-                        "com.invoke: no UUID for foreign arg type_tag '{}'",
-                        type_tag
-                    ))
-                })?
-                .to_string();
-            let uuid_bytes = parse_uuid(&uuid_str)?;
-            let p: *const *const c_void =
-                with_services(|s| s.com_table_mut().get_raw_qi(handle, uuid_bytes))
-                    .map_err(|e| RuntimeError::Other(format!("com.invoke: with_services: {}", e)))?
-                    .ok_or_else(|| {
-                        RuntimeError::Other(format!(
-                            "com.invoke: foreign-arg handle {} does not expose '{}'",
-                            handle, type_tag
-                        ))
-                    })?;
-            Ok(ClassifiedPop::Arg(MarshalledArg::Pointer(
-                p as *const c_void,
-            )))
-        }
-        other => {
-            // Not a Foreign-payload box. This may still be a valid
-            // crosscom arg if the script value is a struct that
-            // *conforms to* a known `@foreign` proto (the SAM-coerced
-            // closure / explicit `struct[F] X(...)` pattern from §L1/
-            // §L2). Wrap it as a Rust-side CCW (`wrap_proto` for
-            // `IAction`), intern, and pass the raw pointer.
-            let (concrete_type_id, origin_module_idx) = proto_origin.ok_or_else(|| {
-                RuntimeError::Other(format!(
-                    "com.invoke: box did not contain a Foreign value: {:?}",
-                    other
-                ))
-            })?;
-            classify_script_impl_arg(
-                ctx,
-                box_idx,
-                generation,
-                concrete_type_id,
-                origin_module_idx,
-            )
-        }
-    }
-}
-
-/// Handle a script-impl-of-foreign-proto argument: look up the
-/// concrete struct's foreign-conforming proto, wrap the value as the
-/// matching Rust CCW (`wrap_proto` for IAction in v1), intern, and
-/// return the raw COM pointer.
-fn classify_script_impl_arg(
-    ctx: &mut Context,
-    box_idx: u32,
-    generation: u32,
-    concrete_type_id: u32,
-    origin_module_idx: u32,
-) -> Result<ClassifiedPop, RuntimeError> {
-    let tag = ctx
-        .struct_first_foreign_proto_tag(origin_module_idx as usize, concrete_type_id)
-        .map(|s| s.to_string())
-        .ok_or_else(|| {
-            RuntimeError::Other(format!(
-                "com.invoke: script value (struct id {}) does not conform to any @foreign proto",
-                concrete_type_id
-            ))
-        })?;
-
-    // v1: only IAction was supported; Phase 3 (B1b) extends this to
-    // any interface UUID registered via
-    // `crosscom_protosept::register_proto_ccw`. The fallback below
-    // checks the registry and either reverse-wraps via the runtime-
-    // typed CCW factory or errors loudly with a pointer at the
-    // registration entry point.
-    // No early return here — handled below.
-
-    // Wrap the script box as `ComRc<IAction>`. wrap_proto holds an
-    // external root on the underlying script box, so re-entrant
-    // invocations across the host boundary remain valid until the CCW
-    // is released. We pass through the original `ProtoBoxRef` so that
-    // when the CCW's `invoke` thunk later calls
-    // `Context::push_proto_method`, the receiver carries the concrete
-    // type id + origin module needed for vtable resolution.
-    let data = Data::ProtoBoxRef {
-        box_idx,
-        generation,
-        concrete_type_id,
-        origin_module_idx,
-    };
-    // Pull the runtime handle out of the active services bundle so the
-    // produced CCW can re-enter the runtime from its thunks / Drop
-    // without relying on `scope_context` being alive at the time.
+    data: Data,
+    expected_tag: Option<&str>,
+) -> Result<MarshalledArg, RuntimeError> {
+    let inspected = ctx.inspect_protocol_value(&data)?;
+    let tag = expected_tag.ok_or_else(|| {
+        RuntimeError::Other(
+            "com.invoke: interface argument lacks declared protocol metadata".into(),
+        )
+    })?;
     let runtime_handle = with_services(|s| s.runtime_handle())
         .map_err(|e| RuntimeError::Other(format!("com.invoke: with_services: {}", e)))?;
 
@@ -425,7 +291,7 @@ fn classify_script_impl_arg(
     // `wrap_im_director` register the directors lazily on first
     // call).
     let uuid_str = ctx
-        .foreign_uuid(&tag)
+        .foreign_uuid(tag)
         .ok_or_else(|| {
             RuntimeError::Other(format!(
                 "com.invoke: no UUID known for foreign proto '{}' (script lacks `uuid=...`?)",
@@ -434,38 +300,40 @@ fn classify_script_impl_arg(
         })?
         .to_string();
     let uuid_bytes = parse_uuid(&uuid_str)?;
+    if crate::proto_ccw::is_owned_proto(uuid_bytes) {
+        crate::proto_ccw::owned_foreign_handle(ctx, &data)?;
+    }
+    // Legacy owned carriers have a stable foreign-cell identity. Managed
+    // locations instead keep their exact root and dispatch through a CCW.
+    if matches!(data, Data::BoxRef { .. } | Data::ProtoBoxRef { .. }) {
+        if let ProtocolValue::Foreign { handle, .. } = inspected {
+            let raw = with_services(|s| s.com_table_mut().get_raw_qi(handle, uuid_bytes))
+                .map_err(|e| RuntimeError::Other(format!("com.invoke: {e}")))?
+                .ok_or_else(|| {
+                    RuntimeError::Other(format!(
+                        "com.invoke: foreign handle {handle} does not expose '{tag}'"
+                    ))
+                })?;
+            return Ok(MarshalledArg::Interface {
+                _owner: unsafe { crosscom::ComRc::from_raw_pointer(raw) },
+                pointer: raw as *const c_void,
+            });
+        }
+    }
     if !crate::proto_ccw::is_proto_registered(uuid_bytes) {
         return Err(RuntimeError::Other(format!(
-            "com.invoke: script-impl arg for foreign proto '{}' is not supported; \
+            "com.invoke: retained arg for foreign proto '{}' has no proxy metadata; \
              call crosscom_protosept::register_proto_ccw for UUID {} at startup",
             tag, uuid_str
         )));
     }
     let com_rc = wrap_proto_unknown(&runtime_handle, data, uuid_bytes)
         .map_err(|e| RuntimeError::Other(format!("com.invoke: wrap_proto failed: {}", e)))?;
-    let com_handle = with_services(|s| s.com_table_mut().intern(com_rc))
-        .map_err(|e| RuntimeError::Other(format!("com.invoke: with_services: {}", e)))?;
-
-    let p: *const *const c_void =
-        with_services(|s| s.com_table_mut().get_raw_qi(com_handle, uuid_bytes))
-            .map_err(|e| RuntimeError::Other(format!("com.invoke: with_services: {}", e)))?
-            .ok_or_else(|| {
-                RuntimeError::Other(format!(
-                    "com.invoke: wrapped script-impl handle {} did not expose tag '{}'",
-                    com_handle, tag
-                ))
-            })?;
-
-    // NOTE: the interned slot intentionally outlives this invocation.
-    // The host CCW may be stored by the receiving method (e.g. for
-    // delayed dispatch); releasing here would invalidate that. A
-    // future task may add call-scope release for non-stored callback
-    // args.
-    let _ = com_handle;
-
-    Ok(ClassifiedPop::Arg(MarshalledArg::Pointer(
-        p as *const c_void,
-    )))
+    let pointer = com_rc.ptr_value();
+    Ok(MarshalledArg::Interface {
+        _owner: com_rc,
+        pointer,
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -571,12 +439,22 @@ unsafe fn invoke_via_catalog(
             MarshalledArg::Long(v) => arg(v),
             MarshalledArg::Float(v) => arg(v),
             MarshalledArg::Pointer(v) => arg(v),
+            MarshalledArg::Interface { pointer, .. } => arg(pointer),
             MarshalledArg::Str(_) => arg(&str_ptrs[i]),
         };
         ffi_args.push(argp);
     }
 
     let code = CodePtr::from_ptr(fn_ptr);
+
+    // crosscom interface parameters transfer one strong reference to the
+    // callee. Keep our call-scoped owner separate so errors before invocation
+    // release everything and native code may retain its received ComRc.
+    for argument in args {
+        if let MarshalledArg::Interface { _owner, .. } = argument {
+            unsafe { _owner.clone().into_raw() };
+        }
+    }
 
     // libffi-rs's `call` is generic over the Rust return type, so we
     // need a small static dispatch on the four COM-relevant return

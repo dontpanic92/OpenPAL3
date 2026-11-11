@@ -75,7 +75,8 @@ class Application: IApplication {}
 [uuid(3afe8052-b675-4939-aafb-2a4fca8f2cf2)]
 interface IApplicationLoaderComponent: IComponent {}
 
-[uuid(27e705f1-d035-4e91-8735-3a006fab870d)]
+// Native scene extensions require the original CoreScene carrier, not a proxy.
+[uuid(27e705f1-d035-4e91-8735-3a006fab870d), protosept(owned)]
 interface IScene: IComponentContainer {
     // `load` / `unload` are idempotent and obey the same
     // exactly-once-per-(component, container) contract as

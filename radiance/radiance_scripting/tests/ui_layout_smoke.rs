@@ -34,7 +34,7 @@ fn row(i: int) -> box<ui.Element> {
     return ui.Text("r", ui.Color.WHITE);
 }
 
-pub fn entry(host: box<radiance.IUiHost>) -> int {
+pub fn entry(host: &radiance.IUiHost) -> int {
     let ctx = ui.make_ctx();
     let root: box<ui.Element> = ui.ListView(3, (i: int) => row(i), 0.0);
     ui.paint_root(root, host, ctx)
@@ -71,7 +71,7 @@ const FITTED_ALIGN_SCREEN: &str = r#"
 import radiance;
 import radiance_scripting.ui;
 
-pub fn entry(host: box<radiance.IUiHost>) -> int {
+pub fn entry(host: &radiance.IUiHost) -> int {
     let ctx = ui.make_ctx();
     let inner: box<ui.Element> = ui.Align(ui.Text("x", ui.Color.WHITE), 0.0, 0.0);
     let root: box<ui.Element> = ui.FittedBox(ui.Size(800.0, 600.0), inner);
@@ -104,7 +104,7 @@ fn native_canvas_children_survive_repeated_clipped_and_unclipped_paints() {
 import radiance;
 import radiance_scripting.ui;
 
-pub fn entry(host: box<radiance.IUiHost>) -> int {
+pub fn entry(host: &radiance.IUiHost) -> int {
     let ctx = ui.make_ctx();
     let clipped: box<ui.Element> = ui.NativeCanvas(
         ui.Size(100.0, 100.0), [ui.Text("clipped")]);
