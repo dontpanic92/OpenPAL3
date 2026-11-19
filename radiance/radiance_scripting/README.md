@@ -62,7 +62,7 @@ The canonical adapter shape lives in `yaobow_editor/scripts/editor_consts.p7`.
 ## Managed References
 
 `radiance/protosept` is pinned by the repository's submodule gitlink to the
-remote `dontpanic92-managed-references` branch. Use
+canonical remote `master` branch. Use
 `git submodule update --init --recursive` to reproduce that exact revision;
 do not use `--remote` for a reproducible build. Cargo uses this submodule's
 `p7` path dependency. Rebuild and restart after updating it so scripts and

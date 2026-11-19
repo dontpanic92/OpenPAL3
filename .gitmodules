@@ -4,7 +4,7 @@
 [submodule "path/to/module"]
 	path = radiance/protosept
 	url = https://github.com/dontpanic92/protosept
-	branch = dontpanic92-managed-references
+	branch = master
 [submodule "yaobow/yaobow-assets"]
 	path = yaobow/yaobow-assets
 	url = https://github.com/dontpanic92/yaobow-assets
