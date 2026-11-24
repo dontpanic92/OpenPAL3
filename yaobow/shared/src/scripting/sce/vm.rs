@@ -483,7 +483,7 @@ impl SceProcContext {
             }
             48 => {
                 // AddMoney
-                nop_command!(self, AddMoney, i32)
+                command!(self, SceCommandAddMoney, amount: i32)
             }
             49 => {
                 // GetMoney
@@ -804,7 +804,7 @@ impl SceProcContext {
             }
             202 => {
                 // InTeam
-                nop_command!(self, InTeam, i32, i32)
+                command!(self, SceCommandInTeam, role_id: i32, enabled: i32)
             }
             203 => {
                 // RoleSetLayer
@@ -948,6 +948,61 @@ mod data_read {
                 string(context)
             })
             .collect()
+    }
+}
+
+#[cfg(test)]
+mod gameplay_tests {
+    use super::*;
+    use crate::openpal3::loaders::sce_loader::{SceProc, SceProcHeader};
+
+    #[test]
+    fn party_and_money_commands_decode_reversed_arguments_and_variable_widths() {
+        let mut inst = vec![];
+        for value in [202u16, 0] {
+            inst.extend_from_slice(&value.to_le_bytes());
+        }
+        inst.extend_from_slice(&(-7i32).to_le_bytes());
+        inst.extend_from_slice(&4i32.to_le_bytes());
+        for value in [137u16, 0] {
+            inst.extend_from_slice(&value.to_le_bytes());
+        }
+        inst.extend_from_slice(&4i32.to_le_bytes());
+        for value in [48u16, 0] {
+            inst.extend_from_slice(&value.to_le_bytes());
+        }
+        inst.extend_from_slice(&(-25i32).to_le_bytes());
+        for value in [49u16, 1] {
+            inst.extend_from_slice(&value.to_le_bytes());
+        }
+        inst.extend_from_slice(&(-10i16).to_le_bytes());
+        let sce = Rc::new(SceFile {
+            proc_num: 1,
+            proc_headers: vec![SceProcHeader {
+                id: 500,
+                offset: 0,
+                name: "test".into(),
+            }],
+            procs: HashMap::from([(
+                500,
+                SceProc {
+                    id: 500,
+                    name: "test".into(),
+                    local_vars: vec![],
+                    inst,
+                },
+            )]),
+        });
+        let mut context = SceProcContext::new_from_id(sce, 500);
+        for expected in [
+            "SceCommandInTeam { role_id: 4, enabled: -7 }",
+            "SceCommandIfInTeam { role_id: 4 }",
+            "SceCommandAddMoney { amount: -25 }",
+            "SceCommandGetMoney { var: -10 }",
+        ] {
+            assert_eq!(context.get_next_cmd().unwrap().debug(), expected);
+        }
+        assert!(context.get_next_cmd().is_none());
     }
 }
 

@@ -6,6 +6,8 @@ use std::path::PathBuf;
 use crate::openpal3::scene::MechanismState;
 use crate::ydirs;
 
+use super::party::PartyState;
+
 pub const PAL3_APP_NAME: &str = "OpenPAL3";
 
 #[derive(Serialize, Deserialize)]
@@ -17,6 +19,8 @@ pub struct PersistentState {
     nav_layer: usize,
     #[serde(default)]
     role_controlled: i32,
+    party: PartyState,
+    money: i32,
     scene: Option<String>,
     sub_scene: Option<String>,
     #[serde(default)]
@@ -31,6 +35,8 @@ impl PersistentState {
             position: Vec3::new(0., 0., 0.),
             nav_layer: 0,
             role_controlled: 0,
+            party: PartyState::default(),
+            money: 0,
             scene: None,
             sub_scene: None,
             scene_mechanisms: HashMap::new(),
@@ -107,6 +113,23 @@ impl PersistentState {
         self.role_controlled = role;
     }
 
+    pub fn party(&self) -> &PartyState {
+        &self.party
+    }
+
+    pub fn party_mut(&mut self) -> &mut PartyState {
+        &mut self.party
+    }
+
+    pub fn money(&self) -> i32 {
+        self.money
+    }
+
+    pub fn add_money(&mut self, amount: i32) {
+        // Native 0x40fc90 adds signed 32-bit values before clamping below zero.
+        self.money = self.money.wrapping_add(amount).max(0);
+    }
+
     pub fn set_scene_name(&mut self, scene: String, sub_scene: String) {
         self.scene = Some(scene);
         self.sub_scene = Some(sub_scene);
@@ -137,6 +160,49 @@ impl PersistentState {
     ) {
         self.scene_mechanisms
             .insert(format!("{}/{}", scene, sub_scene).to_lowercase(), states);
+    }
+}
+
+#[cfg(test)]
+mod gameplay_tests {
+    use super::*;
+
+    #[test]
+    fn party_and_money_roundtrip_independently_of_the_controlled_role() {
+        let mut state = PersistentState::new(PAL3_APP_NAME.into());
+        state.party_mut().set_in_team(1, true);
+        state.party_mut().set_in_team(3, true);
+        state.party_mut().set_in_team(1, false);
+        state.set_role_controlled(1);
+        state.add_money(250);
+        state.add_money(-40);
+
+        let json = serde_json::to_string(&state).unwrap();
+        let mut restored: PersistentState = serde_json::from_str(&json).unwrap();
+        assert_eq!(restored.role_controlled(), 1);
+        assert_eq!(restored.party().members().collect::<Vec<_>>(), vec![0, 3]);
+        assert_eq!(restored.party().formation_slot(1), Some(1));
+        assert_eq!(restored.party().formation_slot(3), Some(2));
+        assert_eq!(restored.money(), 210);
+
+        restored.party_mut().set_in_team(4, true);
+        assert_eq!(restored.party().formation_slot(4), Some(1));
+        assert_eq!(restored.role_controlled(), 1);
+    }
+
+    #[test]
+    fn money_starts_empty_and_clamps_after_signed_addition() {
+        let mut state = PersistentState::new(PAL3_APP_NAME.into());
+        assert_eq!(state.money(), 0);
+        state.add_money(100);
+        state.add_money(-150);
+        assert_eq!(state.money(), 0);
+        state.add_money(i32::MAX);
+        assert_eq!(state.money(), i32::MAX);
+        state.add_money(1);
+        assert_eq!(state.money(), 0);
+        state.add_money(i32::MIN);
+        assert_eq!(state.money(), 0);
     }
 }
 

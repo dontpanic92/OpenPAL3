@@ -1,4 +1,7 @@
-use crate::scripting::sce::{SceCommand, SceState};
+use crate::{
+    GameType,
+    scripting::sce::{SceCommand, SceState},
+};
 use crosscom::ComRc;
 use imgui::Ui;
 use radiance::comdef::ISceneManager;
@@ -16,10 +19,20 @@ impl SceCommand for SceCommandGetMoney {
         state: &mut SceState,
         _delta_sec: f32,
     ) -> bool {
-        state
-            .context_mut()
-            .current_proc_context_mut()
-            .set_local(self.var, 99999);
+        let is_pal3 = state.asset_mgr().game() == GameType::PAL3;
+        let money = if is_pal3 {
+            state.global_state().persistent_state().money()
+        } else {
+            99999
+        };
+        if is_pal3 && self.var < 0 {
+            state
+                .global_state_mut()
+                .persistent_state_mut()
+                .set_global(self.var, money);
+        } else {
+            state.context_mut().set_local(self.var, money);
+        }
         true
     }
 }
