@@ -23,6 +23,7 @@ impl SceCommand for SceCommandObjectActive {
     ) -> bool {
         let scn = scene_manager.scn_scene().unwrap();
         let s = scn.inner::<crate::openpal3::scene::ScnScene>();
+        s.set_mechanism_active(self.object_id as u16, self.active != 0);
         if let Some(e) = s.get_root_object(self.object_id) {
             e.set_visible(self.active != 0);
         }

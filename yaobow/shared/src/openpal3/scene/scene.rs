@@ -9,10 +9,13 @@ use crate::openpal3::loaders::scn_loader::ScnFile;
 use crate::openpal3::scene::RoleController;
 use crate::openpal3::states::persistent_state::PersistentState;
 use crosscom::ComRc;
-use radiance::comdef::{IComponentImpl, IEntity, IEntityExt, IScene, ISceneExt};
+use radiance::comdef::{
+    IComponentImpl, IEntity, IEntityExt, IScene, ISceneExt, IStaticMeshComponent,
+};
+use radiance::components::mesh::StaticMeshComponent;
 use radiance::math::Vec3;
 use std::cell::RefCell;
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::rc::Rc;
 
 pub struct ScnScene {
@@ -27,6 +30,7 @@ pub struct ScnScene {
     item_triggers: RefCell<Vec<SceItemTrigger>>,
     ladder_triggers: RefCell<Vec<LadderTrigger>>,
     mechanisms: RefCell<Vec<Mechanism>>,
+    mechanism_procs: RefCell<Vec<u32>>,
 }
 
 ComObject_ScnSceneComponent!(super::ScnScene);
@@ -66,12 +70,13 @@ impl ScnScene {
             cpk_name: cpk_name.to_string(),
             scn_name: scn_name.to_string(),
             scn_file,
-            nav: Nav::new(nav_file),
+            nav: Nav::new(nav_file, asset_mgr.game() == crate::GameType::PAL3),
             nav_triggers: RefCell::new(vec![]),
             aabb_triggers: RefCell::new(vec![]),
             item_triggers: RefCell::new(vec![]),
             ladder_triggers: RefCell::new(vec![]),
             mechanisms: RefCell::new(mechanisms),
+            mechanism_procs: RefCell::new(vec![]),
         }
     }
 
@@ -88,6 +93,9 @@ impl ScnScene {
     }
 
     pub fn restore_mechanisms(&self, state: &PersistentState) {
+        self.mechanism_procs.borrow_mut().clear();
+        self.nav.enabled_groups.borrow_mut().clear();
+        self.nav.floors.borrow_mut().clear();
         let saved = state.mechanism_states(self.name(), self.sub_name());
         for mechanism in self.mechanisms.borrow_mut().iter_mut() {
             if let Some(state) = saved.and_then(|s| s.get(&mechanism.id)) {
@@ -108,13 +116,67 @@ impl ScnScene {
                     }
                 }
             }
+            if mechanism.kind == 31 && !mechanism.active && self.name().eq_ignore_ascii_case("m09")
+            {
+                self.nav.enabled_groups.borrow_mut().insert(2);
+            }
             self.apply_mechanism_pose(mechanism, mechanism.pose_at_end());
         }
     }
 
     fn apply_mechanism_pose(&self, mechanism: &Mechanism, end: bool) {
+        if mechanism.kind == 31
+            && self.name().eq_ignore_ascii_case("m09")
+            && mechanism.state.native.as_ref().is_some_and(|s| s.completed)
+        {
+            self.nav.enabled_groups.borrow_mut().insert(2);
+        }
         if let Some(entity) = self.get_root_object(mechanism.id as i32) {
-            if mechanism.kind == 22 {
+            if let Some(native) = &mechanism.state.native {
+                let transform = entity.transform();
+                let mut transform = transform.borrow_mut();
+                let mut position = mechanism.position;
+                position.y = mechanism.state.height;
+                transform
+                    .set_position(&position)
+                    .clear_rotation()
+                    .rotate_axis_angle_local(&Vec3::UP, native.rotation.to_radians());
+                entity.set_visible(native.active);
+                if mechanism.kind == 7 {
+                    let mut floors = self.nav.floors.borrow_mut();
+                    if let Some(floor) = floors.get_mut(&mechanism.id) {
+                        floor.position = position;
+                        floor.rotation = native.rotation.to_radians();
+                        floor.enabled = mechanism.provides_floor();
+                    } else if let Some((min, max)) = Self::mechanism_bounds(&entity) {
+                        if let Some(block) = self.nav.block_sizes.get(mechanism.layer as usize) {
+                            let center = Vec3::scalar_mul(0.5, &Vec3::add(&min, &max));
+                            let mut size = Vec3::sub(&max, &min);
+                            // Native type-7 footprint, 0x42a0d3: extend the long axis
+                            // by 4.5 cells and inset the cross-axis by 2.5 cells.
+                            if size.x > size.z {
+                                size.x += 4.5 * block.0;
+                                size.z -= 2.5 * block.1;
+                            } else {
+                                size.x -= 2.5 * block.0;
+                                size.z += 4.5 * block.1;
+                            }
+                            let half = Vec3::scalar_mul(0.5, &size);
+                            floors.insert(
+                                mechanism.id,
+                                MechanismFloor {
+                                    layer: mechanism.layer as usize,
+                                    position,
+                                    rotation: native.rotation.to_radians(),
+                                    min: Vec3::sub(&center, &half),
+                                    max: Vec3::add(&center, &half),
+                                    enabled: mechanism.provides_floor(),
+                                },
+                            );
+                        }
+                    }
+                }
+            } else if mechanism.kind == 22 {
                 let transform = entity.transform();
                 let mut transform = transform.borrow_mut();
                 let mut position = transform.position();
@@ -146,10 +208,36 @@ impl ScnScene {
         }
     }
 
+    fn mechanism_bounds(entity: &ComRc<IEntity>) -> Option<(Vec3, Vec3)> {
+        let component = entity.get_component(IStaticMeshComponent::uuid())?;
+        let mesh = component.query_interface::<IStaticMeshComponent>()?;
+        let mut min = Vec3::new(f32::INFINITY, f32::INFINITY, f32::INFINITY);
+        let mut max = Vec3::new(f32::NEG_INFINITY, f32::NEG_INFINITY, f32::NEG_INFINITY);
+        let mut found = false;
+        for geometry in mesh.inner::<StaticMeshComponent>().get_geometries().iter() {
+            if let Some((a, b)) = geometry.vertices.aabb_min_max() {
+                min = Vec3::new(min.x.min(a[0]), min.y.min(a[1]), min.z.min(a[2]));
+                max = Vec3::new(max.x.max(b[0]), max.y.max(b[1]), max.z.max(b[2]));
+                found = true;
+            }
+        }
+        found.then_some((min, max))
+    }
+
+    pub fn set_mechanism_active(&self, id: u16, active: bool) {
+        if let Some(mechanism) = self.mechanisms.borrow_mut().iter_mut().find(|m| m.id == id) {
+            mechanism.set_active(active);
+            self.apply_mechanism_pose(mechanism, mechanism.pose_at_end());
+        }
+    }
+
     pub fn trigger_mechanism(&self, id: u16) {
         let mut mechanisms = self.mechanisms.borrow_mut();
         if let Some(mechanism) = mechanisms.iter_mut().find(|m| m.id == id) {
             if mechanism.activate(true) == Activation::Started {
+                if let Some(proc_id) = mechanism.activation_proc() {
+                    self.mechanism_procs.borrow_mut().push(proc_id);
+                }
                 self.apply_mechanism_pose(mechanism, false);
             }
         } else {
@@ -160,6 +248,10 @@ impl ScnScene {
                 self.sub_name()
             );
         }
+    }
+
+    pub fn take_mechanism_procs(&self) -> Vec<u32> {
+        std::mem::take(&mut *self.mechanism_procs.borrow_mut())
     }
 
     pub fn switch_state(&self, id: u16) -> u8 {
@@ -214,7 +306,7 @@ impl ScnScene {
     }
 
     pub fn update_mechanisms(&self, delta_sec: f32) -> Vec<u32> {
-        let mut procs = vec![];
+        let mut procs = self.take_mechanism_procs();
         let mut links = vec![];
         for mechanism in self.mechanisms.borrow_mut().iter_mut() {
             let duration = self
@@ -223,7 +315,7 @@ impl ScnScene {
                 .unwrap_or(0.);
             let animating = mechanism.animation_time().is_some();
             let completed = mechanism.update(delta_sec, duration);
-            if mechanism.kind == 22 || animating {
+            if mechanism.kind == 22 || mechanism.state.native.is_some() || animating {
                 self.apply_mechanism_pose(mechanism, completed);
             }
             if completed {
@@ -239,6 +331,7 @@ impl ScnScene {
         for target in links {
             self.trigger_mechanism(target);
         }
+        procs.extend(self.take_mechanism_procs());
         procs
     }
 
@@ -283,8 +376,10 @@ impl ScnScene {
             (nav_coord.1.ceil() as usize)
                 .clamp(0, self.nav.nav_file.maps[layer].height as usize - 1),
         );
-        let distance_floor =
-            &self.nav.nav_file.maps[layer].map[nav_coord_floor.1][nav_coord_floor.0];
+        let distance_floor = self
+            .nav
+            .get(layer, nav_coord_floor.0 as i32, nav_coord_floor.1 as i32)
+            .unwrap();
         let _distance_ceil = &self.nav.nav_file.maps[layer].map[nav_coord_ceil.1][nav_coord_ceil.0];
         /*std::cmp::min(
             distance_floor.distance_to_border,
@@ -456,7 +551,7 @@ impl ScnScene {
             .clamp(0, self.nav.nav_file.maps[layer].width as usize - 1);
         let y = (nav_coord.1.floor() as usize)
             .clamp(0, self.nav.nav_file.maps[layer].height as usize - 1);
-        self.nav.nav_file.maps[layer].map[y][x].height
+        self.nav.get(layer, x as i32, y as i32).unwrap().height
     }
 
     pub fn scene_coord_to_nav_coord(&self, layer: usize, coord: &Vec3) -> (f32, f32) {
@@ -720,7 +815,7 @@ impl ScnScene {
             if let Some(p) = entity {
                 Self::apply_position_rotation(p.clone(), &obj.position, obj.rotation.to_radians());
                 if self.asset_mgr.game() == crate::GameType::PAL3
-                    && matches!(obj.node_type, 22 | 23)
+                    && matches!(obj.node_type, 7 | 8 | 22 | 23 | 31)
                 {
                     p.set_visible(obj.active != 0);
                 }
@@ -864,10 +959,80 @@ impl ScnNodeTypes {
 pub struct Nav {
     nav_file: NavFile,
     block_sizes: Vec<(f32, f32)>,
+    native: bool,
+    enabled_groups: RefCell<HashSet<u8>>,
+    floors: RefCell<BTreeMap<u16, MechanismFloor>>,
+}
+
+struct MechanismFloor {
+    layer: usize,
+    position: Vec3,
+    rotation: f32,
+    min: Vec3,
+    max: Vec3,
+    enabled: bool,
+}
+
+impl MechanismFloor {
+    fn contains_cell(&self, x: i32, z: i32, origin: &Vec3, block: (f32, f32)) -> bool {
+        let (sin, cos) = self.rotation.sin_cos();
+        let corners = [
+            (self.min.x, self.min.z),
+            (self.max.x, self.min.z),
+            (self.max.x, self.max.z),
+            (self.min.x, self.max.z),
+        ]
+        .map(|(local_x, local_z)| {
+            (
+                ((self.position.x + cos * local_x + sin * local_z - origin.x) / block.0) as i32,
+                ((self.position.z - sin * local_x + cos * local_z - origin.z) / block.1) as i32,
+            )
+        });
+        if x < corners.iter().map(|p| p.0).min().unwrap()
+            || x >= corners.iter().map(|p| p.0).max().unwrap()
+        {
+            return false;
+        }
+        let mut hits = [0; 4];
+        let mut count = 0;
+        for i in 0..4 {
+            let a = corners[i];
+            let b = corners[(i + 1) % 4];
+            if a.0 == b.0 {
+                if x == a.0 {
+                    hits[0] = a.1;
+                    hits[1] = b.1;
+                    count = 2;
+                    break;
+                }
+            } else if x > a.0.min(b.0) && x <= a.0.max(b.0) {
+                let hit = ((b.1 - a.1) as f32 * (x - a.0) as f32 / (b.0 - a.0) as f32
+                    + a.1 as f32
+                    + 0.5) as i32;
+                if hit >= a.1.min(b.1) && hit <= a.1.max(b.1) {
+                    hits[count] = hit;
+                    count += 1;
+                }
+            }
+        }
+        if count != 2 {
+            return false;
+        }
+        let mut min = hits[0].min(hits[1]);
+        let mut max = hits[0].max(hits[1]);
+        // Native rasterizer 0x42ff40 uses half-open spans, with a five-cell
+        // vertical span for narrow intersections, rather than cell-center tests.
+        if max - min < 4 {
+            let center = (min + max) as f32 * 0.5;
+            min = (center - 2.5) as i32;
+            max = (center + 2.5) as i32;
+        }
+        z >= min && z < max
+    }
 }
 
 impl Nav {
-    pub fn new(nav_file: NavFile) -> Self {
+    pub fn new(nav_file: NavFile, native: bool) -> Self {
         let mut block_sizes = vec![];
         for i in 0..nav_file.maps.len() {
             let area = Vec3::sub(&nav_file.maps[i].max_coord, &nav_file.maps[i].min_coord);
@@ -878,6 +1043,9 @@ impl Nav {
         Self {
             nav_file,
             block_sizes,
+            native,
+            enabled_groups: RefCell::new(HashSet::new()),
+            floors: RefCell::new(BTreeMap::new()),
         }
     }
 
@@ -902,14 +1070,43 @@ impl Nav {
     }
 
     pub fn get(&self, layer: usize, nav_coord_x: i32, nav_coord_z: i32) -> Option<NavMapPoint> {
+        let map = self.nav_file.maps.get(layer)?;
         if nav_coord_x < 0
             || nav_coord_z < 0
-            || nav_coord_x as u32 >= self.nav_file.maps[layer].width
-            || nav_coord_z as u32 >= self.nav_file.maps[layer].height
+            || nav_coord_x as u32 >= map.width
+            || nav_coord_z as u32 >= map.height
         {
             None
         } else {
-            Some(self.nav_file.maps[layer].map[nav_coord_z as usize][nav_coord_x as usize])
+            let mut point = map.map[nav_coord_z as usize][nav_coord_x as usize];
+            if self.native {
+                // Native NAV cells contain separate clearance/group bytes (0x4214eb).
+                let clearance = point.distance_to_border as u8;
+                let group = (point.distance_to_border >> 8) as u8;
+                point.distance_to_border =
+                    if group == 1 || self.enabled_groups.borrow().contains(&group) {
+                        clearance.max(2) as u32
+                    } else if clearance < 2 {
+                        0
+                    } else {
+                        clearance as u32
+                    };
+                for floor in self.floors.borrow().values() {
+                    if floor.enabled
+                        && floor.layer == layer
+                        && floor.contains_cell(
+                            nav_coord_x,
+                            nav_coord_z,
+                            &map.min_coord,
+                            self.block_sizes[layer],
+                        )
+                    {
+                        point.height = floor.position.y;
+                        point.distance_to_border = point.distance_to_border.max(2);
+                    }
+                }
+            }
+            Some(point)
         }
     }
 

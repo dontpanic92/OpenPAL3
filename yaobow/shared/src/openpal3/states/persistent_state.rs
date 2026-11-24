@@ -19,47 +19,6 @@ pub struct PersistentState {
     scene_mechanisms: HashMap<String, HashMap<u16, MechanismState>>,
 }
 
-#[cfg(test)]
-mod mechanism_tests {
-    use super::*;
-
-    #[test]
-    fn old_saves_without_mechanisms_remain_readable() {
-        let mut json = serde_json::to_value(PersistentState::new("OpenPAL3".into())).unwrap();
-        json.as_object_mut().unwrap().remove("scene_mechanisms");
-        let state: PersistentState = serde_json::from_value(json).unwrap();
-        assert!(state.mechanism_states("m17", "7").is_none());
-    }
-
-    #[test]
-    fn mechanism_state_roundtrips_with_case_insensitive_scene_keys() {
-        let mut state = PersistentState::new("OpenPAL3".into());
-        state.set_mechanism_states(
-            "M17",
-            "D1",
-            HashMap::from([(
-                8,
-                MechanismState {
-                    remaining: 254,
-                    switched: 1,
-                    height: 25.,
-                    raised: false,
-                    motion: Some(40.),
-                    animation_time: None,
-                },
-            )]),
-        );
-        let restored: PersistentState =
-            serde_json::from_str(&serde_json::to_string(&state).unwrap()).unwrap();
-        let mechanism = &restored.mechanism_states("m17", "d1").unwrap()[&8];
-        assert_eq!(mechanism.switched, 1);
-        assert_eq!(mechanism.remaining, 254);
-        assert_eq!(mechanism.height, 25.);
-        assert_eq!(mechanism.motion, Some(40.));
-        assert!(restored.mechanism_states("m18", "d1").is_none());
-    }
-}
-
 impl PersistentState {
     pub fn new(app_name: String) -> Self {
         Self {
@@ -156,5 +115,51 @@ impl PersistentState {
     ) {
         self.scene_mechanisms
             .insert(format!("{}/{}", scene, sub_scene).to_lowercase(), states);
+    }
+}
+
+#[cfg(test)]
+mod mechanism_tests {
+    use super::*;
+
+    #[test]
+    fn old_saves_without_mechanisms_remain_readable() {
+        let mut json = serde_json::to_value(PersistentState::new("OpenPAL3".into())).unwrap();
+        json.as_object_mut().unwrap().remove("scene_mechanisms");
+        let state: PersistentState = serde_json::from_value(json).unwrap();
+        assert!(state.mechanism_states("m17", "7").is_none());
+    }
+
+    #[test]
+    fn mechanism_state_roundtrips_with_case_insensitive_scene_keys() {
+        let mut state = PersistentState::new("OpenPAL3".into());
+        state.set_mechanism_states(
+            "M17",
+            "D1",
+            HashMap::from([(
+                8,
+                MechanismState {
+                    remaining: 254,
+                    switched: 1,
+                    height: 25.,
+                    raised: false,
+                    motion: Some(40.),
+                    animation_time: None,
+                    native: None,
+                },
+            )]),
+        );
+        let mut json = serde_json::to_value(&state).unwrap();
+        json["scene_mechanisms"]["m17/d1"]["8"]
+            .as_object_mut()
+            .unwrap()
+            .remove("native");
+        let restored: PersistentState = serde_json::from_value(json).unwrap();
+        let mechanism = &restored.mechanism_states("m17", "d1").unwrap()[&8];
+        assert_eq!(mechanism.switched, 1);
+        assert_eq!(mechanism.remaining, 254);
+        assert_eq!(mechanism.height, 25.);
+        assert_eq!(mechanism.motion, Some(40.));
+        assert!(restored.mechanism_states("m18", "d1").is_none());
     }
 }

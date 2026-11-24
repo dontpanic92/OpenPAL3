@@ -29,6 +29,9 @@ impl SceCommand for SceCommandTrigger {
             let scene = scene.inner::<ScnScene>();
             scene.trigger_mechanism(self.id as u16);
             scene.snapshot_mechanisms(&mut state.global_state_mut().persistent_state_mut());
+            for proc_id in scene.take_mechanism_procs() {
+                state.call_proc(proc_id);
+            }
         }
         true
     }

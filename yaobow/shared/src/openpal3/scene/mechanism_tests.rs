@@ -2,17 +2,18 @@ use super::ScnScene;
 use crate::openpal3::{
     asset_manager::AssetManager,
     loaders::{
-        nav_loader::NavFile,
+        nav_loader::{NavFile, NavMap, NavMapPoint},
         scn_loader::{ScnFile, ScnNode},
     },
     states::persistent_state::PersistentState,
 };
 use radiance::{
-    comdef::IEntityExt,
+    comdef::{IEntityExt, IStaticMeshComponent},
+    components::mesh::{Geometry, StaticMeshComponent},
     math::Vec3,
     rendering::{
         ComponentFactory, MaterialDef, RenderObjectHandle, RenderTarget, RenderingComponent,
-        Texture, TextureDef, VertexBuffer, VideoPlayer,
+        ShaderProgram, Texture, TextureDef, VertexBuffer, VertexComponents, VideoPlayer,
     },
     scene::{CoreEntity, CoreScene},
 };
@@ -91,23 +92,37 @@ fn node(id: u16, kind: u16, target: u16) -> ScnNode {
 }
 
 fn scene(nodes: Vec<ScnNode>) -> ScnScene {
+    scene_with_nav(
+        nodes,
+        "m17",
+        NavFile {
+            version: 1,
+            maps: vec![],
+            unknown2: vec![],
+        },
+        crate::GameType::PAL3,
+    )
+}
+
+fn scene_with_nav(nodes: Vec<ScnNode>, cpk: &str, nav: NavFile, game: crate::GameType) -> ScnScene {
     let scene = CoreScene::create();
     for node in &nodes {
         let entity = CoreEntity::create(format!("OBJECT_{}", node.index), true);
         entity.transform().borrow_mut().set_position(&node.position);
         scene.add_entity(entity);
     }
-    let assets = Rc::new(AssetManager::new(
+    let assets = Rc::new(AssetManager::new_for_game(
         Rc::new(UnusedFactory),
         Rc::new(mini_fs::MiniFs::new(true)),
+        game,
     ));
     ScnScene::new(
         scene,
         &assets,
-        "m17",
+        cpk,
         "7",
         ScnFile {
-            cpk_name: "m17".into(),
+            cpk_name: cpk.into(),
             scn_name: "7".into(),
             scn_base_name: "7".into(),
             global_scene_index: 0,
@@ -116,11 +131,7 @@ fn scene(nodes: Vec<ScnNode>) -> ScnScene {
             roles: vec![],
             nodes,
         },
-        NavFile {
-            version: 1,
-            maps: vec![],
-            unknown2: vec![],
-        },
+        nav,
     )
 }
 
@@ -190,4 +201,249 @@ fn mechanism_interaction_respects_layer_distance_and_runtime_visibility() {
     assert_eq!(scene.interact_mechanism(0, &near), None);
     scene.trigger_mechanism(9);
     assert_eq!(scene.switch_state(9), 1);
+}
+
+#[test]
+fn mechanism_quarter_turn_chain_waits_for_each_rotation_and_does_not_run_object_procs() {
+    let mut first = node(2, 7, 3);
+    first.rotation = 180.;
+    first.sce_proc_id = 500;
+    let scene = scene(vec![first, node(3, 7, 4), node(4, 7, u16::MAX)]);
+    scene.trigger_mechanism(2);
+    assert!(scene.update_mechanisms(1.).is_empty());
+    let mut saved = PersistentState::new("OpenPAL3".into());
+    scene.snapshot_mechanisms(&mut saved);
+    let states = saved.mechanism_states("m17", "7").unwrap();
+    assert_eq!(states[&2].native.as_ref().unwrap().rotation, 210.);
+    assert_eq!(states[&3].native.as_ref().unwrap().rotation, 0.);
+    assert_eq!(states[&3].native.as_ref().unwrap().rotation_target, None);
+    assert!(scene.update_mechanisms(2.).is_empty());
+    scene.snapshot_mechanisms(&mut saved);
+    let states = saved.mechanism_states("m17", "7").unwrap();
+    assert_eq!(states[&2].native.as_ref().unwrap().rotation, 270.);
+    assert_eq!(
+        states[&3].native.as_ref().unwrap().rotation_target,
+        Some(90.)
+    );
+    assert_eq!(states[&4].native.as_ref().unwrap().rotation_target, None);
+    assert!(scene.update_mechanisms(3.).is_empty());
+    scene.snapshot_mechanisms(&mut saved);
+    assert_eq!(
+        saved.mechanism_states("m17", "7").unwrap()[&4]
+            .native
+            .as_ref()
+            .unwrap()
+            .rotation_target,
+        Some(90.)
+    );
+}
+
+fn gate_nav() -> NavFile {
+    NavFile {
+        version: 1,
+        maps: vec![NavMap {
+            layer_triggers: None,
+            max_coord: Vec3::new(80., 0., 20.),
+            min_coord: Vec3::new(0., 0., 0.),
+            width: 3,
+            height: 1,
+            map: vec![vec![
+                NavMapPoint {
+                    height: 0.,
+                    distance_to_border: 0x0200,
+                },
+                NavMapPoint {
+                    height: 0.,
+                    distance_to_border: 0x0301,
+                },
+                NavMapPoint {
+                    height: 0.,
+                    distance_to_border: 0x0205,
+                },
+            ]],
+        }],
+        unknown2: vec![],
+    }
+}
+
+#[test]
+fn mechanism_gate_restores_easing_then_opens_only_m09_group_two_and_fires_link_once() {
+    let mut gate = node(33, 31, 15);
+    gate.ladder_nav_coord1.0 = -2;
+    gate.sce_proc_id = 500;
+    let nodes = vec![gate, node(15, 23, u16::MAX)];
+    let scene = scene_with_nav(nodes.clone(), "M09", gate_nav(), crate::GameType::PAL3);
+    assert_eq!(scene.nav().get(0, 0, 0).unwrap().distance_to_border, 0);
+    scene.trigger_mechanism(33);
+    assert_eq!(scene.update_mechanisms(0.75), vec![500]);
+    assert_eq!(scene.switch_state(15), 0);
+    assert_eq!(scene.nav().get(0, 0, 0).unwrap().distance_to_border, 0);
+    let mut saved = PersistentState::new("OpenPAL3".into());
+    scene.snapshot_mechanisms(&mut saved);
+    let saved: PersistentState =
+        serde_json::from_str(&serde_json::to_string(&saved).unwrap()).unwrap();
+    let restored = scene_with_nav(nodes.clone(), "m09", gate_nav(), crate::GameType::PAL3);
+    restored.restore_mechanisms(&saved);
+    let height = restored
+        .get_root_object(33)
+        .unwrap()
+        .transform()
+        .borrow()
+        .position()
+        .y;
+    assert!((height - (10. - 12. * (1. - std::f32::consts::FRAC_1_SQRT_2) * 0.5)).abs() < 0.0001);
+    assert!(restored.update_mechanisms(2.25).is_empty());
+    assert_eq!(restored.switch_state(15), 1);
+    assert_eq!(restored.nav().get(0, 0, 0).unwrap().distance_to_border, 2);
+    assert_eq!(
+        restored.get_distance_to_border_by_scene_coord(0, &Vec3::new(1., 0., 1.)),
+        2.
+    );
+    assert_eq!(restored.nav().get(0, 1, 0).unwrap().distance_to_border, 0);
+    assert_eq!(restored.nav().get(0, 2, 0).unwrap().distance_to_border, 5);
+    assert!(!restored.get_root_object(33).unwrap().visible());
+    restored.update_mechanisms(0.);
+    assert_eq!(restored.switch_state(15), 1);
+    let mut saved = PersistentState::new("OpenPAL3".into());
+    restored.snapshot_mechanisms(&mut saved);
+    let reloaded = scene_with_nav(nodes.clone(), "m09", gate_nav(), crate::GameType::PAL3);
+    reloaded.restore_mechanisms(&saved);
+    assert_eq!(reloaded.nav().get(0, 0, 0).unwrap().distance_to_border, 2);
+    reloaded.trigger_mechanism(33);
+    assert!(reloaded.update_mechanisms(10.).is_empty());
+    assert_eq!(reloaded.switch_state(15), 1);
+
+    let other = scene_with_nav(nodes, "m01", gate_nav(), crate::GameType::PAL3);
+    other.trigger_mechanism(33);
+    other.update_mechanisms(3.);
+    assert_eq!(other.nav().get(0, 0, 0).unwrap().distance_to_border, 0);
+}
+
+#[test]
+fn mechanism_pal3a_retains_navigation_word_and_has_no_new_native_objects() {
+    let scene = scene_with_nav(
+        vec![node(2, 7, u16::MAX), node(33, 31, u16::MAX)],
+        "m09",
+        gate_nav(),
+        crate::GameType::PAL3A,
+    );
+    scene.trigger_mechanism(2);
+    scene.trigger_mechanism(33);
+    assert!(scene.update_mechanisms(10.).is_empty());
+    let mut saved = PersistentState::new("PAL3A".into());
+    scene.snapshot_mechanisms(&mut saved);
+    assert!(saved.mechanism_states("m09", "7").unwrap().is_empty());
+    assert_eq!(scene.nav().get(0, 0, 0).unwrap().distance_to_border, 0x0200);
+}
+
+#[test]
+fn mechanism_gate_link_invokes_target_activation_proc_in_the_completion_tick() {
+    let mut first = node(1, 31, 2);
+    first.ladder_nav_coord1.0 = 6;
+    let mut target = node(2, 31, u16::MAX);
+    target.sce_proc_id = 501;
+    let scene = scene(vec![first, target]);
+    scene.trigger_mechanism(1);
+    assert_eq!(scene.update_mechanisms(1.), vec![501]);
+    assert!(scene.update_mechanisms(0.).is_empty());
+}
+
+#[test]
+fn mechanism_gate_retriggers_repeat_immediate_proc_but_not_its_movement_or_link() {
+    let mut gate = node(1, 31, 2);
+    gate.ladder_nav_coord1.0 = 6;
+    gate.sce_proc_id = 500;
+    let scene = scene(vec![gate, node(2, 23, u16::MAX)]);
+    scene.trigger_mechanism(1);
+    assert_eq!(scene.take_mechanism_procs(), vec![500]);
+    scene.update_mechanisms(0.5);
+    scene.trigger_mechanism(1);
+    assert_eq!(scene.take_mechanism_procs(), vec![500]);
+    scene.update_mechanisms(0.5);
+    assert_eq!(scene.switch_state(2), 1);
+    scene.update_mechanisms(0.);
+    scene.update_mechanisms(2.);
+    assert_eq!(scene.switch_state(2), 1);
+}
+
+fn bridge_scene() -> ScnScene {
+    let mut bridge = node(2, 7, u16::MAX);
+    bridge.position = Vec3::new(150., 10., 150.);
+    let nav = NavFile {
+        version: 1,
+        maps: (0..2)
+            .map(|_| NavMap {
+                layer_triggers: None,
+                min_coord: Vec3::new(0., 0., 0.),
+                max_coord: Vec3::new(320., 0., 320.),
+                width: 15,
+                height: 15,
+                map: vec![
+                    vec![
+                        NavMapPoint {
+                            height: 0.,
+                            distance_to_border: 0,
+                        };
+                        15
+                    ];
+                    15
+                ],
+            })
+            .collect(),
+        unknown2: vec![],
+    };
+    let scene = scene_with_nav(vec![bridge], "m19", nav, crate::GameType::PAL3);
+    let entity = scene.get_root_object(2).unwrap();
+    let mut vertices = VertexBuffer::new(VertexComponents::POSITION, 2);
+    vertices.set_data(0, Some(&Vec3::new(-40., 0., -100.)), None, None, None);
+    vertices.set_data(1, Some(&Vec3::new(40., 1., 100.)), None, None, None);
+    let mesh = StaticMeshComponent::new(
+        entity.clone(),
+        vec![Geometry {
+            vertices,
+            indices: vec![],
+            material: MaterialDef::builder(ShaderProgram::TexturedNoLight).build(),
+        }],
+        Rc::new(UnusedFactory),
+    );
+    entity.add_component(
+        IStaticMeshComponent::uuid(),
+        crosscom::ComRc::from_object(mesh),
+    );
+    scene
+}
+
+#[test]
+fn mechanism_bridge_floor_tracks_rotation_activity_and_save_restore_without_changing_other_layers()
+{
+    let scene = bridge_scene();
+    scene.update_mechanisms(0.);
+    assert_eq!(scene.get_height(0, (7., 12.)), 10.);
+    assert_eq!(scene.nav().get(0, 7, 12).unwrap().distance_to_border, 2);
+    assert_eq!(scene.nav().get(0, 12, 7).unwrap().distance_to_border, 0);
+    assert_eq!(scene.nav().get(0, 8, 12).unwrap().distance_to_border, 0);
+    assert_eq!(scene.nav().get(1, 7, 12).unwrap().distance_to_border, 0);
+    scene.trigger_mechanism(2);
+    assert_eq!(scene.nav().get(0, 7, 12).unwrap().distance_to_border, 0);
+    scene.update_mechanisms(3.);
+    assert_eq!(scene.nav().get(0, 7, 12).unwrap().distance_to_border, 0);
+    assert_eq!(scene.nav().get(0, 12, 7).unwrap().distance_to_border, 2);
+    assert_eq!(scene.nav().get(0, 12, 8).unwrap().distance_to_border, 2);
+    assert_eq!(scene.nav().get(0, 12, 9).unwrap().distance_to_border, 0);
+    assert_eq!(scene.get_height(0, (12., 7.)), 10.);
+    assert_eq!(
+        scene.get_distance_to_border_by_scene_coord(0, &Vec3::new(250., 0., 150.)),
+        2.
+    );
+    assert!(scene.nav().check_connectivity(0, (10, 7), (13, 7)));
+    assert!(!scene.nav().check_connectivity(1, (10, 7), (13, 7)));
+    let mut saved = PersistentState::new("OpenPAL3".into());
+    scene.snapshot_mechanisms(&mut saved);
+    let restored = bridge_scene();
+    restored.restore_mechanisms(&saved);
+    assert_eq!(restored.nav().get(0, 12, 7).unwrap().distance_to_border, 2);
+    restored.set_mechanism_active(2, false);
+    assert_eq!(restored.nav().get(0, 12, 7).unwrap().distance_to_border, 0);
+    restored.set_mechanism_active(2, true);
+    assert_eq!(restored.nav().get(0, 12, 7).unwrap().distance_to_border, 2);
 }
