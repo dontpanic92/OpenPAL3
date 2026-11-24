@@ -503,7 +503,7 @@ impl SceProcContext {
             }
             54 => {
                 // FullRoleAtt
-                nop_command!(self, FullRoleAtt, i32, i32)
+                command!(self, SceCommandFullRoleAtt, role_id: i32, attribute: i32)
             }
             62 => {
                 // Dlg
@@ -749,7 +749,7 @@ impl SceProcContext {
             }
             145 => {
                 // AverageLv
-                nop_command!(self, AverageLv, i32, i32)
+                command!(self, SceCommandAverageLv, role_id: i32, offset: i32)
             }
             147 => {
                 // Switch2Menu
@@ -773,7 +773,7 @@ impl SceProcContext {
             }
             153 => {
                 // FullTeamAtt
-                nop_command!(self, FullTeamAtt)
+                command!(self, SceCommandFullTeamAtt)
             }
             155 => {
                 // CameraYaw
@@ -957,7 +957,7 @@ mod gameplay_tests {
     use crate::openpal3::loaders::sce_loader::{SceProc, SceProcHeader};
 
     #[test]
-    fn party_and_money_commands_decode_reversed_arguments_and_variable_widths() {
+    fn gameplay_commands_decode_reversed_arguments_and_variable_widths() {
         let mut inst = vec![];
         for value in [202u16, 0] {
             inst.extend_from_slice(&value.to_le_bytes());
@@ -976,6 +976,19 @@ mod gameplay_tests {
             inst.extend_from_slice(&value.to_le_bytes());
         }
         inst.extend_from_slice(&(-10i16).to_le_bytes());
+        for value in [54u16, 0] {
+            inst.extend_from_slice(&value.to_le_bytes());
+        }
+        inst.extend_from_slice(&2i32.to_le_bytes());
+        inst.extend_from_slice(&6i32.to_le_bytes());
+        for value in [145u16, 0] {
+            inst.extend_from_slice(&value.to_le_bytes());
+        }
+        inst.extend_from_slice(&(-2i32).to_le_bytes());
+        inst.extend_from_slice(&1i32.to_le_bytes());
+        for value in [153u16, 0] {
+            inst.extend_from_slice(&value.to_le_bytes());
+        }
         let sce = Rc::new(SceFile {
             proc_num: 1,
             proc_headers: vec![SceProcHeader {
@@ -999,6 +1012,9 @@ mod gameplay_tests {
             "SceCommandIfInTeam { role_id: 4 }",
             "SceCommandAddMoney { amount: -25 }",
             "SceCommandGetMoney { var: -10 }",
+            "SceCommandFullRoleAtt { role_id: 6, attribute: 2 }",
+            "SceCommandAverageLv { role_id: 1, offset: -2 }",
+            "SceCommandFullTeamAtt",
         ] {
             assert_eq!(context.get_next_cmd().unwrap().debug(), expected);
         }

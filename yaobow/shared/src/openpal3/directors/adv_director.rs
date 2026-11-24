@@ -44,7 +44,13 @@ impl AdventureDirector {
         dialog_renderer: ComRc<crate::openpal3::comdef::IPal3DialogRenderer>,
         status_renderer: ComRc<crate::openpal3::comdef::IPal3StatusRenderer>,
     ) -> Self {
-        let p_state = Rc::new(RefCell::new(PersistentState::new(app_name.to_string())));
+        let mut p_state = PersistentState::new(app_name.to_string());
+        if asset_mgr.game() == crate::GameType::PAL3 {
+            p_state
+                .stats_mut()
+                .fill_all_resources(&asset_mgr.stats_data());
+        }
+        let p_state = Rc::new(RefCell::new(p_state));
         let global_state = GlobalState::new(asset_mgr.clone(), audio_engine.clone(), p_state);
         let mut sce_vm = SceVm::new(
             audio_engine.clone(),

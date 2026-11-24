@@ -1,4 +1,6 @@
-//! Pure-Rust decoders for PAL3 scene-lighting asset formats.
+//! Pure-Rust decoders for PAL3 game assets.
+//!
+//! [`gdb`] reads item stat metadata from the compiled gameplay database.
 //!
 //! Each PAL3 scene block ships a `<index>.lgt` / `<index>.dkl` / `<index>.DKM`
 //! triple alongside its `.scn` / `.pol` data:
@@ -10,6 +12,7 @@
 //! See `generated/pal3_scn.md` for the reverse-engineering write-up.
 
 pub mod cvd;
+pub mod gdb;
 pub mod lgt;
 // pub mod dkl;  // added in the static-scenery baked-lighting phase
 // pub mod dkm;  // added in the static-scenery baked-lighting phase

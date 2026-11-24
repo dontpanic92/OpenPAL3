@@ -4,6 +4,7 @@ pub mod pol;
 pub mod pos;
 pub mod sce_loader;
 pub mod scn_loader;
+pub mod stats;
 pub mod tli;
 
 fn calc_vertex_size(t: i32) -> usize {

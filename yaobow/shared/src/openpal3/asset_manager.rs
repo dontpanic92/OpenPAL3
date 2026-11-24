@@ -11,7 +11,7 @@ use radiance::scene::{CoreScene, ISceneExt, SceneLight, SceneLighting};
 use radiance::utils::SeekRead;
 use std::io::BufReader;
 use std::path::PathBuf;
-use std::{io, rc::Rc};
+use std::{cell::OnceCell, io, rc::Rc};
 
 use crate::GameType;
 
@@ -22,6 +22,7 @@ use super::loaders::pol::create_entity_from_pol_model;
 use super::loaders::sce_loader::SceFile;
 use super::loaders::sce_loader::sce_load_from_file;
 use super::loaders::scn_loader::scn_load_from_file;
+use super::loaders::stats::StatsData;
 use super::scene::ScnScene;
 use super::scene::create_animated_mesh_from_mv3;
 use super::scene::create_entity_from_cvd_model;
@@ -38,6 +39,7 @@ pub struct AssetManager {
     snd_path: PathBuf,
     basedata_path: PathBuf,
     vfs: Rc<MiniFs>,
+    stats_data: OnceCell<Rc<StatsData>>,
 }
 
 impl AssetManager {
@@ -64,6 +66,7 @@ impl AssetManager {
             movie_effect_path: PathBuf::from("/movie/movie/2deffect"),
             snd_path: PathBuf::from("/snd"),
             vfs,
+            stats_data: OnceCell::new(),
         }
     }
 
@@ -73,6 +76,23 @@ impl AssetManager {
 
     pub fn game(&self) -> GameType {
         self.game
+    }
+
+    pub fn stats_data(&self) -> Rc<StatsData> {
+        assert!(self.game == GameType::PAL3);
+        self.stats_data
+            .get_or_init(|| {
+                let database = self
+                    .vfs
+                    .read_to_end(self.basedata_path.join("cbdata/PAL3_Softstar.gdb"))
+                    .expect("Cannot read PAL3 stat database");
+                let combat = self
+                    .vfs
+                    .read_to_end_from_gbk(self.basedata_path.join("datascript/combat.ini"))
+                    .expect("Cannot read PAL3 EXP table");
+                Rc::new(StatsData::load(&database, &combat).expect("Invalid PAL3 stat data"))
+            })
+            .clone()
     }
 
     pub fn vfs_rc(&self) -> Rc<MiniFs> {

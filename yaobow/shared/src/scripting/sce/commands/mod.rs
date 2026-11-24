@@ -81,7 +81,10 @@ pub use fade_in_white::SceCommandFadeInWhite;
 pub use fade_out::SceCommandFadeOut;
 pub use fade_out_white::SceCommandFadeOutWhite;
 pub use fop::SceCommandFop;
-pub use gameplay::{SceCommandAddMoney, SceCommandInTeam};
+pub use gameplay::{
+    SceCommandAddMoney, SceCommandAverageLv, SceCommandFullRoleAtt, SceCommandFullTeamAtt,
+    SceCommandInTeam,
+};
 pub use get_appr::SceCommandGetAppr;
 pub use get_combat::SceCommandGetCombat;
 pub use get_dlg_sel::SceCommandGetDlgSel;

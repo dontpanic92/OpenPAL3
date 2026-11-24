@@ -68,3 +68,103 @@ impl SceCommand for SceCommandAddMoney {
         true
     }
 }
+
+#[derive(Debug, Clone)]
+pub struct SceCommandFullRoleAtt {
+    role_id: i32,
+    attribute: i32,
+}
+
+impl SceCommandFullRoleAtt {
+    pub fn new(role_id: i32, attribute: i32) -> Self {
+        Self { role_id, attribute }
+    }
+}
+
+impl SceCommand for SceCommandFullRoleAtt {
+    fn update(
+        &mut self,
+        _scene_manager: ComRc<ISceneManager>,
+        _ui: &Ui,
+        state: &mut SceState,
+        _delta_sec: f32,
+    ) -> bool {
+        if state.asset_mgr().game() == GameType::PAL3 {
+            let data = state.asset_mgr().stats_data();
+            if !state
+                .global_state_mut()
+                .persistent_state_mut()
+                .restore_attribute(self.role_id, self.attribute, &data)
+            {
+                log::warn!(
+                    "FullRoleAtt: invalid role/attribute {}/{}",
+                    self.role_id,
+                    self.attribute
+                );
+            }
+        }
+        true
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct SceCommandFullTeamAtt;
+
+impl SceCommandFullTeamAtt {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl SceCommand for SceCommandFullTeamAtt {
+    fn update(
+        &mut self,
+        _scene_manager: ComRc<ISceneManager>,
+        _ui: &Ui,
+        state: &mut SceState,
+        _delta_sec: f32,
+    ) -> bool {
+        if state.asset_mgr().game() == GameType::PAL3 {
+            let data = state.asset_mgr().stats_data();
+            state
+                .global_state_mut()
+                .persistent_state_mut()
+                .restore_team_attributes(&data);
+        }
+        true
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct SceCommandAverageLv {
+    role_id: i32,
+    offset: i32,
+}
+
+impl SceCommandAverageLv {
+    pub fn new(role_id: i32, offset: i32) -> Self {
+        Self { role_id, offset }
+    }
+}
+
+impl SceCommand for SceCommandAverageLv {
+    fn update(
+        &mut self,
+        _scene_manager: ComRc<ISceneManager>,
+        _ui: &Ui,
+        state: &mut SceState,
+        _delta_sec: f32,
+    ) -> bool {
+        if state.asset_mgr().game() == GameType::PAL3 {
+            let data = state.asset_mgr().stats_data();
+            if !state
+                .global_state_mut()
+                .persistent_state_mut()
+                .average_level(self.role_id, self.offset, &data)
+            {
+                log::warn!("AverageLv: invalid PAL3 party role {}", self.role_id);
+            }
+        }
+        true
+    }
+}

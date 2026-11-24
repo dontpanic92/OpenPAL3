@@ -3,10 +3,12 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+use crate::openpal3::loaders::stats::StatsData;
 use crate::openpal3::scene::MechanismState;
 use crate::ydirs;
 
 use super::party::PartyState;
+use super::stats::{Resource, StatsState};
 
 pub const PAL3_APP_NAME: &str = "OpenPAL3";
 
@@ -21,6 +23,7 @@ pub struct PersistentState {
     role_controlled: i32,
     party: PartyState,
     money: i32,
+    stats: StatsState,
     scene: Option<String>,
     sub_scene: Option<String>,
     #[serde(default)]
@@ -37,6 +40,7 @@ impl PersistentState {
             role_controlled: 0,
             party: PartyState::default(),
             money: 0,
+            stats: StatsState::default(),
             scene: None,
             sub_scene: None,
             scene_mechanisms: HashMap::new(),
@@ -130,6 +134,40 @@ impl PersistentState {
         self.money = self.money.wrapping_add(amount).max(0);
     }
 
+    pub fn stats(&self) -> &StatsState {
+        &self.stats
+    }
+
+    pub fn stats_mut(&mut self) -> &mut StatsState {
+        &mut self.stats
+    }
+
+    pub fn restore_attribute(&mut self, role_id: i32, selector: i32, data: &StatsData) -> bool {
+        let Ok(resource) = Resource::try_from(selector) else {
+            return false;
+        };
+        // FullRoleAtt truncates role IDs to u16; 6 selects current party members.
+        let role_id = i32::from(role_id as u16);
+        if role_id == 6 {
+            for role in self.party.members() {
+                self.stats.restore_resource(role, resource, data);
+            }
+            true
+        } else {
+            self.stats.restore_resource(role_id, resource, data)
+        }
+    }
+
+    pub fn restore_team_attributes(&mut self, data: &StatsData) {
+        for selector in 0..3 {
+            self.restore_attribute(6, selector, data);
+        }
+    }
+
+    pub fn average_level(&mut self, role_id: i32, offset: i32, data: &StatsData) -> bool {
+        self.stats.average_level(&self.party, role_id, offset, data)
+    }
+
     pub fn set_scene_name(&mut self, scene: String, sub_scene: String) {
         self.scene = Some(scene);
         self.sub_scene = Some(sub_scene);
@@ -166,6 +204,78 @@ impl PersistentState {
 #[cfg(test)]
 mod gameplay_tests {
     use super::*;
+    use crate::openpal3::{
+        loaders::stats::test_data,
+        states::stats::{Attributes, Resources},
+    };
+
+    #[test]
+    fn restoration_uses_actual_party_and_resource_selector_without_recruiting_roles() {
+        let data = test_data();
+        let mut state = PersistentState::new(PAL3_APP_NAME.into());
+        state.party_mut().set_in_team(2, true);
+        for role in 0..5 {
+            for resource in [Resource::Hp, Resource::Qi, Resource::Mp] {
+                state.stats_mut().set_resource(role, resource, 1, &data);
+            }
+        }
+        assert!(state.restore_attribute(6, 0, &data));
+        assert_eq!(
+            state.stats().character(0).unwrap().current(),
+            Resources {
+                hp: 88,
+                qi: 1,
+                mp: 1
+            }
+        );
+        assert_eq!(state.stats().character(2).unwrap().current().hp, 206);
+        assert_eq!(state.stats().character(1).unwrap().current().hp, 1);
+        assert!(state.restore_attribute(1, 2, &data));
+        assert_eq!(state.stats().character(1).unwrap().current().mp, 30);
+        assert!(!state.party().contains(1));
+        assert!(!state.restore_attribute(5, 0, &data));
+        assert!(!state.restore_attribute(0, 3, &data));
+        state.restore_team_attributes(&data);
+        assert_eq!(
+            state.stats().character(2).unwrap().current(),
+            Resources {
+                hp: 206,
+                qi: 41,
+                mp: 78
+            }
+        );
+        assert_eq!(state.stats().character(1).unwrap().current().hp, 1);
+    }
+
+    #[test]
+    fn stats_roundtrip_preserves_level_exp_bonuses_and_partial_resource_pools() {
+        let data = test_data();
+        let mut state = PersistentState::new(PAL3_APP_NAME.into());
+        state.party_mut().set_in_team(3, true);
+        state.average_level(1, 2, &data);
+        state.stats_mut().add_base_attributes(
+            1,
+            Attributes {
+                hp: 10,
+                speed: 2,
+                ..Default::default()
+            },
+            &data,
+        );
+        state.stats_mut().add_experience(1, 50);
+        state.stats_mut().set_resource(1, Resource::Hp, 12, &data);
+        state.stats_mut().set_resource(1, Resource::Mp, 3, &data);
+        let json = serde_json::to_string(&state).unwrap();
+        let restored: PersistentState = serde_json::from_str(&json).unwrap();
+        assert_eq!(restored.stats(), state.stats());
+        let character = restored.stats().character(1).unwrap();
+        assert_eq!(character.level(), 7);
+        assert_eq!(character.experience(), 650);
+        assert_eq!(character.attributes(&data).hp, 139);
+        assert_eq!(character.current().hp, 12);
+        assert_eq!(character.current().mp, 3);
+        assert_eq!(character.equipment()[5], Some(82201));
+    }
 
     #[test]
     fn party_and_money_roundtrip_independently_of_the_controlled_role() {
