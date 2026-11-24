@@ -44,12 +44,17 @@ impl GlobalState {
         let default_scene_bgm =
             parse_music_mapping(asset_mgr.vfs().read_to_end_from_gbk(music_path).unwrap());
 
+        let role_controlled = if asset_mgr.game() == crate::GameType::PAL3 {
+            persistent_state.borrow().role_controlled()
+        } else {
+            0
+        };
         Self {
             persistent_state,
             audio_engine,
             fop_state: FopState::new(),
             adv_input_enabled: true,
-            role_controlled: 0,
+            role_controlled,
             asset_mgr,
             bgm_source,
             sound_sources,
@@ -72,7 +77,12 @@ impl GlobalState {
     }
 
     pub fn set_role_controlled(&mut self, role_controlled: i32) {
-        self.role_controlled = role_controlled
+        self.role_controlled = role_controlled;
+        if self.asset_mgr.game() == crate::GameType::PAL3 {
+            self.persistent_state
+                .borrow_mut()
+                .set_role_controlled(role_controlled);
+        }
     }
 
     pub fn play_bgm(&mut self, name: &str) {

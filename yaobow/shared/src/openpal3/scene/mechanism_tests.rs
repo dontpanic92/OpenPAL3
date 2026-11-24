@@ -8,8 +8,8 @@ use crate::openpal3::{
     states::persistent_state::PersistentState,
 };
 use radiance::{
-    comdef::{IEntityExt, IStaticMeshComponent},
-    components::mesh::{Geometry, StaticMeshComponent},
+    comdef::{IAnimatedMeshComponent, IComponent, IEntityExt, IStaticMeshComponent},
+    components::mesh::{AnimatedMeshComponent, Geometry, MorphTarget, StaticMeshComponent},
     math::Vec3,
     rendering::{
         ComponentFactory, MaterialDef, RenderObjectHandle, RenderTarget, RenderingComponent,
@@ -47,8 +47,9 @@ impl ComponentFactory for UnusedFactory {
     ) -> RenderObjectHandle {
         unreachable!()
     }
-    fn create_rendering_component(&self, _: Vec<RenderObjectHandle>) -> RenderingComponent {
-        unreachable!()
+    fn create_rendering_component(&self, objects: Vec<RenderObjectHandle>) -> RenderingComponent {
+        assert!(objects.is_empty());
+        RenderingComponent::new()
     }
     fn create_video_player(&self) -> Box<VideoPlayer> {
         unreachable!()
@@ -73,7 +74,7 @@ fn node(id: u16, kind: u16, target: u16) -> ScnNode {
         nav_trigger_coord_max: (0, 0),
         node_type: kind,
         nav_layer: 0,
-        ladder_nav_coord1: (40, 0),
+        ladder_nav_coord1: (40, if kind == 23 { 1 } else { 0 }),
         ladder_nav_coord2: (0, 0),
         ladder_switch_layer: 0,
         b49: vec![],
@@ -106,6 +107,7 @@ fn scene(nodes: Vec<ScnNode>) -> ScnScene {
 
 fn scene_with_nav(nodes: Vec<ScnNode>, cpk: &str, nav: NavFile, game: crate::GameType) -> ScnScene {
     let scene = CoreScene::create();
+    scene.add_entity(CoreEntity::create("ROLE_0".into(), true));
     for node in &nodes {
         let entity = CoreEntity::create(format!("OBJECT_{}", node.index), true);
         entity.transform().borrow_mut().set_position(&node.position);
@@ -367,8 +369,19 @@ fn mechanism_gate_retriggers_repeat_immediate_proc_but_not_its_movement_or_link(
 }
 
 fn bridge_scene() -> ScnScene {
-    let mut bridge = node(2, 7, u16::MAX);
+    floor_scene(7)
+}
+
+fn floor_scene(kind: u16) -> ScnScene {
+    let mut bridge = node(2, kind, u16::MAX);
     bridge.position = Vec3::new(150., 10., 150.);
+    let mut nodes = vec![];
+    if kind == 22 {
+        bridge.ladder_nav_coord1.1 = 1;
+        bridge.ladder_nav_coord2.0 = 9;
+        nodes.push(node(9, 23, u16::MAX));
+    }
+    nodes.push(bridge);
     let nav = NavFile {
         version: 1,
         maps: (0..2)
@@ -392,11 +405,20 @@ fn bridge_scene() -> ScnScene {
             .collect(),
         unknown2: vec![],
     };
-    let scene = scene_with_nav(vec![bridge], "m19", nav, crate::GameType::PAL3);
+    let scene = scene_with_nav(nodes, "m19", nav, crate::GameType::PAL3);
     let entity = scene.get_root_object(2).unwrap();
+    attach_bounds(
+        &entity,
+        Vec3::new(-40., 0., -100.),
+        Vec3::new(40., 1., 100.),
+    );
+    scene
+}
+
+fn attach_bounds(entity: &crosscom::ComRc<radiance::comdef::IEntity>, min: Vec3, max: Vec3) {
     let mut vertices = VertexBuffer::new(VertexComponents::POSITION, 2);
-    vertices.set_data(0, Some(&Vec3::new(-40., 0., -100.)), None, None, None);
-    vertices.set_data(1, Some(&Vec3::new(40., 1., 100.)), None, None, None);
+    vertices.set_data(0, Some(&min), None, None, None);
+    vertices.set_data(1, Some(&max), None, None, None);
     let mesh = StaticMeshComponent::new(
         entity.clone(),
         vec![Geometry {
@@ -410,7 +432,6 @@ fn bridge_scene() -> ScnScene {
         IStaticMeshComponent::uuid(),
         crosscom::ComRc::from_object(mesh),
     );
-    scene
 }
 
 #[test]
@@ -446,4 +467,264 @@ fn mechanism_bridge_floor_tracks_rotation_activity_and_save_restore_without_chan
     assert_eq!(restored.nav().get(0, 12, 7).unwrap().distance_to_border, 0);
     restored.set_mechanism_active(2, true);
     assert_eq!(restored.nav().get(0, 12, 7).unwrap().distance_to_border, 2);
+}
+
+fn bind_player(
+    scene: &ScnScene,
+    position: Vec3,
+    layer: usize,
+    with_action: bool,
+) -> Option<crosscom::ComRc<IAnimatedMeshComponent>> {
+    use super::{RoleAnimationRepeatMode, RoleController};
+    use crate::openpal3::comdef::IRoleController;
+    let player = scene.get_role_entity(0).unwrap();
+    player.transform().borrow_mut().set_position(&position);
+    let factory = Rc::new(UnusedFactory);
+    let assets = Rc::new(AssetManager::new(
+        factory.clone(),
+        Rc::new(mini_fs::MiniFs::new(true)),
+    ));
+    let clip = || {
+        let clip = AnimatedMeshComponent::new(player.clone(), factory.clone());
+        clip.set_morph_targets(
+            vec![
+                MorphTarget::new(vec![], 0., factory.clone()),
+                MorphTarget::new(vec![], 1., factory.clone()),
+            ],
+            0.5,
+        );
+        crosscom::ComRc::<IAnimatedMeshComponent>::from_object(clip)
+    };
+    let controller =
+        RoleController::new_from_idle_animation(player.clone(), assets, "test", "c01", clip());
+    controller.set_nav_layer(layer);
+    controller.set_active(true);
+    let action = with_action.then(|| {
+        let action = clip();
+        controller.play_anim_mesh(
+            "c10".into(),
+            action.clone(),
+            RoleAnimationRepeatMode::Repeat(1),
+        );
+        controller.idle();
+        action
+    });
+    player.add_component(
+        IRoleController::uuid(),
+        crosscom::ComRc::from_object(controller),
+    );
+    scene.set_mechanism_player(Some((player, layer)));
+    action
+}
+
+#[test]
+fn mechanism_platform_carries_rider_and_switch_across_layers_and_restores_in_flight() {
+    use super::RoleController;
+    let scene = floor_scene(22);
+    bind_player(&scene, Vec3::new(150., 10., 150.), 0, false);
+    scene.trigger_mechanism(2);
+    scene.update_mechanisms(0.5);
+    let player = scene.get_role_entity(0).unwrap();
+    assert_eq!(
+        Vec3::sub(
+            &player.transform().borrow().position(),
+            &Vec3::new(150., 25., 150.)
+        )
+        .norm2(),
+        0.
+    );
+    assert_eq!(
+        scene
+            .get_root_object(9)
+            .unwrap()
+            .transform()
+            .borrow()
+            .position()
+            .y,
+        25.
+    );
+    assert_eq!(scene.get_height(0, (7., 7.)), 25.);
+    let mut saved = PersistentState::new("OpenPAL3".into());
+    scene.snapshot_mechanisms(&mut saved);
+    let saved: PersistentState =
+        serde_json::from_str(&serde_json::to_string(&saved).unwrap()).unwrap();
+
+    let restored = floor_scene(22);
+    bind_player(&restored, Vec3::new(150., 25., 150.), 0, false);
+    restored.restore_mechanisms(&saved);
+    restored.update_mechanisms(0.5);
+    let player = restored.get_role_entity(0).unwrap();
+    let controller = RoleController::get_role_controller(player.clone()).unwrap();
+    assert_eq!(
+        Vec3::sub(
+            &player.transform().borrow().position(),
+            &Vec3::new(150., 40., 150.)
+        )
+        .norm2(),
+        0.
+    );
+    assert_eq!(controller.inner::<RoleController>().nav_layer(), 1);
+    assert_eq!(restored.nav().get(0, 7, 7).unwrap().distance_to_border, 0);
+    assert_eq!(restored.get_height(1, (7., 7.)), 40.);
+    let mut upper = PersistentState::new("OpenPAL3".into());
+    restored.snapshot_mechanisms(&mut upper);
+    assert_eq!(
+        upper.mechanism_states("m19", "7").unwrap()[&9].layer,
+        Some(1)
+    );
+    restored.set_mechanism_player(Some((player.clone(), 1)));
+    restored.trigger_mechanism(2);
+    restored.update_mechanisms(1.);
+    assert_eq!(
+        Vec3::sub(
+            &player.transform().borrow().position(),
+            &Vec3::new(150., 10., 150.)
+        )
+        .norm2(),
+        0.
+    );
+    assert_eq!(controller.inner::<RoleController>().nav_layer(), 0);
+    let mut saved = PersistentState::new("OpenPAL3".into());
+    restored.snapshot_mechanisms(&mut saved);
+    let states = saved.mechanism_states("m19", "7").unwrap();
+    assert_eq!(states[&9].layer, Some(0));
+    assert_eq!(
+        restored
+            .get_root_object(9)
+            .unwrap()
+            .transform()
+            .borrow()
+            .position()
+            .y,
+        10.
+    );
+    assert_eq!(restored.get_height(0, (7., 7.)), 10.);
+    assert_eq!(restored.nav().get(1, 7, 7).unwrap().distance_to_border, 0);
+}
+
+#[test]
+fn mechanism_platform_boarding_uses_footprint_and_layer_and_does_not_recapture_mid_motion() {
+    for (position, layer) in [
+        (Vec3::new(190., 10., 150.), 0),
+        (Vec3::new(150., 10., 150.), 1),
+    ] {
+        let scene = floor_scene(22);
+        bind_player(&scene, position, layer, false);
+        scene.trigger_mechanism(2);
+        scene.update_mechanisms(0.5);
+        let player = scene.get_role_entity(0).unwrap();
+        assert_eq!(
+            Vec3::sub(&player.transform().borrow().position(), &position).norm2(),
+            0.
+        );
+        player
+            .transform()
+            .borrow_mut()
+            .set_position(&Vec3::new(150., 10., 150.));
+        scene.set_mechanism_player(Some((player.clone(), 0)));
+        scene.update_mechanisms(0.5);
+        assert_eq!(player.transform().borrow().position().y, 10.);
+    }
+}
+
+#[test]
+fn mechanism_manual_switch_approaches_then_waits_for_c10_before_linking() {
+    use super::{RoleController, RoleState};
+    let mut switch = node(9, 23, 3);
+    switch.ladder_nav_coord1 = (0, 0);
+    switch.remaining_triggers = 1;
+    switch.sce_proc_id = 500;
+    let scene = scene(vec![switch, node(3, 22, u16::MAX)]);
+    attach_bounds(
+        &scene.get_root_object(9).unwrap(),
+        Vec3::new(-10., 0., -10.),
+        Vec3::new(10., 10., 10.),
+    );
+    let action = bind_player(&scene, Vec3::new(150., 10., 0.), 0, true).unwrap();
+    scene.trigger_mechanism(9);
+    assert_eq!(scene.switch_state(9), 0);
+    assert!(!scene.mechanism_input_locked());
+    assert_eq!(
+        scene.interact_mechanism(0, &Vec3::new(150., 10., 0.)),
+        Some(None)
+    );
+    assert!(scene.mechanism_input_locked());
+    assert_eq!(scene.switch_state(9), 0);
+    assert!(scene.update_mechanisms(1.).is_empty());
+    let player = scene.get_role_entity(0).unwrap();
+    let controller = RoleController::get_role_controller(player.clone()).unwrap();
+    assert_eq!(player.transform().borrow().position().x, 50.);
+    assert_eq!(scene.switch_state(9), 0);
+    scene.update_mechanisms(0.5);
+    assert_eq!(player.transform().borrow().position().x, 10.);
+    assert_eq!(scene.switch_state(9), 1);
+    scene.update_mechanisms(0.);
+    assert_eq!(
+        controller.inner::<RoleController>().state(),
+        RoleState::PlayingAnimation
+    );
+    assert!(scene.update_mechanisms(10.).is_empty());
+    assert!(scene.mechanism_input_locked());
+    assert_eq!(
+        scene
+            .get_root_object(3)
+            .unwrap()
+            .transform()
+            .borrow()
+            .position()
+            .y,
+        10.
+    );
+    let action = action.query_interface::<IComponent>().unwrap();
+    action.on_updating(2.);
+    action.on_updating(0.);
+    controller
+        .query_interface::<IComponent>()
+        .unwrap()
+        .on_updating(0.);
+    assert_eq!(scene.update_mechanisms(0.), vec![500]);
+    assert!(!scene.mechanism_input_locked());
+    scene.update_mechanisms(0.5);
+    assert_eq!(
+        scene
+            .get_root_object(3)
+            .unwrap()
+            .transform()
+            .borrow()
+            .position()
+            .y,
+        25.
+    );
+}
+
+#[test]
+fn mechanism_manual_switch_restores_action_without_retoggling_and_missing_clip_cannot_lock_input() {
+    let mut switch = node(9, 23, u16::MAX);
+    switch.ladder_nav_coord1 = (0, 0);
+    switch.remaining_triggers = 1;
+    switch.sce_proc_id = 500;
+    let scene = scene(vec![switch.clone()]);
+    bind_player(&scene, Vec3::new(10., 10., 0.), 0, true);
+    scene.interact_mechanism(0, &Vec3::new(10., 10., 0.));
+    scene.update_mechanisms(0.);
+    let mut saved = PersistentState::new("OpenPAL3".into());
+    scene.snapshot_mechanisms(&mut saved);
+    let saved: PersistentState =
+        serde_json::from_str(&serde_json::to_string(&saved).unwrap()).unwrap();
+    let replayed = self::scene(vec![switch.clone()]);
+    bind_player(&replayed, Vec3::new(10., 10., 0.), 0, true);
+    replayed.restore_mechanisms(&saved);
+    assert!(replayed.update_mechanisms(0.).is_empty());
+    assert!(replayed.update_mechanisms(10.).is_empty());
+    assert!(replayed.mechanism_input_locked());
+    assert_eq!(replayed.switch_state(9), 1);
+    let restored = self::scene(vec![switch]);
+    bind_player(&restored, Vec3::new(10., 10., 0.), 0, false);
+    restored.restore_mechanisms(&saved);
+    assert!(restored.mechanism_input_locked());
+    assert_eq!(restored.switch_state(9), 1);
+    assert_eq!(restored.update_mechanisms(0.), vec![500]);
+    assert!(!restored.mechanism_input_locked());
+    assert_eq!(restored.switch_state(9), 1);
+    assert!(restored.update_mechanisms(1.).is_empty());
 }

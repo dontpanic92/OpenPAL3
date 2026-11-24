@@ -115,16 +115,31 @@ impl AdventureDirector {
             Rc::new(RefCell::new(p_state)),
         );
 
-        // The role id should be saved in persistant state
-        let role_entity = scene_manager
-            .scn_scene()
-            .unwrap()
-            .inner::<crate::openpal3::scene::ScnScene>()
-            .get_role_entity(0)
-            .unwrap();
+        let scn = scene_manager.scn_scene().unwrap();
+        let scn = scn.inner::<crate::openpal3::scene::ScnScene>();
+        let role_entity = scn
+            .get_role_entity(global_state.role_controlled())
+            .unwrap_or_else(|| {
+                global_state.set_role_controlled(0);
+                scn.get_role_entity(0).unwrap()
+            });
 
         let role = RoleController::get_role_controller(role_entity.clone()).unwrap();
         role.inner::<RoleController>().set_active(true);
+        if asset_mgr.game() == crate::GameType::PAL3 {
+            let layers = scene_manager
+                .scn_scene()
+                .unwrap()
+                .inner::<crate::openpal3::scene::ScnScene>()
+                .nav()
+                .layer_count();
+            role.inner::<RoleController>().set_nav_layer(
+                global_state
+                    .persistent_state_mut()
+                    .nav_layer()
+                    .min(layers.saturating_sub(1)),
+            );
+        }
         role_entity
             .transform()
             .borrow_mut()
@@ -378,10 +393,32 @@ impl AdventureDirectorProps {
 
         if let Some(scene) = self.scene_manager.scn_scene() {
             let scene = scene.inner::<crate::openpal3::scene::ScnScene>();
+            let player = self
+                .scene_manager
+                .get_resolved_role(self.sce_vm.state(), -1)
+                .and_then(|entity| {
+                    let controller = RoleController::get_role_controller(entity.clone())?;
+                    Some((entity, controller.inner::<RoleController>().nav_layer()))
+                });
+            scene.set_mechanism_player(player.clone());
             let procs = scene.update_mechanisms(delta_sec);
-            scene.snapshot_mechanisms(&mut self.sce_vm.global_state_mut().persistent_state_mut());
+            let native_pal3 = self.sce_vm.state().asset_mgr().game() == crate::GameType::PAL3;
+            {
+                let state = self.sce_vm.global_state_mut();
+                let mut persistent = state.persistent_state_mut();
+                scene.snapshot_mechanisms(&mut persistent);
+                if let Some((entity, _)) = player.filter(|_| native_pal3) {
+                    persistent.set_position(entity.transform().borrow().position());
+                    if let Some(controller) = RoleController::get_role_controller(entity) {
+                        persistent.set_nav_layer(controller.inner::<RoleController>().nav_layer());
+                    }
+                }
+            }
             for proc_id in procs {
                 self.sce_vm.call_proc(proc_id);
+            }
+            if scene.mechanism_input_locked() {
+                return None;
             }
         }
         if !adv_enabled {
@@ -505,6 +542,12 @@ impl AdventureDirectorProps {
             if let Some(proc_id) = trigger_proc_id {
                 debug!("New proc triggerd: {}", proc_id);
                 self.sce_vm.call_proc(proc_id);
+            }
+            if scene_rc
+                .inner::<crate::openpal3::scene::ScnScene>()
+                .mechanism_input_locked()
+            {
+                return None;
             }
 
             let result = {

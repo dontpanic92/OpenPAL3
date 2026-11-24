@@ -1,12 +1,12 @@
 use super::{
     cvd_entity,
-    mechanism::{Activation, Mechanism},
+    mechanism::{Activation, Mechanism, SwitchInteraction, SwitchPhase},
 };
 use crate::openpal3::asset_manager::AssetManager;
 use crate::openpal3::comdef::IRoleController;
 use crate::openpal3::loaders::nav_loader::{NavFile, NavMapPoint};
 use crate::openpal3::loaders::scn_loader::ScnFile;
-use crate::openpal3::scene::RoleController;
+use crate::openpal3::scene::{RoleAnimationRepeatMode, RoleController, RoleState};
 use crate::openpal3::states::persistent_state::PersistentState;
 use crosscom::ComRc;
 use radiance::comdef::{
@@ -31,6 +31,7 @@ pub struct ScnScene {
     ladder_triggers: RefCell<Vec<LadderTrigger>>,
     mechanisms: RefCell<Vec<Mechanism>>,
     mechanism_procs: RefCell<Vec<u32>>,
+    mechanism_player: RefCell<Option<(ComRc<IEntity>, usize)>>,
 }
 
 ComObject_ScnSceneComponent!(super::ScnScene);
@@ -77,6 +78,7 @@ impl ScnScene {
             ladder_triggers: RefCell::new(vec![]),
             mechanisms: RefCell::new(mechanisms),
             mechanism_procs: RefCell::new(vec![]),
+            mechanism_player: RefCell::new(None),
         }
     }
 
@@ -122,6 +124,7 @@ impl ScnScene {
             }
             self.apply_mechanism_pose(mechanism, mechanism.pose_at_end());
         }
+        self.sync_platform_objects();
     }
 
     fn apply_mechanism_pose(&self, mechanism: &Mechanism, end: bool) {
@@ -142,39 +145,9 @@ impl ScnScene {
                     .clear_rotation()
                     .rotate_axis_angle_local(&Vec3::UP, native.rotation.to_radians());
                 entity.set_visible(native.active);
+                drop(transform);
                 if mechanism.kind == 7 {
-                    let mut floors = self.nav.floors.borrow_mut();
-                    if let Some(floor) = floors.get_mut(&mechanism.id) {
-                        floor.position = position;
-                        floor.rotation = native.rotation.to_radians();
-                        floor.enabled = mechanism.provides_floor();
-                    } else if let Some((min, max)) = Self::mechanism_bounds(&entity) {
-                        if let Some(block) = self.nav.block_sizes.get(mechanism.layer as usize) {
-                            let center = Vec3::scalar_mul(0.5, &Vec3::add(&min, &max));
-                            let mut size = Vec3::sub(&max, &min);
-                            // Native type-7 footprint, 0x42a0d3: extend the long axis
-                            // by 4.5 cells and inset the cross-axis by 2.5 cells.
-                            if size.x > size.z {
-                                size.x += 4.5 * block.0;
-                                size.z -= 2.5 * block.1;
-                            } else {
-                                size.x -= 2.5 * block.0;
-                                size.z += 4.5 * block.1;
-                            }
-                            let half = Vec3::scalar_mul(0.5, &size);
-                            floors.insert(
-                                mechanism.id,
-                                MechanismFloor {
-                                    layer: mechanism.layer as usize,
-                                    position,
-                                    rotation: native.rotation.to_radians(),
-                                    min: Vec3::sub(&center, &half),
-                                    max: Vec3::add(&center, &half),
-                                    enabled: mechanism.provides_floor(),
-                                },
-                            );
-                        }
-                    }
+                    self.update_mechanism_floor(mechanism, &entity, native.rotation);
                 }
             } else if mechanism.kind == 22 {
                 let transform = entity.transform();
@@ -182,20 +155,21 @@ impl ScnScene {
                 let mut position = transform.position();
                 position.y = mechanism.state.height;
                 transform.set_position(&position);
-                if let Some(node) = self.scn_file.nodes.iter().find(|n| n.index == mechanism.id) {
-                    if let Some(carried) = self.get_root_object(node.ladder_nav_coord2.0 as i32) {
-                        // Param 2 identifies an object carried by the platform (0x42b3c4).
-                        if node.ladder_nav_coord2.0 as u16 != mechanism.id {
-                            let position = carried.transform().borrow().position();
-                            carried.transform().borrow_mut().set_position(&Vec3::new(
-                                position.x,
-                                mechanism.state.height,
-                                position.z,
-                            ));
-                        }
-                    }
-                }
-            } else {
+                drop(transform);
+                let rotation = self
+                    .scn_file
+                    .nodes
+                    .iter()
+                    .find(|n| n.index == mechanism.id)
+                    .map(|n| n.rotation)
+                    .unwrap_or(0.);
+                self.update_mechanism_floor(mechanism, &entity, rotation);
+            } else if mechanism
+                .state
+                .interaction
+                .as_ref()
+                .is_none_or(|i| matches!(i.phase, SwitchPhase::Animating))
+            {
                 let time = mechanism.animation_time().unwrap_or_else(|| {
                     if end {
                         cvd_entity::animation_duration(&entity)
@@ -204,6 +178,76 @@ impl ScnScene {
                     }
                 });
                 cvd_entity::set_animation_time(&entity, time);
+            }
+        }
+    }
+
+    fn update_mechanism_floor(
+        &self,
+        mechanism: &Mechanism,
+        entity: &ComRc<IEntity>,
+        rotation: f32,
+    ) {
+        let mut floors = self.nav.floors.borrow_mut();
+        let position = entity.transform().borrow().position();
+        if let Some(floor) = floors.get_mut(&mechanism.id) {
+            floor.position = position;
+            floor.layer = mechanism.layer as usize;
+            floor.rotation = rotation.to_radians();
+            floor.enabled = mechanism.provides_floor();
+        } else if let Some((min, max)) = Self::mechanism_bounds(entity) {
+            if let Some(block) = self.nav.block_sizes.get(mechanism.layer as usize) {
+                let center = Vec3::scalar_mul(0.5, &Vec3::add(&min, &max));
+                let mut size = Vec3::sub(&max, &min);
+                // Native 0x42a0d3/0x42a12a: long/cross-axis footprint adjustments.
+                let (extend, inset) = if mechanism.kind == 7 {
+                    (4.5, 2.5)
+                } else {
+                    (1.5, 1.5)
+                };
+                if size.x > size.z {
+                    size.x += extend * block.0;
+                    size.z -= inset * block.1;
+                } else {
+                    size.x -= inset * block.0;
+                    size.z += extend * block.1;
+                }
+                let half = Vec3::scalar_mul(0.5, &size);
+                floors.insert(
+                    mechanism.id,
+                    MechanismFloor {
+                        layer: mechanism.layer as usize,
+                        position,
+                        rotation: rotation.to_radians(),
+                        min: Vec3::sub(&center, &half),
+                        max: Vec3::add(&center, &half),
+                        enabled: mechanism.provides_floor(),
+                    },
+                );
+            }
+        }
+    }
+
+    fn sync_platform_objects(&self) {
+        let mut mechanisms = self.mechanisms.borrow_mut();
+        let carried: Vec<_> = mechanisms
+            .iter()
+            .filter(|m| m.kind == 22)
+            .filter_map(|m| {
+                let node = self.scn_file.nodes.iter().find(|n| n.index == m.id)?;
+                let id = node.ladder_nav_coord2.0 as u16;
+                (id != m.id).then_some((id, m.state.height, m.layer))
+            })
+            .collect();
+        for (id, height, layer) in carried {
+            if let Some(entity) = self.get_root_object(id as i32) {
+                let mut position = entity.transform().borrow().position();
+                position.y = height;
+                entity.transform().borrow_mut().set_position(&position);
+                if let Some(mechanism) = mechanisms.iter_mut().find(|m| m.id == id) {
+                    mechanism.layer = layer;
+                    mechanism.state.layer = Some(layer);
+                }
             }
         }
     }
@@ -250,6 +294,42 @@ impl ScnScene {
         }
     }
 
+    pub fn set_mechanism_player(&self, player: Option<(ComRc<IEntity>, usize)>) {
+        *self.mechanism_player.borrow_mut() = player;
+    }
+
+    pub fn mechanism_input_locked(&self) -> bool {
+        self.mechanisms
+            .borrow()
+            .iter()
+            .any(|m| m.state.interaction.is_some())
+    }
+
+    fn capture_platform_rider(&self, mechanism: &mut Mechanism) {
+        let Some(platform) = &mut mechanism.state.platform else {
+            return;
+        };
+        if !platform.boarding_pending {
+            return;
+        }
+        platform.boarding_pending = false;
+        let player = self.mechanism_player.borrow();
+        let Some((player, layer)) = player.as_ref() else {
+            return;
+        };
+        if self
+            .nav
+            .floor_at(*layer, &player.transform().borrow().position())
+            == Some(mechanism.id)
+        {
+            platform.rider = Some(player.name());
+        }
+    }
+
+    fn mechanism_role(&self, name: &str) -> Option<ComRc<IEntity>> {
+        self.scene.entities().into_iter().find(|e| e.name() == name)
+    }
+
     pub fn take_mechanism_procs(&self) -> Vec<u32> {
         std::mem::take(&mut *self.mechanism_procs.borrow_mut())
     }
@@ -272,6 +352,9 @@ impl ScnScene {
 
     /// Outer Option marks a consumed interaction, even when no script is called.
     pub fn interact_mechanism(&self, layer: usize, position: &Vec3) -> Option<Option<u32>> {
+        if self.mechanism_input_locked() {
+            return Some(None);
+        }
         for mechanism in self.mechanisms.borrow_mut().iter_mut() {
             let visible = self
                 .get_root_object(mechanism.id as i32)
@@ -300,6 +383,46 @@ impl ScnScene {
                     self.apply_mechanism_pose(mechanism, false);
                     return Some(None);
                 }
+                Activation::Interact => {
+                    let player = self.mechanism_player.borrow();
+                    let Some((player, _)) = player.as_ref() else {
+                        continue;
+                    };
+                    let entity = self.get_root_object(mechanism.id as i32)?;
+                    let to = entity.transform().borrow().position();
+                    let radius = cvd_entity::model_bounds(&entity)
+                        .or_else(|| Self::mechanism_bounds(&entity))
+                        .map(|(min, max)| {
+                            let (min, max) = radiance::math::transform_aabb(
+                                [min.x, min.y, min.z],
+                                [max.x, max.y, max.z],
+                                entity.transform().borrow().matrix(),
+                            );
+                            (max[0] - min[0]).max(max[2] - min[2]) * 0.5
+                        })
+                        .unwrap_or(0.);
+                    let direction = Vec3::sub(&to, position);
+                    let distance = direction.norm();
+                    let target = if distance > 0. {
+                        Vec3::add(
+                            position,
+                            &Vec3::scalar_mul((distance - radius) / distance, &direction),
+                        )
+                    } else {
+                        *position
+                    };
+                    // The native walk-to is horizontal; Y comes from navigation.
+                    mechanism.state.interaction = Some(SwitchInteraction {
+                        player: player.name(),
+                        target: Vec3::new(target.x, position.y, target.z),
+                        phase: SwitchPhase::Approach,
+                    });
+                    let remaining = Vec3::sub(&target, position);
+                    if remaining.x.hypot(remaining.z) < 24. {
+                        mechanism.begin_switch_action();
+                    }
+                    return Some(None);
+                }
             }
         }
         None
@@ -309,6 +432,11 @@ impl ScnScene {
         let mut procs = self.take_mechanism_procs();
         let mut links = vec![];
         for mechanism in self.mechanisms.borrow_mut().iter_mut() {
+            if mechanism.kind == 22 || mechanism.state.native.is_some() {
+                self.apply_mechanism_pose(mechanism, mechanism.pose_at_end());
+            }
+            self.capture_platform_rider(mechanism);
+            self.update_switch_interaction(mechanism, delta_sec.max(0.));
             let duration = self
                 .get_root_object(mechanism.id as i32)
                 .map(|e| cvd_entity::animation_duration(&e))
@@ -319,6 +447,21 @@ impl ScnScene {
                 self.apply_mechanism_pose(mechanism, completed);
             }
             if completed {
+                if let Some(platform) = &mut mechanism.state.platform {
+                    if let Some(name) = platform.rider.take() {
+                        if let Some(player) = self.mechanism_role(&name) {
+                            Self::carry_role(&player, mechanism.state.height, mechanism.layer);
+                        }
+                    }
+                    platform.boarding_pending = false;
+                }
+                if let Some(interaction) = mechanism.state.interaction.take() {
+                    if let Some(player) = self.mechanism_role(&interaction.player) {
+                        if let Some(controller) = RoleController::get_role_controller(player) {
+                            controller.inner::<RoleController>().idle();
+                        }
+                    }
+                }
                 if let Some(proc_id) = mechanism.completion_proc() {
                     procs.push(proc_id);
                 }
@@ -326,13 +469,118 @@ impl ScnScene {
                     links.push(mechanism.target);
                 }
             }
+            if let Some(name) = mechanism
+                .state
+                .platform
+                .as_ref()
+                .and_then(|p| p.rider.as_ref())
+            {
+                if let Some(player) = self.mechanism_role(name) {
+                    Self::carry_role(&player, mechanism.state.height, mechanism.layer);
+                }
+            }
         }
+        self.sync_platform_objects();
         // Start links after releasing the state borrow; cycles advance at most once per tick.
         for target in links {
             self.trigger_mechanism(target);
         }
         procs.extend(self.take_mechanism_procs());
         procs
+    }
+
+    fn carry_role(player: &ComRc<IEntity>, height: f32, layer: u16) {
+        let mut position = player.transform().borrow().position();
+        position.y = height;
+        player.transform().borrow_mut().set_position(&position);
+        if let Some(controller) = RoleController::get_role_controller(player.clone()) {
+            controller
+                .inner::<RoleController>()
+                .set_nav_layer(layer as usize);
+        }
+    }
+
+    fn update_switch_interaction(&self, mechanism: &mut Mechanism, delta_sec: f32) {
+        let Some(interaction) = mechanism.state.interaction.as_ref() else {
+            return;
+        };
+        let Some(player) = self.mechanism_role(&interaction.player) else {
+            // Scene changes/removal must not leave the interaction lock latched.
+            mechanism.state.interaction = None;
+            return;
+        };
+        let controller = RoleController::get_role_controller(player.clone());
+        match interaction.phase {
+            SwitchPhase::Approach => {
+                let mut position = player.transform().borrow().position();
+                let remain = Vec3::sub(&interaction.target, &position);
+                let distance = (remain.x * remain.x + remain.z * remain.z).sqrt();
+                // Original basedata/scene.txt: PWalkSpeed=100.
+                let step = 100. * delta_sec;
+                let arrived = distance <= step;
+                if distance > 0. {
+                    let step = step.min(distance);
+                    position.x += remain.x * step / distance;
+                    position.z += remain.z * step / distance;
+                    if let Some(point) = self.nav.point_at(mechanism.layer as usize, &position) {
+                        position.y = point.height;
+                    }
+                    if let Some(controller) = &controller {
+                        controller.inner::<RoleController>().walk();
+                    }
+                }
+                let to = self
+                    .get_root_object(mechanism.id as i32)
+                    .map(|e| e.transform().borrow().position())
+                    .unwrap_or(mechanism.position);
+                let transform = player.transform();
+                let mut transform = transform.borrow_mut();
+                transform.set_position(&position);
+                if to.x != position.x || to.z != position.z {
+                    transform.look_at(&Vec3::new(to.x, position.y, to.z));
+                }
+                if arrived {
+                    mechanism.begin_switch_action();
+                }
+            }
+            SwitchPhase::Action { started } => {
+                let position = player.transform().borrow().position();
+                let to = self
+                    .get_root_object(mechanism.id as i32)
+                    .map(|e| e.transform().borrow().position())
+                    .unwrap_or(mechanism.position);
+                if to.x != position.x || to.z != position.z {
+                    player
+                        .transform()
+                        .borrow_mut()
+                        .look_at(&Vec3::new(to.x, position.y, to.z));
+                }
+                let playing = if let Some(controller) = &controller {
+                    let controller = controller.inner::<RoleController>();
+                    if !controller.is_active() {
+                        false
+                    } else if !started {
+                        // Native action 11 (0x414e30) resolves to c10.
+                        controller.try_play_anim("c10", RoleAnimationRepeatMode::Repeat(1))
+                    } else {
+                        matches!(
+                            controller.state(),
+                            RoleState::PlayingAnimation | RoleState::AnimationHolding
+                        )
+                    }
+                } else {
+                    false
+                };
+                if playing {
+                    if let Some(interaction) = &mut mechanism.state.interaction {
+                        interaction.phase = SwitchPhase::Action { started: true };
+                    }
+                } else {
+                    mechanism.start_switch_animation();
+                }
+            }
+            SwitchPhase::Animating => {}
+        }
     }
 
     pub fn name(&self) -> &str {
@@ -1032,6 +1280,32 @@ impl MechanismFloor {
 }
 
 impl Nav {
+    fn floor_at(&self, layer: usize, position: &Vec3) -> Option<u16> {
+        let map = self.nav_file.maps.get(layer)?;
+        let block = *self.block_sizes.get(layer)?;
+        let x = ((position.x - map.min_coord.x) / block.0) as i32;
+        let z = ((position.z - map.min_coord.z) / block.1) as i32;
+        if x < 0 || z < 0 || x >= map.width as i32 || z >= map.height as i32 {
+            return None;
+        }
+        self.floors.borrow().iter().rev().find_map(|(id, floor)| {
+            (floor.enabled
+                && floor.layer == layer
+                && floor.contains_cell(x, z, &map.min_coord, block))
+            .then_some(*id)
+        })
+    }
+
+    fn point_at(&self, layer: usize, position: &Vec3) -> Option<NavMapPoint> {
+        let map = self.nav_file.maps.get(layer)?;
+        let block = *self.block_sizes.get(layer)?;
+        self.get(
+            layer,
+            ((position.x - map.min_coord.x) / block.0) as i32,
+            ((position.z - map.min_coord.z) / block.1) as i32,
+        )
+    }
+
     pub fn new(nav_file: NavFile, native: bool) -> Self {
         let mut block_sizes = vec![];
         for i in 0..nav_file.maps.len() {

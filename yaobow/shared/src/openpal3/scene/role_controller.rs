@@ -193,6 +193,10 @@ impl RoleController {
     }
 
     pub fn play_anim(&self, anim_name: &str, repeat_mode: RoleAnimationRepeatMode) {
+        self.try_play_anim(anim_name, repeat_mode);
+    }
+
+    pub fn try_play_anim(&self, anim_name: &str, repeat_mode: RoleAnimationRepeatMode) -> bool {
         let anim_name = anim_name.to_lowercase();
         if !anim_name.is_empty() {
             match self.animations.get(&anim_name) {
@@ -202,6 +206,7 @@ impl RoleController {
                         anim.value().clone(),
                         repeat_mode,
                     );
+                    return true;
                 }
                 _ => {
                     let anim = self.asset_mgr.load_role_anim(
@@ -213,11 +218,12 @@ impl RoleController {
                     if let Some(anim) = anim {
                         self.animations.insert(anim_name.to_string(), anim.clone());
                         self.play_anim_mesh_internal(anim_name, anim.clone(), repeat_mode);
-                        return;
+                        return true;
                     }
                 }
             }
         }
+        false
     }
 
     pub fn play_anim_mesh(

@@ -4,13 +4,14 @@
 //! Type 22: 0x4259d9..0x425a88, motion: 0x428a66..0x428ba7 (30 units/s).
 //! Types 7/8: 0x4251a4, 0x427edd; type 31: 0x4263c6, 0x42971c.
 //! Other native object types are deliberately not approximated here.
-//! Player approach/action phases, platform collision/navigation and rider transfer,
-//! and the switch's special water/effect parameters are not implemented yet.
+//! Boarding: 0x42b450/0x42b510; manual switch action: 0x425c89/0x42924b.
+//! The switch's special water/effect parameters are not implemented yet.
 //! Native mechanism camera cues and sound actions are not reproduced here.
 
 use serde::{Deserialize, Serialize};
 
 use crate::openpal3::loaders::scn_loader::ScnNode;
+use radiance::math::Vec3;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MechanismState {
@@ -22,6 +23,35 @@ pub struct MechanismState {
     pub animation_time: Option<f32>,
     #[serde(default)]
     pub native: Option<NativeState>,
+    #[serde(default)]
+    pub layer: Option<u16>,
+    #[serde(default)]
+    pub platform: Option<PlatformState>,
+    #[serde(default)]
+    pub interaction: Option<SwitchInteraction>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PlatformState {
+    pub rider: Option<String>,
+    pub boarding_pending: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SwitchInteraction {
+    pub player: String,
+    pub target: Vec3,
+    pub phase: SwitchPhase,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum SwitchPhase {
+    Approach,
+    Action {
+        #[serde(skip)]
+        started: bool,
+    },
+    Animating,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -86,6 +116,7 @@ pub enum Activation {
     Ignored,
     Script(u32),
     Started,
+    Interact,
 }
 
 impl Mechanism {
@@ -119,6 +150,12 @@ impl Mechanism {
                     movement: None,
                     completed: false,
                 }),
+                layer: Some(node.nav_layer),
+                platform: (node.node_type == 22).then_some(PlatformState {
+                    rider: None,
+                    boarding_pending: false,
+                }),
+                interaction: None,
             },
             target: node.w148,
             proc_id: node.sce_proc_id,
@@ -130,6 +167,7 @@ impl Mechanism {
 
     pub fn restore(&mut self, state: &MechanismState) {
         let initial_native = self.state.native.clone();
+        let initial_platform = self.state.platform.clone();
         self.state = state.clone();
         if self.state.native.is_none() {
             self.state.native = initial_native;
@@ -137,11 +175,33 @@ impl Mechanism {
         if let Some(native) = &self.state.native {
             self.active = native.active;
         }
+        if self.state.platform.is_none() {
+            self.state.platform = initial_platform;
+        }
+        self.layer = self.state.layer.unwrap_or_else(|| {
+            if self.kind == 22 && self.mode != 0 {
+                u16::from(self.state.raised)
+            } else {
+                self.layer
+            }
+        });
+        self.state.layer = Some(self.layer);
+        if let Some(SwitchInteraction {
+            phase: SwitchPhase::Action { started },
+            ..
+        }) = &mut self.state.interaction
+        {
+            *started = false;
+        }
     }
 
     pub fn restore_raised(&mut self) {
         self.state.height = self.target_height;
         self.state.raised = true;
+        if self.mode != 0 {
+            self.layer = 1;
+            self.state.layer = Some(1);
+        }
     }
 
     pub fn activate(&mut self, scripted: bool) -> Activation {
@@ -150,18 +210,19 @@ impl Mechanism {
             return Activation::Ignored;
         }
         if self.kind == 23 {
+            if self.state.animation_time.is_some() || self.state.interaction.is_some() {
+                return Activation::Ignored;
+            }
             if !scripted {
                 match self.mode {
-                    0 => {}
+                    0 => return Activation::Interact,
                     2 if self.proc_id != 0 => return Activation::Script(self.proc_id),
                     _ => return Activation::Ignored,
                 }
-            }
-            if self.state.animation_time.is_some() {
+            } else if self.mode == 0 {
                 return Activation::Ignored;
             }
-            self.state.switched = u8::from(self.state.switched == 0);
-            self.state.animation_time = Some(0.);
+            self.start_switch_animation();
         } else if matches!(self.kind, 7 | 8 | 31) {
             let native = self.state.native.as_mut().unwrap();
             if !scripted || native.rotation_target.is_some() || native.completed {
@@ -189,11 +250,34 @@ impl Mechanism {
             } else {
                 self.target_height
             });
+            if let Some(platform) = &mut self.state.platform {
+                platform.boarding_pending = true;
+                platform.rider = None;
+            }
         }
         if self.kind != 31 && self.state.remaining != u8::MAX {
             self.state.remaining -= 1;
         }
         Activation::Started
+    }
+
+    pub fn begin_switch_action(&mut self) {
+        self.state.switched = u8::from(self.state.switched == 0);
+        if self.state.remaining != u8::MAX {
+            self.state.remaining -= 1;
+        }
+        if let Some(interaction) = &mut self.state.interaction {
+            interaction.phase = SwitchPhase::Action { started: false };
+        }
+    }
+
+    pub fn start_switch_animation(&mut self) {
+        self.state.animation_time = Some(0.);
+        if let Some(interaction) = &mut self.state.interaction {
+            interaction.phase = SwitchPhase::Animating;
+        } else {
+            self.state.switched = u8::from(self.state.switched == 0);
+        }
     }
 
     pub fn animation_time(&self) -> Option<f32> {
@@ -252,6 +336,10 @@ impl Mechanism {
                 self.state.height = target;
                 self.state.raised = !self.state.raised;
                 self.state.motion = None;
+                if self.mode != 0 {
+                    self.layer = u16::from(self.state.raised);
+                    self.state.layer = Some(self.layer);
+                }
                 return true;
             }
         }
@@ -274,13 +362,14 @@ impl Mechanism {
     }
 
     pub fn provides_floor(&self) -> bool {
-        self.kind == 7
-            && self.active
-            && self
-                .state
-                .native
-                .as_ref()
-                .is_some_and(|s| s.rotation_target.is_none())
+        self.active
+            && (self.kind == 22
+                || self.kind == 7
+                    && self
+                        .state
+                        .native
+                        .as_ref()
+                        .is_some_and(|s| s.rotation_target.is_none()))
     }
 
     pub fn saved_state(&self) -> MechanismState {
@@ -307,10 +396,13 @@ mod tests {
                 motion: None,
                 animation_time: None,
                 native: None,
+                layer: Some(0),
+                platform: None,
+                interaction: None,
             },
             target: 3,
             proc_id: 500,
-            mode: 0,
+            mode: 1,
             persistent_switch: true,
             target_height: 40.,
         }

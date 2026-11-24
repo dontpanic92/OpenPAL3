@@ -336,6 +336,31 @@ pub(super) fn set_animation_time(entity: &ComRc<IEntity>, time: f32) {
     }
 }
 
+pub(super) fn model_bounds(entity: &ComRc<IEntity>) -> Option<(Vec3, Vec3)> {
+    let mut bounds = vec![];
+    if let Some(component) = entity.get_component(ICvdModel::uuid()) {
+        for mesh in &component.inner::<CvdModelComponent>().meshes {
+            bounds.extend(mesh.vertices.aabb_min_max());
+        }
+    }
+    for child in entity.children() {
+        if let Some((min, max)) = model_bounds(&child) {
+            bounds.push(radiance::math::transform_aabb(
+                [min.x, min.y, min.z],
+                [max.x, max.y, max.z],
+                child.transform().borrow().matrix(),
+            ));
+        }
+    }
+    let mut min = Vec3::new(f32::INFINITY, f32::INFINITY, f32::INFINITY);
+    let mut max = Vec3::new(f32::NEG_INFINITY, f32::NEG_INFINITY, f32::NEG_INFINITY);
+    for (a, b) in &bounds {
+        min = Vec3::new(min.x.min(a[0]), min.y.min(a[1]), min.z.min(a[2]));
+        max = Vec3::new(max.x.max(b[0]), max.y.max(b[1]), max.z.max(b[2]));
+    }
+    (!bounds.is_empty()).then_some((min, max))
+}
+
 #[cfg(test)]
 mod animation_tests {
     use super::*;

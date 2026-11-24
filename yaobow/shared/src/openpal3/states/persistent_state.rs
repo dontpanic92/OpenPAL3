@@ -13,6 +13,10 @@ pub struct PersistentState {
     app_name: String,
     global_vars: HashMap<i16, i32>,
     position: Vec3,
+    #[serde(default)]
+    nav_layer: usize,
+    #[serde(default)]
+    role_controlled: i32,
     scene: Option<String>,
     sub_scene: Option<String>,
     #[serde(default)]
@@ -25,6 +29,8 @@ impl PersistentState {
             app_name,
             global_vars: HashMap::new(),
             position: Vec3::new(0., 0., 0.),
+            nav_layer: 0,
+            role_controlled: 0,
             scene: None,
             sub_scene: None,
             scene_mechanisms: HashMap::new(),
@@ -85,6 +91,22 @@ impl PersistentState {
         self.position = position;
     }
 
+    pub fn nav_layer(&self) -> usize {
+        self.nav_layer
+    }
+
+    pub fn set_nav_layer(&mut self, layer: usize) {
+        self.nav_layer = layer;
+    }
+
+    pub fn role_controlled(&self) -> i32 {
+        self.role_controlled
+    }
+
+    pub fn set_role_controlled(&mut self, role: i32) {
+        self.role_controlled = role;
+    }
+
     pub fn set_scene_name(&mut self, scene: String, sub_scene: String) {
         self.scene = Some(scene);
         self.sub_scene = Some(sub_scene);
@@ -126,6 +148,8 @@ mod mechanism_tests {
     fn old_saves_without_mechanisms_remain_readable() {
         let mut json = serde_json::to_value(PersistentState::new("OpenPAL3".into())).unwrap();
         json.as_object_mut().unwrap().remove("scene_mechanisms");
+        json.as_object_mut().unwrap().remove("nav_layer");
+        json.as_object_mut().unwrap().remove("role_controlled");
         let state: PersistentState = serde_json::from_value(json).unwrap();
         assert!(state.mechanism_states("m17", "7").is_none());
     }
@@ -133,6 +157,8 @@ mod mechanism_tests {
     #[test]
     fn mechanism_state_roundtrips_with_case_insensitive_scene_keys() {
         let mut state = PersistentState::new("OpenPAL3".into());
+        state.set_role_controlled(1);
+        state.set_nav_layer(1);
         state.set_mechanism_states(
             "M17",
             "D1",
@@ -146,15 +172,22 @@ mod mechanism_tests {
                     motion: Some(40.),
                     animation_time: None,
                     native: None,
+                    layer: None,
+                    platform: None,
+                    interaction: None,
                 },
             )]),
         );
         let mut json = serde_json::to_value(&state).unwrap();
-        json["scene_mechanisms"]["m17/d1"]["8"]
-            .as_object_mut()
-            .unwrap()
-            .remove("native");
+        for field in ["native", "layer", "platform", "interaction"] {
+            json["scene_mechanisms"]["m17/d1"]["8"]
+                .as_object_mut()
+                .unwrap()
+                .remove(field);
+        }
         let restored: PersistentState = serde_json::from_value(json).unwrap();
+        assert_eq!(restored.role_controlled(), 1);
+        assert_eq!(restored.nav_layer(), 1);
         let mechanism = &restored.mechanism_states("m17", "d1").unwrap()[&8];
         assert_eq!(mechanism.switched, 1);
         assert_eq!(mechanism.remaining, 254);
