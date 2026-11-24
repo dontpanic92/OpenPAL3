@@ -51,6 +51,7 @@ pub struct[openpal3.IPal3StatusRenderer] Pal3StatusRendererImpl(
     pub menu_open: bool = false,
     // Previous-frame left-button state for press/release detection.
     pub prev_down: bool = false,
+    pub menu_needs_refresh: bool = false,
 ) {
     pub fn render_status(self: &Self, ui: &radiance.IUiHost, dt: float, gameplay: &openpal3.IPal3MenuState) -> int {
         let lw = ui.display_size_x() as float;
@@ -110,23 +111,32 @@ pub struct[openpal3.IPal3StatusRenderer] Pal3StatusRendererImpl(
 
         // Draw the HUD dial first so the full-screen menu (drawn below)
         // composites OVER it — the menu owns the screen while open.
-        let items: array<box<gui.Element>> = [
-            sprite_rect(self.bk, x0, y0, x1, y1),
-            sprite_rect(face, ax0, ay0, ax1, ay1),
-        ];
-        let root = gui.Stack(items);
-        gui.paint_root(root, ui, gui.make_ctx());
-        paint_gauge(ui, self.hp, hx0, hy0, hx1, hy1, hp_fraction, 37.0 / 64.0);
-        paint_gauge(ui, self.mp, mx0, my0, mx1, my1, mp_fraction, 29.0 / 64.0);
+        if !was_open {
+            let items: array<box<gui.Element>> = [
+                sprite_rect(self.bk, x0, y0, x1, y1),
+                sprite_rect(face, ax0, ay0, ax1, ay1),
+            ];
+            let root = gui.Stack(items);
+            gui.paint_root(root, ui, gui.make_ctx());
+            paint_gauge(ui, self.hp, hx0, hy0, hx1, hy1, hp_fraction, 37.0 / 64.0);
+            paint_gauge(ui, self.mp, mx0, my0, mx1, my1, mp_fraction, 29.0 / 64.0);
+        }
 
         // The full-screen character-status menu, painted on top of the HUD.
         if was_open {
+            if self.menu_needs_refresh {
+                self.menu.on_open(gameplay);
+                self.menu_needs_refresh = false;
+            }
             let stay = self.menu.paint(ui, self.atlas, gameplay, pmx, pmy, press, release, down);
             self.menu_open = stay;
         }
 
         // A release only opens the menu after a press inside the avatar.
-        if !was_open && over && release && self.hud_pressed { self.menu_open = true; }
+        if !was_open && over && release && self.hud_pressed {
+            self.menu_open = true;
+            self.menu_needs_refresh = true;
+        }
         if release { self.hud_pressed = false; }
         self.prev_down = down;
         0
@@ -136,6 +146,7 @@ pub struct[openpal3.IPal3StatusRenderer] Pal3StatusRendererImpl(
     // synthetic avatar click. Takes effect on the next idle frame.
     pub fn set_menu_open(self: &Self, open: bool) -> int {
         self.menu_open = open;
+        self.menu_needs_refresh = open;
         self.hud_pressed = false;
         0
     }

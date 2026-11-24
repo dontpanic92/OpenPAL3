@@ -103,6 +103,10 @@ impl AssetManager {
         self.factory.clone()
     }
 
+    pub fn scene_exists(&self, cpk_name: &str, scn_name: &str) -> bool {
+        self.vfs.open(self.scn_path(cpk_name, scn_name)).is_ok()
+    }
+
     pub fn load_scn(self: &Rc<Self>, cpk_name: &str, scn_name: &str) -> ComRc<IScene> {
         let scene_path = self.scn_path(cpk_name, scn_name);
 

@@ -210,6 +210,7 @@ pub enum UiCall {
     TextAt {
         x: f32,
         y: f32,
+        size: Option<f32>,
         r: f32,
         g: f32,
         b: f32,
@@ -713,6 +714,7 @@ impl IUiHostImpl for HostFacade {
         self.inner.record(UiCall::TextAt {
             x,
             y,
+            size: None,
             r,
             g,
             b,
@@ -727,6 +729,7 @@ impl IUiHostImpl for HostFacade {
         self.inner.record(UiCall::TextAt {
             x,
             y,
+            size: None,
             r,
             g,
             b,
@@ -736,6 +739,18 @@ impl IUiHostImpl for HostFacade {
     }
     fn game_font_size_small(&self) -> f32 {
         0.0
+    }
+    fn text_at_size(&self, x: f32, y: f32, size: f32, r: f32, g: f32, b: f32, a: f32, s: &str) {
+        self.inner.record(UiCall::TextAt {
+            x,
+            y,
+            size: Some(size),
+            r,
+            g,
+            b,
+            a,
+            s: s.into(),
+        });
     }
     fn style_color(&self, _slot: i32, _r: f32, _g: f32, _b: f32, _a: f32, body: ComRc<IAction>) {
         invoke_body("style_color", &self.inner, body);

@@ -194,6 +194,17 @@ fn menu_renders_live_party_and_release_latched_inventory_equipment_navigation() 
         has_text("217/217"),
         "a fifth party member must remain accessible"
     );
+    frame(1100.0, 570.0, true, false, true);
+    frame(1100.0, 570.0, false, true, false);
+    frame(0.0, 0.0, false, false, false);
+    assert!(
+        has_text("1 - 5 / 36"),
+        "System must expose the shared save browser"
+    );
+    assert!(
+        !has_text("217/217"),
+        "System must not draw the party resource panel"
+    );
     frame(1180.0, 570.0, true, false, true);
     assert_eq!(frame(1180.0, 570.0, false, true, false), Data::Int(0));
 }

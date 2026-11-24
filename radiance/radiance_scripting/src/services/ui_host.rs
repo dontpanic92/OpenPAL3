@@ -551,7 +551,13 @@ impl IUiHostImpl for ImguiUiHost {
             // composes and a child region can never widen its parent's.
             unsafe {
                 let bg = imgui::sys::igGetBackgroundDrawList_Nil();
-                imgui::sys::igPushClipRect(min, max, true);
+                // PushClipRect marks the current window as written. Absolute
+                // canvases must not activate imgui's implicit "Debug" window.
+                let window = imgui::sys::igGetCurrentWindowRead();
+                let clip_window = !window.is_null() && !(*window).IsFallbackWindow;
+                if clip_window {
+                    imgui::sys::igPushClipRect(min, max, true);
+                }
                 if !bg.is_null() {
                     imgui::sys::ImDrawList_PushClipRect(bg, min, max, true);
                 }
@@ -561,7 +567,9 @@ impl IUiHostImpl for ImguiUiHost {
                 if !bg.is_null() {
                     imgui::sys::ImDrawList_PopClipRect(bg);
                 }
-                imgui::sys::igPopClipRect();
+                if clip_window {
+                    imgui::sys::igPopClipRect();
+                }
             }
         });
     }
@@ -1150,6 +1158,34 @@ impl IUiHostImpl for ImguiUiHost {
             }
         })
         .unwrap_or(0.0)
+    }
+
+    fn text_at_size(&self, x: f32, y: f32, size: f32, r: f32, g: f32, b: f32, a: f32, s: &str) {
+        if !size.is_finite() || size <= 0.0 {
+            return;
+        }
+        with_frame("text_at_size", |f| {
+            let font = radiance::imgui::game_font(radiance::imgui::GameFontSize::LARGE)
+                .unwrap_or_else(|| f.ui.fonts().fonts()[0]);
+            let _font = f.ui.push_font(font);
+            let scale = if f.dpi_scale > 0.0 { f.dpi_scale } else { 1.0 };
+            unsafe {
+                imgui::sys::ImDrawList_AddText_FontPtr(
+                    imgui::sys::igGetBackgroundDrawList_Nil(),
+                    imgui::sys::igGetFont(),
+                    size * scale,
+                    imgui::sys::ImVec2 {
+                        x: x * scale,
+                        y: y * scale,
+                    },
+                    imgui::ImColor32::from_rgba_f32s(r, g, b, a).to_bits(),
+                    s.as_ptr().cast(),
+                    s.as_ptr().add(s.len()).cast(),
+                    0.0,
+                    std::ptr::null(),
+                );
+            }
+        });
     }
 
     fn style_color(&self, slot: i32, r: f32, g: f32, b: f32, a: f32, body: ComRc<IAction>) {

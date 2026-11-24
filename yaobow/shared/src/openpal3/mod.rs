@@ -7,6 +7,7 @@ pub mod comdef {
 pub mod directors;
 pub mod loaders;
 pub mod menu_state;
+pub mod save_slots;
 pub mod scene;
 pub mod states;
 pub mod ui_atlas;

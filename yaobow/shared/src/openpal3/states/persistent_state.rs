@@ -56,33 +56,51 @@ impl PersistentState {
         ydirs::save_dir().join(app_name)
     }
 
-    pub fn load(app_name: &str, slot: i32) -> Self {
+    pub fn try_load(app_name: &str, slot: i32) -> anyhow::Result<Self> {
         let path = Self::get_data_dir(app_name)
             .join("Save")
             .join(format!("{}.json", slot));
-        let content = std::fs::read_to_string(path).unwrap();
-        serde_json::from_str(&content).unwrap()
+        Self::load_from_path(app_name, &path)
+    }
+
+    pub(crate) fn load_from_path(app_name: &str, path: &std::path::Path) -> anyhow::Result<Self> {
+        let content = std::fs::read_to_string(path)?;
+        let mut state: Self = serde_json::from_str(&content)?;
+        anyhow::ensure!(
+            state.scene.as_ref().is_some_and(|s| !s.is_empty())
+                && state.sub_scene.as_ref().is_some_and(|s| !s.is_empty()),
+            "Save has no scene"
+        );
+        state.app_name = app_name.to_owned();
+        Ok(state)
+    }
+
+    pub fn try_save(&self, slot: i32) -> anyhow::Result<()> {
+        anyhow::ensure!(slot >= 0, "Invalid save slot");
+        let dir = Self::get_data_dir(&self.app_name).join("Save");
+        self.save_to_path(&dir.join(format!("{slot}.json")))
+    }
+
+    pub(crate) fn save_to_path(&self, path: &std::path::Path) -> anyhow::Result<()> {
+        let content = serde_json::to_string_pretty(self)?;
+        std::fs::create_dir_all(path.parent().unwrap())?;
+        let temporary = path.with_extension(format!("json.{}.tmp", std::process::id()));
+        std::fs::write(&temporary, content)?;
+        if let Err(error) = std::fs::rename(&temporary, path) {
+            let _ = std::fs::remove_file(&temporary);
+            return Err(error.into());
+        }
+        Ok(())
     }
 
     pub fn save(&self, slot: i32) {
-        if slot >= 0 {
-            let path = Self::get_data_dir(&self.app_name).join("Save");
-            if let Err(e) = std::fs::create_dir_all(&path) {
-                log::error!("Cannot create save dir: {}", e);
-                return;
-            }
-
-            let result = serde_json::to_string_pretty(self);
-            match result {
-                Ok(content) => {
-                    if let Err(e) = std::fs::write(path.join(format!("{}.json", slot)), content) {
-                        log::error!("Cannot save: {}", e);
-                    } else {
-                        log::info!("Game saved");
-                    }
-                }
-                Err(e) => log::error!("Cannot serialize persistent state: {}", e),
-            };
+        if slot < 0 {
+            return;
+        }
+        if let Err(error) = self.try_save(slot) {
+            log::error!("Cannot save slot {slot}: {error}");
+        } else {
+            log::info!("Game saved");
         }
     }
 

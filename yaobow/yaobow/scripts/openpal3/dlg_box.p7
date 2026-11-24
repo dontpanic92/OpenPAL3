@@ -1,25 +1,5 @@
-// PAL3 in-game dialog-box renderer (declarative-UI port).
-//
-// This renderer owns ALL of its state in p7. It is built with a generic,
-// game-vfs-bound `ISpriteService` and `load_sprite`s its 9-slice chrome,
-// bottom decoration and click-indicator frames once at construction,
-// holding each `ISprite` handle for its lifetime (so the backing textures
-// stay uploaded). The avatar portrait is loaded on demand from
-// `set_avatar`; the curtain level and avatar side are plain fields.
-//
-// The Rust SCE command loop forwards events (`set_avatar` /
-// `clear_avatar` / `set_curtain`) and the per-frame `render_dialog` /
-// `render_curtain` draw calls — the exact points the legacy Rust
-// `DialogBox::draw` / `fade_window` ran.
-//
-// Migration: `render_dialog` / `render_curtain` no longer issue `IUiHost`
-// primitives directly; instead each DECLARES its composition as a
-// `gui.Element` tree (a `gui.Stack` of `gui.Positioned` sprite rects + a
-// text grid, or a single `Curtain` fill) and paints it via
-// `gui.paint_root`. The chrome geometry still matches the original
-// `pal3.dll` layout exactly. Bespoke leaf widgets (`SpriteRect`,
-// `DialogText`, `Curtain`) are screen-local. A negative-width
-// `gui.Positioned` reproduces the original left-avatar horizontal mirror.
+// Native 800x600 layout from the shipped executable's dialog constructor
+// (0x450f90) and portrait/text placement routine (0x451360).
 
 import radiance;
 import scripting_services;
@@ -27,34 +7,6 @@ import shared.openpal3;
 // Declarative widget lib. Aliased to `gui` so it doesn't collide with
 // the `ui: IUiHost` render parameter.
 import radiance_scripting.ui as gui;
-
-// Avatar quad width as a fraction of the (letterboxed) dialog width. In the
-// reference 4:3 case dialog_width = 4/3 * H, so this 0.30 reproduces the
-// original 0.40*H avatar; but tying it to dialog_width (not raw framebuffer
-// height) keeps the avatar correctly proportioned to the box in narrow /
-// portrait windows, where a height-relative avatar would overflow the box.
-// Text starts immediately right of the avatar (text_x = dialog_x + avatar_width),
-// so this also lands the text left-edge at the original's ~0.40H from the box edge.
-let DLG_HEIGHT_FACTOR: float              = 0.185;
-let DLG_Y_POSITION_FACTOR: float          = 0.806;
-let DLG_AVATAR_WIDTH_OF_DIALOG: float     = 0.30;
-let DLG_CLICK_INDICATOR_PADDING_FACTOR: float = 1.4;
-
-// Text grid tuning (tighter-than-em advance so CJK text packs densely).
-let DLG_CHAR_ADVANCE_FACTOR: float        = 0.93;
-let DLG_LINE_HEIGHT_FACTOR: float         = 1.0;
-
-// Horizontal trim to centre the bottom-center decoration (≈ half its width).
-let DLG_DECORATION_WIDTH_TRIM: float      = 66.0;
-// Upward lift (native px) of the decoration centre from the box's geometric
-// bottom onto the visible cyan frame line, which the border sprite art insets
-// a few px inside the box edge.
-let DLG_DECORATION_LINE_LIFT: float       = 10.0;
-let DLG_DECORATION_BOTTOM_OVER_DIALOG: float = 6.0;
-
-// Vertical inset of the first text row below the dialog's top edge, as a
-// fraction of framebuffer height (original ~0.026H, ~25px at H=960).
-let DLG_TEXT_TOP_PAD_FACTOR: float        = 0.026;
 
 pub struct[openpal3.IPal3DialogRenderer] Pal3DialogRendererImpl(
     pub sprites: &scripting_services.ISpriteService,
@@ -78,6 +30,7 @@ pub struct[openpal3.IPal3DialogRenderer] Pal3DialogRendererImpl(
     // Curtain/fade level in [-1, 1] and the indicator blink accumulator.
     pub curtain: float,
     pub indicator_t: float,
+    pages: &DialogPages,
 ) {
     pub fn set_avatar(self: &Self, role: string, face: string, side: int) -> int {
         let path = "/basedata/basedata/ROLE/" + role + "/" + face + ".tga";
@@ -88,7 +41,16 @@ pub struct[openpal3.IPal3DialogRenderer] Pal3DialogRendererImpl(
 
     pub fn clear_avatar(self: &Self) -> int {
         self.avatar = null;
+        self.pages.page = 0;
+        self.pages.has_more = false;
         0
+    }
+
+    pub fn advance_page(self: &Self) -> bool {
+        if !self.pages.has_more { return false; }
+        self.pages.page = self.pages.page + 1;
+        self.pages.has_more = false;
+        return true;
     }
 
     pub fn set_curtain(self: &Self, value: float) -> int {
@@ -106,25 +68,12 @@ pub struct[openpal3.IPal3DialogRenderer] Pal3DialogRendererImpl(
         let lh = ui.display_size_y() as float;
         if lw <= 0.0 || lh <= 0.0 { return 0; }
 
-        // Letterbox into a 4:3 region when wider than 4:3.
-        let mut dialog_x = 0.0;
-        let mut dialog_width = lw;
-        if lw / lh > 4.0 / 3.0 {
-            dialog_width = lh / 3.0 * 4.0;
-            dialog_x = (lw - dialog_width) / 2.0;
-        }
-
-        let dialog_height = lh * DLG_HEIGHT_FACTOR;
-        let dialog_y = lh * DLG_Y_POSITION_FACTOR - DLG_DECORATION_BOTTOM_OVER_DIALOG;
-        let avatar_width = dialog_width * DLG_AVATAR_WIDTH_OF_DIALOG;
-
+        let dialog_x = 0.0;
+        let dialog_y = 458.0;
+        let dialog_bottom = 594.0;
+        let dialog_right = 800.0;
         let has_avatar = self.avatar != null;
         let avatar_at_right = self.avatar_side == 1;
-        let click_indicator_right_offset =
-            if avatar_at_right && has_avatar { avatar_width } else { 0.0 };
-
-        let dialog_bottom = dialog_y + dialog_height;
-        let dialog_right = dialog_x + dialog_width;
 
         // Inner corners of the 9-slice (from each corner sprite's size).
         let tl_ix = dialog_x + sprite_w(self.tl);
@@ -136,42 +85,13 @@ pub struct[openpal3.IPal3DialogRenderer] Pal3DialogRendererImpl(
         let tr_ix = dialog_right - sprite_w(self.tr);
         let tr_iy = dialog_y + sprite_h(self.tr);
 
-        // Advance the blinking click indicator (quad sized width x width,
-        // per original) and pick this frame's frame sprite.
         self.indicator_t = self.indicator_t + dt;
-        if self.indicator_t > 1.0 {
-            self.indicator_t = 0.0;
-        }
+        if self.indicator_t > 1.0 { self.indicator_t = 0.0; }
         let ind = if self.indicator_t > 0.5 { self.page0 } else { self.page1 };
-        let ind_w = sprite_w(self.page0);
-        let ci_x = dialog_right
-            - ind_w * DLG_CLICK_INDICATOR_PADDING_FACTOR
-            - click_indicator_right_offset;
-        let ci_y = dialog_bottom - ind_w * DLG_CLICK_INDICATOR_PADDING_FACTOR;
-
-        // Bottom-center decoration, centred on the bottom border line. The
-        // visible cyan frame line sits a small fixed inset above the box's
-        // geometric bottom (baked into the 64px-tall border sprite art);
-        // DLG_DECORATION_LINE_LIFT raises the ornament's centre onto it. All
-        // terms are native sprite pixels, so this tracks the line at any
-        // resolution and any box geometry.
-        let deco_w = sprite_w(self.deco);
-        let deco_h = sprite_h(self.deco);
-        let deco_x = dialog_x + dialog_width / 2.0 - DLG_DECORATION_WIDTH_TRIM;
-        let deco_y = dialog_bottom - deco_h / 2.0 - DLG_DECORATION_LINE_LIFT;
-
-        // Reserve avatar space only on the avatar's own side; narration
-        // (no avatar) spans the full dialog width. Left avatar -> text
-        // shifts right and runs to the right edge; right avatar -> text
-        // starts at the left edge and stops before the portrait.
-        let mut text_x = dialog_x;
-        let mut text_width = dialog_width;
-        if has_avatar {
-            text_width = dialog_width - avatar_width;
-            if !avatar_at_right {
-                text_x = dialog_x + avatar_width;
-            }
-        }
+        // Original 0x4517a0 places the indicator opposite the portrait.
+        let ci_x = if has_avatar && avatar_at_right { 18.0 } else { 760.0 };
+        let text_x = if !has_avatar { 36.0 } else { if avatar_at_right { 54.0 } else { 276.0 } };
+        let text_width = if has_avatar { 480.0 } else { 720.0 };
 
         // Declare the whole dialog box as a widget tree: the 9-slice
         // chrome, the bottom decoration, the optional avatar, the blink
@@ -186,27 +106,21 @@ pub struct[openpal3.IPal3DialogRenderer] Pal3DialogRendererImpl(
             sprite_rect(self.right, dialog_right - sprite_w(self.right), tr_iy, dialog_right, br_iy),
             sprite_rect(self.top, tl_ix, dialog_y, tr_ix, dialog_y + sprite_h(self.top)),
             sprite_rect(self.center, tl_ix, tl_iy, br_ix, br_iy),
-            sprite_rect(self.deco, deco_x, deco_y, deco_x + deco_w, deco_y + deco_h),
-            self.avatar_widget(dialog_x, dialog_right, lh, avatar_width, has_avatar, avatar_at_right),
-            sprite_rect(ind, ci_x, ci_y, ci_x + ind_w, ci_y + ind_w),
-            gui.Positioned(
-                text_x, dialog_y + lh * DLG_TEXT_TOP_PAD_FACTOR,
-                text_width, dialog_height,
-                DialogText(text)),
+            sprite_rect(self.deco, 333.0, 580.0, 467.0, 600.0),
+            self.avatar_widget(has_avatar, avatar_at_right),
+            sprite_rect(ind, ci_x, 552.0, ci_x + 32.0, 584.0),
+            gui.NativeRect(800.0,
+                text_x, 474.0, text_width, 120.0,
+                DialogText(text, self.pages)),
         ];
-        let root = gui.Stack(items);
+        let root = gui.NativeCanvas(gui.Size(800.0, 600.0), items, true);
         gui.paint_root(root, ui, gui.make_ctx());
         0
     }
 
-    // Avatar portrait widget. On the left it is mirrored horizontally
-    // (a negative-width `Positioned`, so `image_rect` receives
-    // `x_min > x_max`) so the face looks inward. Returns an empty group
-    // when there's no avatar or its texture isn't ready.
     pub fn avatar_widget(
         self: &Self,
-        dialog_x: float, dialog_right: float, lh: float,
-        avatar_width: float, has_avatar: bool, avatar_at_right: bool,
+        has_avatar: bool, avatar_at_right: bool,
     ) -> box<gui.Element> {
         if !has_avatar {
             let empty: array<box<gui.Element>> = [];
@@ -219,15 +133,9 @@ pub struct[openpal3.IPal3DialogRenderer] Pal3DialogRendererImpl(
             let empty: array<box<gui.Element>> = [];
             return gui.Stack(empty);
         }
-        let avatar_height = avatar_width / av_w * av_h;
-        if !avatar_at_right {
-            // Mirrored: x runs from (dialog_x + avatar_width) back to
-            // dialog_x (negative width).
-            return sprite_rect(self.avatar,
-                dialog_x + avatar_width, lh - avatar_height, dialog_x, lh);
-        }
-        return sprite_rect(self.avatar,
-            dialog_right - avatar_width, lh - avatar_height, dialog_right, lh);
+        let x = if avatar_at_right { 544.0 } else { 0.0 };
+        return gui.NativeRect(800.0, x, 88.0, 256.0, 512.0,
+            Portrait(av, !avatar_at_right));
     }
 
     pub fn render_curtain(self: &Self, ui: &radiance.IUiHost) -> int {
@@ -248,16 +156,22 @@ pub struct[openpal3.IPal3DialogRenderer] Pal3DialogRendererImpl(
     }
 }
 
-// Build a `gui.Positioned` + `SpriteRect` for the absolute rect
-// `[x0,y0]`..`[x1,y1]`. A negative width/height (x1 < x0) flips the blit,
-// reproducing the original mirrored-avatar draw. The sprite may be null
-// (a piece that failed to load) — `SpriteRect` then paints nothing, so a
-// partial asset set degrades cleanly.
 fn sprite_rect(
     s: ?&scripting_services.ISprite,
     x0: float, y0: float, x1: float, y1: float,
 ) -> box<gui.Element> {
-    return gui.Positioned(x0, y0, x1 - x0, y1 - y0, gui.Sprite(s));
+    return gui.NativeRect(800.0, x0, y0, x1 - x0, y1 - y0, gui.Sprite(s));
+}
+
+struct[gui.Element] Portrait(sprite: &scripting_services.ISprite, mirrored: bool) {
+    fn measure(self: ref<Self>, avail: gui.Size, ui: &radiance.IUiHost) -> gui.Size { return avail; }
+    fn paint(self: ref<Self>, rect: gui.Rect, ui: &radiance.IUiHost, ctx: box<gui.UiCtx>) {
+        let sp = self.sprite;
+        let u0 = if self.mirrored { sp.u1() } else { sp.u0() };
+        let u1 = if self.mirrored { sp.u0() } else { sp.u1() };
+        ui.image_rect(sp.com_id(), rect.x, rect.y, rect.right(), rect.bottom(),
+            u0, sp.v0(), u1, sp.v1());
+    }
 }
 
 // Native pixel width / height of a (possibly null) sprite, as a float.
@@ -274,22 +188,19 @@ fn sprite_h(s: ?&scripting_services.ISprite) -> float {
 // Screen-local widget leaves (declarative `gui.Element` impls).
 // ---------------------------------------------------------------------------
 
-// The wrapped dialog text grid. Draws `content` character-by-character at
-// a tight CJK advance, wrapping at the assigned rect width, honouring the
-// `\i` (yellow) / `\r` (white) inline colour codes. Origin + wrap-limit
-// come from the enclosing `gui.Positioned`. Lifted from the legacy
-// `render_text`.
-pub struct[gui.Element] DialogText(content: string) {
+// Original text renderer 0x4533f0: 20px CJK / 10px ASCII advance,
+// 2px line gap; \b selects 24px, \s restores 20px, both on a new line.
+struct DialogPages(pub page: int, pub has_more: bool) {}
+
+pub struct[gui.Element] DialogText(content: string, pages: &DialogPages) {
     fn measure(self: ref<Self>, avail: gui.Size, ui: &radiance.IUiHost) -> gui.Size {
         return avail;
     }
     fn paint(self: ref<Self>, rect: gui.Rect,
              ui: &radiance.IUiHost, ctx: box<gui.UiCtx>) {
-        let font_size = ui.game_font_size_small();
-        if font_size <= 0.0 { return; }
-
-        let line_pitch = font_size * DLG_LINE_HEIGHT_FACTOR;
-        let char_advance = font_size * DLG_CHAR_ADVANCE_FACTOR;
+        let scale = rect.h / 120.0;
+        let mut font_size = 20.0 * scale;
+        let line_gap = 2.0 * scale;
         let wrap_limit = rect.w;
         let origin_x = rect.x;
         let top_y = rect.y;
@@ -297,6 +208,8 @@ pub struct[gui.Element] DialogText(content: string) {
         let text = self.content;
         let mut text_x = 0.0;
         let mut text_y = 0.0;
+        let mut page = 0;
+        self.pages.has_more = false;
         // Current text colour, default white. `\i` -> yellow, `\r` -> white.
         let mut cr = 1.0;
         let mut cg = 1.0;
@@ -310,30 +223,44 @@ pub struct[gui.Element] DialogText(content: string) {
             if oc == null { continue; }
             let c = oc!;
 
-            if wrap_limit - text_x < 0.0 {
-                text_y = text_y + line_pitch;
-                text_x = 0.0;
-            }
-
             if c == "\n" {
-                if text_x == 0.0 { continue; }
-                text_y = text_y + line_pitch;
+                text_y = text_y + font_size + line_gap;
                 text_x = 0.0;
                 continue;
             }
-            if c == "\\" {
-                continue;
+            if c == "\\" && i < n {
+                let next = text.char_at(i);
+                if next != null && (next! == "i" || next! == "r") {
+                    cb = if next! == "i" { 0.0 } else { 1.0 };
+                    i = i + 1;
+                    continue;
+                }
+                if next != null && (next! == "b" || next! == "s" || next! == "n") {
+                    if next! == "b" { font_size = 24.0 * scale; }
+                    text_y = text_y + font_size + line_gap;
+                    text_x = 0.0;
+                    if next! == "s" { font_size = 20.0 * scale; }
+                    i = i + 1;
+                    continue;
+                }
             }
-            if c == "i" {
-                cr = 1.0; cg = 1.0; cb = 0.0;
-                continue;
+            let char_advance = if c.len_bytes() == 1 { font_size * 0.5 } else { font_size };
+            if text_x > 0.0 && text_x + char_advance > wrap_limit + 0.01 {
+                text_y = text_y + font_size + line_gap;
+                text_x = 0.0;
             }
-            if c == "r" {
-                cr = 1.0; cg = 1.0; cb = 1.0;
-                continue;
+            if text_y + font_size > rect.h + 0.01 {
+                page = page + 1;
+                text_y = 0.0;
+                text_x = 0.0;
             }
-
-            ui.text_at_small(origin_x + text_x, top_y + text_y, cr, cg, cb, 1.0, c);
+            if page > self.pages.page {
+                self.pages.has_more = true;
+                break;
+            }
+            if page == self.pages.page {
+                ui.text_at_size(origin_x + text_x, top_y + text_y, font_size, cr, cg, cb, 1.0, c);
+            }
             text_x = text_x + char_advance;
         }
     }
@@ -376,5 +303,6 @@ pub fn make_pal3_dialog_renderer(
         page0, page1,
         null, 0,
         0.0, 0.0,
+        &DialogPages(0, false),
     );
 }

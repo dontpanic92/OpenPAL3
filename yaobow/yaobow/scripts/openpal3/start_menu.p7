@@ -1,31 +1,7 @@
-// PAL3 start-menu director. Resolves sprites by name through the
-// generic `IPal3UiAtlas` (a `UI_opt.tli` format adapter over the
-// engine-level `ISprite` layer) and composes the cover-art screen with
-// the declarative `radiance_scripting.ui` widget lib (`gui`) — PAL3
-// ships no CEGUI layouts, so screen positions are authored here in p7.
-// The menu BGM is a generic `IAudioSource` (`host.pal3().load_menu_bgm`).
-//
-// Migration shape (mirrors PAL4's `start_menu.p7`): `render` opens a
-// fullscreen imgui window and paints a `gui.Element` tree via
-// `gui.paint_root`. The tree is a `gui.Stack` of a screen-local
-// `Pal3Cover` hosting element (the cover art + 3-state buttons + drifting
-// clouds + sliding taiji discs, letterbox-fit into the viewport — the
-// PAL3 analog of the lib's `UiLayout`) and, in load mode, a declarative
-// `gui.ListView` of `gui.TextButton` save rows. The cross-frame press
-// latch lives in `self.ctx: gui.UiCtx` (keyed by cover `WID_*` for
-// buttons and `SLOT_KEY_BASE + slot` for save rows), replacing the old
-// hand-rolled `pressed_wid` / `pressed_slot` int fields.
-//
-// Buttons functional in v1:
-//   * 前尘一梦 (`btn_qianchenyimeng`) — New Game
-//   * 旧的回忆 (`btn_jiudehuiyi`)     — Load Game (opens slot list)
-//   * 离开游戏 (`btn_likaiyouxi`)     — Exit
-// Inert in v1 (rendered for the cover-art layout):
-//   * 制作群 (`btn_zhizuoqun`), 新的故事 (`btn_xindegushi`),
-//     壁壁同游 (`btn_babitongyou`).
-//
-// Animation: clouds drift across the canvas, mountains parallax a few
-// pixels each, taiji discs are static for v1.
+// PAL3 cover and standalone load screen. Cover coordinates are reconstructed
+// from the original executable's 0x44c120 constructor; PAL3A keeps its existing
+// layout. New Game, Load, and Exit are functional; the other cover pages and
+// the original taiji rotation remain unfinished.
 
 import radiance;
 import scripting_services;
@@ -34,6 +10,7 @@ import shared.openpal3;
 // Declarative widget lib. Aliased to `gui` so it doesn't collide with
 // the `ui: IUiHost` render parameter.
 import radiance_scripting.ui as gui;
+import yaobow.openpal3.save_load;
 
 // Intent codes drained once per `update`.
 // What the user asked for on this frame, drained once per `update`.
@@ -50,7 +27,6 @@ enum Intent(
 let MODE_MAIN: int        = 0;
 let MODE_LOAD: int        = 1;
 
-let NO_PRESS: int         = -1;
 let NO_SLOT: int          = -1;
 
 // Hand-authored layout in the 800×600 native canvas, matched against
@@ -183,19 +159,6 @@ let BTN_A_BABITONGYOU_BASE: string    = "ui/menu/btn_yxxx";
 let BTN_A_ZHIZUOQUN_BASE: string      = "ui/menu/btn_xjtm";
 let BTN_A_LIKAIYOUXI_BASE: string     = "ui/menu/btn_lkyx";
 
-// Load-mode overlay. PAL3's original load UI lives outside the cover
-// atlases — we paint a translucent panel over the cover and list the
-// available JSON save slots. Click a populated row to boot the
-// adventure director with that slot pre-loaded.
-let LOAD_PANEL_X: float         = 200.0;
-let LOAD_PANEL_Y: float         = 120.0;
-let LOAD_PANEL_W: float         = 400.0;
-let LOAD_PANEL_H: float         = 360.0;
-let LOAD_ROW_HEIGHT: float      = 50.0;
-let LOAD_ROW_INSET_Y: float     = 60.0;
-let LOAD_BACK_X: float          = 580.0;
-let LOAD_BACK_Y: float          = 470.0;
-
 // Numeric synthetic "window ids" used by `dispatch_click` so a single
 // press-latch slot can track any of the 6 cover buttons. One id per
 // sprite — the role mapping (which sprite is "New Game", etc.) is in
@@ -206,12 +169,6 @@ let WID_XINDEGUSHI: int     = 3;
 let WID_BABITONGYOU: int    = 4;
 let WID_ZHIZUOQUN: int      = 5;
 let WID_LIKAIYOUXI: int     = 6;
-let WID_LOAD_BACK: int      = 100;
-
-// Press-latch key namespace for synthetic save-slot rows, kept disjoint
-// from the cover `WID_*` ids (which share the single `gui.UiCtx` latch).
-let SLOT_KEY_BASE: int      = 1000000;
-
 pub struct[radiance.IUiLayer, radiance.IDirector] Pal3StartMenuDirector(
     pub host: &yaobow_services.IYaobowHostContext,
     pub asset_path: string,
@@ -253,11 +210,10 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal3StartMenuDirector(
     // sets this to null and starts BGM + resets taiji_t.
     pub intro: ?&scripting_services.IVideoHandle,
     pub activated: bool,
-    // Cross-frame press latch for the declarative widget tree (the
-    // pressed widget's key, or NO_PRESS). Replaces the old
-    // `pressed_wid` / `pressed_slot` int fields — keyed by cover
-    // `WID_*` for buttons and `SLOT_KEY_BASE + slot` for save rows.
+    // Cover press latch; the shared browser owns its own latch.
     pub ctx: box<gui.UiCtx>,
+    pub browser: &save_load.Browser,
+    pub load_prev_down: bool,
 ) {
     pub fn activate(self: &Self) -> int {
         // When an intro movie is queued we postpone BGM start until
@@ -356,8 +312,20 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal3StartMenuDirector(
                 if self.bgm != null {
                     self.bgm!.play(true);
                 }
+
                 self.taiji_t = 0.0;
             }
+        }
+
+        if self.mode == MODE_LOAD && self.atlas != null {
+            let down = ui.mouse_down(0);
+            let slot = self.browser.paint(ui, self.atlas!, true,
+                ui.mouse_pos_x(), ui.mouse_pos_y(),
+                down && !self.load_prev_down, !down && self.load_prev_down, down);
+            self.load_prev_down = down;
+            if self.host.input().key_pressed(KEY_ESCAPE) || slot == -1 { self.go_main(); }
+            if slot > 0 { self.fire_load_slot(slot); }
+            return 0;
         }
 
         // Fullscreen imgui window with no background so any 3D scene
@@ -397,10 +365,6 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal3StartMenuDirector(
             ax, bx, (wid: int) => { self.dispatch_click(wid); },
         );
 
-        if self.mode == MODE_LOAD {
-            let items: array<box<gui.Element>> = [cover, self.build_load_overlay(ui)];
-            return gui.Stack(items);
-        }
         let items: array<box<gui.Element>> = [cover];
         return gui.Stack(items);
     }
@@ -430,61 +394,6 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal3StartMenuDirector(
         return gui.Stack(lines);
     }
 
-    // Load-mode overlay: a title, a `ListView` of clickable save rows,
-    // and a Back affordance — all anchored at the cover's letterbox-fit
-    // panel rect. Mirrors PAL4's synthetic save-slot list.
-    pub fn build_load_overlay(self: &Self, ui: &radiance.IUiHost) -> box<gui.Element> {
-        let atlas = self.atlas!;
-        let native = native_size(atlas);
-        let viewport = gui.Rect(0.0, 0.0,
-            ui.display_size_x() as float, ui.display_size_y() as float);
-        let fitted = viewport.fit(native);
-        let scale = viewport.fit_scale(native);
-        let origin_x = fitted.x;
-        let origin_y = fitted.y;
-
-        let title_x = origin_x + (LOAD_PANEL_X + 20.0) * scale;
-        let title_y = origin_y + (LOAD_PANEL_Y + 8.0) * scale;
-
-        let slot_count = self.host.pal3().save_slot_count();
-        let list_x = origin_x + (LOAD_PANEL_X + 30.0) * scale;
-        let list_y = origin_y + (LOAD_PANEL_Y + LOAD_ROW_INSET_Y) * scale;
-        let list_w = (LOAD_PANEL_W - 60.0) * scale;
-        let list_h = (slot_count as float) * LOAD_ROW_HEIGHT * scale;
-
-        let back_x = origin_x + LOAD_BACK_X * scale;
-        let back_y = origin_y + LOAD_BACK_Y * scale;
-
-        let items: array<box<gui.Element>> = [
-            gui.Positioned(title_x, title_y, 360.0, 24.0,
-                gui.Text("== Load Game ==", gui.Color.PARCHMENT)),
-            gui.Positioned(list_x, list_y, list_w, list_h,
-                gui.ListView(slot_count, (i: int) => self.slot_row(i), 0.0)),
-            gui.Positioned(back_x, back_y, 120.0, 24.0,
-                gui.TextButton(WID_LOAD_BACK, "[ Back ]", true,
-                    () => { self.go_main(); }, gui.Color.gray(0.85))),
-        ];
-        return gui.Stack(items);
-    }
-
-    // Build one save-slot row widget (declarative `ListView` item
-    // builder). Populated rows render white + clickable (loads on
-    // release); empty rows render greyed + inert. The press-latch key is
-    // namespaced by `SLOT_KEY_BASE` so it never collides with a cover
-    // `WID_*`.
-    pub fn slot_row(self: &Self, idx: int) -> box<gui.Element> {
-        let slot = idx + 1;
-        let exists = self.host.pal3().save_slot_exists(slot);
-        let key = SLOT_KEY_BASE + slot;
-        if exists {
-            let label = "Slot " + int_to_str(slot);
-            return gui.TextButton(key, label, true,
-                () => { self.fire_load_slot(slot); }, gui.Color.WHITE);
-        }
-        let label = "Slot " + int_to_str(slot) + " - (empty)";
-        return gui.TextButton(key, label, false, () => {}, gui.Color.DISABLED);
-    }
-
     // --- Click handlers (mutate intent/mode; drained in `update`) -------
 
     pub fn dispatch_click(self: &Self, wid: int) {
@@ -495,7 +404,12 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal3StartMenuDirector(
         // hover/press feedback but are intentionally inert in v1.
         if wid == WID_XINDEGUSHI { self.intent = Intent.NewGame; return; }
         if wid == WID_LIKAIYOUXI { self.intent = Intent.Exit;     return; }
-        if wid == WID_JIUDEHUIYI { self.mode = MODE_LOAD;         return; }
+        if wid == WID_JIUDEHUIYI {
+            self.browser.begin(self.host.pal3().save_slots(), false);
+            self.load_prev_down = false;
+            self.mode = MODE_LOAD;
+            return;
+        }
     }
 
     pub fn fire_load_slot(self: &Self, slot: int) {
@@ -506,6 +420,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal3StartMenuDirector(
 
     pub fn go_main(self: &Self) {
         self.mode = MODE_MAIN;
+        self.ctx = gui.make_ctx();
     }
 
     pub fn update(
@@ -532,8 +447,14 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal3StartMenuDirector(
                 return self.host.pal3().create_adventure_director(self.asset_path);
             },
             Intent.Load => {
-                return self.host.pal3()
+                let director = self.host.pal3()
                     .load_adventure_director(self.asset_path, self.load_slot);
+                if director == null {
+                    self.mode = MODE_LOAD;
+                    self.browser.slots = self.host.pal3().save_slots();
+                    self.browser.feedback = "读取失败，存档可能已经改变";
+                }
+                return director;
             },
             Intent.Exit => {
                 // Start the reverse-open animation. exit_app is fired from the
@@ -584,7 +505,7 @@ fn build_cover(
 
     let mut items: array<box<gui.Element>> = [
         // Dial frame.
-        spr(atlas, SPR_BG, BEIJING_X, BEIJING_Y),
+        spr(atlas, SPR_BG, if a { BEIJING_X } else { 169.0 }, BEIJING_Y),
         // Sliding taiji discs, drawn BEFORE ditu so once they fully slide
         // outward they tuck behind the ornate frame.
         spr(atlas, SPR_TAIJI_A, taiji_ax, TAIJI_A_Y),
@@ -595,22 +516,32 @@ fn build_cover(
     for i in Range(0, YUN_COUNT) {
         items.push(spr(atlas, cloud_names[i], cloud_x[i], cloud_y[i]));
     }
+    if !a {
+        items.push(spr(atlas, "ui/Menu/mountainA.tga", 79.0, 192.0));
+        items.push(spr(atlas, "ui/Menu/mountainB.tga", 556.0, 203.0));
+    }
 
     // Background plate + logo over the discs, then the six cover buttons.
     items.push(spr(atlas, SPR_DITU, DITU_X, DITU_Y));
-    items.push(spr(atlas, SPR_LOG0, LOG0_X, LOG0_Y));
+    items.push(spr(atlas, SPR_LOG0, if a { LOG0_X } else { 200.0 }, if a { LOG0_Y } else { 223.0 }));
     items.push(btn(atlas, qcym, WID_QIANCHENYIMENG,
-                   BTN_QIANCHENYIMENG_X, BTN_QIANCHENYIMENG_Y, on_click));
+                   if a { BTN_QIANCHENYIMENG_X } else { 59.0 },
+                   if a { BTN_QIANCHENYIMENG_Y } else { 175.0 }, on_click));
     items.push(btn(atlas, bbty, WID_BABITONGYOU,
-                   BTN_BABITONGYOU_X, BTN_BABITONGYOU_Y, on_click));
+                   if a { BTN_BABITONGYOU_X } else { 585.0 },
+                   if a { BTN_BABITONGYOU_Y } else { 179.0 }, on_click));
     items.push(btn(atlas, xdgs, WID_XINDEGUSHI,
-                   BTN_XINDEGUSHI_X, BTN_XINDEGUSHI_Y, on_click));
+                   if a { BTN_XINDEGUSHI_X } else { 152.0 },
+                   if a { BTN_XINDEGUSHI_Y } else { 0.0 }, on_click));
     items.push(btn(atlas, jdhy, WID_JIUDEHUIYI,
-                   BTN_JIUDEHUIYI_X, BTN_JIUDEHUIYI_Y, on_click));
+                   if a { BTN_JIUDEHUIYI_X } else { 416.0 },
+                   if a { BTN_JIUDEHUIYI_Y } else { 0.0 }, on_click));
     items.push(btn(atlas, zzq, WID_ZHIZUOQUN,
-                   BTN_ZHIZUOQUN_X, BTN_ZHIZUOQUN_Y, on_click));
+                   if a { BTN_ZHIZUOQUN_X } else { 142.0 },
+                   if a { BTN_ZHIZUOQUN_Y } else { 446.0 }, on_click));
     items.push(btn(atlas, lkyx, WID_LIKAIYOUXI,
-                   BTN_LIKAIYOUXI_X, BTN_LIKAIYOUXI_Y, on_click));
+                   if a { BTN_LIKAIYOUXI_X } else { 410.0 },
+                   if a { BTN_LIKAIYOUXI_Y } else { 446.0 }, on_click));
 
     return gui.NativeCanvas(native_size(atlas), items, true);
 }
@@ -779,5 +710,7 @@ pub fn make_pal3_start_menu(
         false,
         // Press latch for the declarative widget tree.
         gui.make_ctx(),
+        save_load.make_browser(),
+        false,
     ) as &radiance.IDirector;
 }

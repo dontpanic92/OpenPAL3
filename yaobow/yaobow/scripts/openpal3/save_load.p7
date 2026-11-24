@@ -1,0 +1,202 @@
+import radiance;
+import shared.openpal3;
+import radiance_scripting.ui as gui;
+
+let ROOT: string = "ui/GameMainUI/System/";
+
+pub struct Canvas(
+    pub ui: &radiance.IUiHost,
+    pub atlas: &openpal3.IPal3UiAtlas,
+    pub x: float, pub y: float, pub scale: float,
+) {
+    pub fn blit(self: &Self, name: string, x: float, y: float, w: float, h: float) {
+        let sprite = self.atlas.sprite(name);
+        if sprite == null { return; }
+        let sp = sprite!;
+        self.ui.image_rect(sp.com_id(), self.x + x * self.scale, self.y + y * self.scale,
+            self.x + (x + w) * self.scale, self.y + (y + h) * self.scale,
+            sp.u0(), sp.v0(), sp.u1(), sp.v1());
+    }
+
+    pub fn text(self: &Self, x: float, y: float, text: string, light: bool) {
+        self.ui.text_at_size(self.x + x * self.scale, self.y + y * self.scale,
+            18.0 * self.scale, if light { 0.94 } else { 1.0 },
+            if light { 0.94 } else { 0.984 }, if light { 0.80 } else { 0.122 }, 1.0, text);
+    }
+
+    pub fn shade(self: &Self, x: float, y: float, w: float, h: float) {
+        self.ui.fill_rect(self.x + x * self.scale, self.y + y * self.scale,
+            self.x + (x + w) * self.scale, self.y + (y + h) * self.scale,
+            0.02, 0.09, 0.10, 0.96);
+    }
+}
+
+pub struct Browser(
+    pub slots: ?&openpal3.IPal3SaveSlots,
+    pub saving: bool,
+    pub first: int,
+    pub held: int,
+    pub confirmation: int,
+    pub feedback: string,
+    action: int,
+) {
+    pub fn begin(self: &Self, slots: &openpal3.IPal3SaveSlots, saving: bool) {
+        self.slots = slots;
+        self.saving = saving;
+        self.first = 0;
+        self.held = -1;
+        self.confirmation = 0;
+        self.feedback = "";
+    }
+
+    fn button(self: &Self, id: int, over: bool, press: bool, release: bool) -> bool {
+        if press && over { self.held = id; }
+        return release && over && self.held == id;
+    }
+
+    // Returns a selected slot, -1 for Back, or zero. Disk and director
+    // operations belong to the caller, never to a sprite's paint callback.
+    pub fn paint(self: &Self, ui: &radiance.IUiHost, atlas: &openpal3.IPal3UiAtlas,
+        standalone: bool, mx: float, my: float, press: bool, release: bool, down: bool) -> int {
+        if self.slots == null { return 0; }
+        let slots = self.slots!;
+        let viewport = gui.Rect(0.0, 0.0, ui.display_size_x() as float, ui.display_size_y() as float);
+        let native = gui.Size(800.0, 600.0);
+        let rect = viewport.fit(native);
+        let scale = viewport.fit_scale(native);
+        if scale <= 0.0 { return 0; }
+        let c = &Canvas(ui, atlas, rect.x, rect.y, scale);
+        let nx = (mx - rect.x) / scale;
+        let ny = (my - rect.y) / scale;
+        let dx = if standalone { 68.0 } else { 0.0 };
+        let top = if standalone { 62.0 } else { 40.0 };
+        let bottom = if standalone { 526.0 } else { 500.0 };
+        let modal = self.confirmation > 0;
+        self.action = 0;
+        ui.clip_rect(rect.x, rect.y, rect.right(), rect.bottom(), () => {
+            if standalone {
+                c.blit("ui/Menu/JDHY/background.tga", 0.0, 0.0, 800.0, 600.0);
+            } else {
+                c.blit(ROOT + "Frame.tga", 670.0, 38.0, 114.0, 504.0);
+                c.text(690.0, 90.0, "音量设置\n尚未实现", true);
+            }
+            c.blit(ROOT + "TopBar.tga", 40.0 + dx, if standalone { 46.0 } else { 23.0 }, 584.0, 18.0);
+            c.blit(ROOT + "BottomBar.tga", 41.0 + dx, bottom, 583.0, 35.0);
+            if !standalone {
+                let save_over = inside(nx, ny, 146.0, 5.0, 119.0, 32.0);
+                let load_over = inside(nx, ny, 398.0, 5.0, 119.0, 32.0);
+                c.blit(ROOT + if self.saving { "Saveon.tga" } else { if save_over { "Save1.tga" } else { "Save0.tga" } },
+                    146.0, 5.0, 119.0, 32.0);
+                c.blit(ROOT + if !self.saving { "Loadon.tga" } else { if load_over { "Load1.tga" } else { "Load0.tga" } },
+                    398.0, 5.0, 119.0, 32.0);
+                if !modal && self.button(100, save_over, press, release) {
+                    self.saving = true; self.feedback = "";
+                }
+                if !modal && self.button(101, load_over, press, release) {
+                    self.saving = false; self.feedback = "";
+                }
+            }
+            let max_first = if slots.slot_count() > 5 { slots.slot_count() - 5 } else { 0 };
+            if !modal {
+                let wheel = if inside(nx, ny, 12.0 + dx, top, 650.0, bottom - top) { ui.mouse_wheel() } else { 0.0 };
+                if wheel > 0.0 { self.first = self.first - 1; }
+                if wheel < 0.0 { self.first = self.first + 1; }
+            }
+            let up_y = if standalone { 62.0 } else { 38.0 };
+            let down_y = if standalone { 527.0 } else { 503.0 };
+            let up_over = inside(nx, ny, 634.0 + dx, up_y, 25.0, 28.0);
+            let down_over = inside(nx, ny, 634.0 + dx, down_y, 25.0, 28.0);
+            if !modal && self.button(102, up_over, press, release) { self.first = self.first - 5; }
+            if !modal && self.button(103, down_over, press, release) { self.first = self.first + 5; }
+            if self.first < 0 { self.first = 0; }
+            if self.first > max_first { self.first = max_first; }
+            let uv = if up_over && down { "2" } else { if up_over { "1" } else { "0" } };
+            let dv = if down_over && down { "2" } else { if down_over { "1" } else { "0" } };
+            c.blit(ROOT + "pgup" + uv + ".tga", 634.0 + dx, up_y, 25.0, 28.0);
+            c.blit(ROOT + "pgdw" + dv + ".tga", 634.0 + dx, down_y, 25.0, 28.0);
+            ui.clip_rect(rect.x + (12.0 + dx) * scale, rect.y + top * scale,
+                rect.x + (621.0 + dx) * scale, rect.y + bottom * scale, () => {
+                for row in Range(0, 5) {
+                    let slot = self.first + row + 1;
+                    if slot <= slots.slot_count() {
+                        let x = 12.0 + dx;
+                        let y = top + (row as float) * 92.0;
+                        let over = inside(nx, ny, x, y, 609.0, 92.0) && ny < bottom;
+                        let status = slots.status(slot);
+                        let enabled = self.saving || status == 1;
+                        let variant = if enabled && over && down { "2" } else { if enabled && over { "1" } else { "0" } };
+                        c.blit(ROOT + "Note" + variant + ".tga", x, y, 609.0, 92.0);
+                        c.text(x + 29.0, y + 30.0, number(slot), false);
+                        c.blit(ROOT + if self.saving { "cc.tga" } else { "dq.tga" },
+                            x + 62.0, y + 12.0, 29.0, 64.0);
+                        if status == 1 {
+                            let names: array<string> = ["jt", "xj", "lk", "zx", "cq"];
+                            for i in Range(0, 5) {
+                                let role = slots.member_role(slot, i);
+                                if role >= 0 && role < 5 {
+                                    let px = x + 96.0 + (i as float) * 58.0;
+                                    c.blit(ROOT + names[role] + ".tga", px, y + 12.0, 58.0, 64.0);
+                                    c.text(px + 10.0, y + 63.0, number(slots.role_level(slot, role)), false);
+                                }
+                            }
+                            let seconds = slots.play_seconds(slot);
+                            c.text(x + 312.0, y + 6.0, two(seconds / 3600) + ":" +
+                                two((seconds / 60) % 60) + ":" + two(seconds % 60), false);
+                            c.text(x + 312.0, y + 29.0, slots.scene(slot), false);
+                            c.text(x + 312.0, y + 52.0, "金钱 " + number(slots.money(slot)), false);
+                        } else {
+                            c.text(x + 312.0, y + 29.0, if status == 0 { "空存档" } else { "存档损坏或不完整" }, false);
+                        }
+                        if !modal && enabled && self.button(slot, over, press, release) {
+                            self.feedback = "";
+                            if self.saving && status != 0 { self.confirmation = slot; }
+                            else { self.action = slot; }
+                        }
+                    }
+                }
+            });
+            c.text(140.0 + dx, bottom + 7.0,
+                if self.feedback != "" { self.feedback } else {
+                    number(self.first + 1) + " - " + number(self.first + 5) + " / " + number(slots.slot_count())
+                }, false);
+            if standalone {
+                let back = inside(nx, ny, 745.0, 537.0, 56.0, 63.0);
+                c.blit("ui/Menu/Sub_Exit" + if back && down { "2.tga" } else { if back { "1.tga" } else { "0.tga" } },
+                    745.0, 537.0, 56.0, 64.0);
+                if !modal && self.button(104, back, press, release) { self.action = -1; }
+            }
+            if modal {
+                c.shade(190.0, 210.0, 420.0, 158.0);
+                c.text(240.0, 236.0, "覆盖存档 " + number(self.confirmation) + "？", true);
+                c.text(270.0, 310.0, "确定", true);
+                c.text(470.0, 310.0, "取消", true);
+                if self.button(105, inside(nx, ny, 240.0, 294.0, 100.0, 44.0), press, release) {
+                    self.action = self.confirmation; self.confirmation = 0;
+                }
+                if self.button(106, inside(nx, ny, 440.0, 294.0, 100.0, 44.0), press, release) {
+                    self.confirmation = 0;
+                }
+            }
+        });
+        if !down { self.held = -1; }
+        return self.action;
+    }
+}
+
+pub fn make_browser() -> &Browser { &Browser(null, false, 0, -1, 0, "", 0) }
+
+fn inside(x: float, y: float, left: float, top: float, width: float, height: float) -> bool {
+    x >= left && y >= top && x < left + width && y < top + height
+}
+
+pub fn number(n: int) -> string {
+    if n == 0 { return "0"; }
+    let digits: array<string> = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"];
+    let mut value = if n < 0 { -n } else { n };
+    let mut result = "";
+    while value > 0 { result = digits[value % 10] + result; value = value / 10; }
+    if n < 0 { result = "-" + result; }
+    result
+}
+
+fn two(n: int) -> string { if n < 10 { "0" + number(n) } else { number(n) } }

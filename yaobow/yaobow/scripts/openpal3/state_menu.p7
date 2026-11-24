@@ -2,6 +2,7 @@
 import radiance;
 import shared.openpal3;
 import radiance_scripting.ui as gui;
+import yaobow.openpal3.save_load;
 
 let ROOT: string = "ui/GameMainUI/";
 let COMMON: string = "ui/GameMainUI/Communal/";
@@ -23,8 +24,8 @@ struct Canvas(
 
     fn text(self: &Self, x: float, y: float, text: string, light: bool) {
         let color = if light { 0.94 } else { 0.05 };
-        self.ui.text_at_small(self.x + x * self.scale, self.y + y * self.scale,
-            color, color, if light { 0.80 } else { 0.08 }, 1.0, text);
+        self.ui.text_at_size(self.x + x * self.scale, self.y + y * self.scale,
+            18.0 * self.scale, color, color, if light { 0.80 } else { 0.08 }, 1.0, text);
     }
 
     fn shade(self: &Self, x: float, y: float, w: float, h: float) {
@@ -37,7 +38,13 @@ struct Canvas(
 pub struct MenuState(
     tab: int, role: int, page: int, party_page: int,
     item: int, equipment_slot: int, held: int,
+    browser: &save_load.Browser,
 ) {
+    pub fn on_open(self: &Self, gameplay: &openpal3.IPal3MenuState) {
+        self.held = -1;
+        if self.tab == 7 { self.browser.begin(gameplay.save_slots(), self.browser.saving); }
+    }
+
     fn button(self: &Self, id: int, over: bool, press: bool, release: bool) -> bool {
         if press && over { self.held = id; }
         return release && over && self.held == id;
@@ -59,11 +66,13 @@ pub struct MenuState(
         ui.fill_rect(0.0, 0.0, viewport.w, viewport.h, 0.0, 0.0, 0.0, 0.8);
 
         let frames: array<string> = ["State", "Prop", "Equip"];
-        c.blit(ROOT + frames[self.tab] + "/Frame.tga", 592.0, 18.0, 192.0, 526.0);
-        c.blit(COMMON + "Frame_Line.tga", 784.0, 44.0, 17.0, 526.0);
-        c.blit(COMMON + "TimeMoney.tga", 579.0, 0.0, 203.0, 64.0);
+        if self.tab != 7 {
+            c.blit(ROOT + frames[self.tab] + "/Frame.tga", 592.0, 18.0, 192.0, 526.0);
+            c.blit(COMMON + "Frame_Line.tga", 784.0, 44.0, 17.0, 526.0);
+            c.blit(COMMON + "TimeMoney.tga", 579.0, 0.0, 203.0, 64.0);
+        }
 
-        if gameplay.available() {
+        if gameplay.available() && self.tab != 7 {
             let game = gameplay;
             c.text(618.0, 0.0, int_str(game.money()), true);
             let seconds = game.play_seconds();
@@ -103,7 +112,7 @@ pub struct MenuState(
             if self.tab == 1 { self.paint_inventory(c, game, nx, ny, press, release); }
             if self.tab == 2 { self.paint_equipment(c, game, nx, ny, press, release); }
             if count == 0 && self.tab == 0 { c.text(190.0, 240.0, "队伍中没有角色", true); }
-        } else {
+        } else if !gameplay.available() {
             c.text(180.0, 240.0, "此游戏的角色与物品数据尚未接入", true);
         }
 
@@ -114,7 +123,7 @@ pub struct MenuState(
         for i in Range(0, 8) {
             let x = 38.0 + (i as float) * 88.0;
             let over = inside(nx, ny, x + 35.0, 551.0, 39.0, 40.0);
-            let enabled = i < 3 && gameplay.available();
+            let enabled = (i < 3 || i == 7) && gameplay.available();
             let mut name = TOOLBAR + tabs[i] + "0.tga";
             if self.tab == i {
                 name = TOOLBAR + "Un" + tabs[i] + ".tga";
@@ -123,15 +132,32 @@ pub struct MenuState(
                 name = TOOLBAR + tabs[i] + variant + ".tga";
             }
             c.blit(name, x, 546.0, 110.0, 50.0);
-            if enabled && self.button(i, over, press, release) {
+            if enabled && self.browser.confirmation == 0 && self.button(i, over, press, release) {
                 self.tab = i; self.page = 0; self.item = 0;
+                if i == 7 { self.browser.begin(gameplay.save_slots(), true); }
             }
             if over && !enabled { c.text(312.0, 524.0, "此功能尚未实现", true); }
         }
         let exit_over = inside(nx, ny, 763.0, 547.0, 37.0, 48.0);
         let exit_variant = if exit_over && down { "2" } else { if exit_over { "1" } else { "0" } };
         c.blit(TOOLBAR + "Exit" + exit_variant + ".tga", 763.0, 547.0, 37.0, 48.0);
-        let close = self.button(20, exit_over, press, release);
+        let close = self.browser.confirmation == 0 && self.button(20, exit_over, press, release);
+        if self.tab == 7 {
+            if gameplay.take_load_failed() {
+                self.browser.slots = gameplay.save_slots();
+                self.browser.feedback = "读取失败，存档可能已经改变";
+            }
+            let slot = self.browser.paint(ui, atlas, false, mx, my, press, release, down);
+            if slot > 0 {
+                if self.browser.saving {
+                    let saved = gameplay.save_slot(slot);
+                    self.browser.slots = gameplay.save_slots();
+                    self.browser.feedback = if saved { "保存成功" } else { "保存失败" };
+                } else {
+                    if !gameplay.request_load(slot) { self.browser.feedback = "读取失败，存档可能已经改变"; }
+                }
+            }
+        }
         if !down { self.held = -1; }
         return !close;
     }
@@ -199,7 +225,7 @@ pub struct MenuState(
     }
 }
 
-pub fn make_menu() -> &MenuState { return &MenuState(0, 0, 0, 0, 0, 5, -1); }
+pub fn make_menu() -> &MenuState { return &MenuState(0, 0, 0, 0, 0, 5, -1, save_load.make_browser()); }
 
 fn paint_character(c: &Canvas, game: &openpal3.IPal3MenuState, role: int, column: int) {
     let x = (column as float) * 148.0;

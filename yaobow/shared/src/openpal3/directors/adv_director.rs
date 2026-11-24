@@ -95,11 +95,24 @@ impl AdventureDirector {
         dialog_renderer: ComRc<crate::openpal3::comdef::IPal3DialogRenderer>,
         status_renderer: ComRc<crate::openpal3::comdef::IPal3StatusRenderer>,
     ) -> Option<Self> {
-        let p_state = PersistentState::load(app_name, slot);
+        let p_state = match PersistentState::try_load(app_name, slot) {
+            Ok(state) => state,
+            Err(error) => {
+                log::error!("Cannot load save {slot}: {error}");
+                return None;
+            }
+        };
         let scene_name = p_state.scene_name();
         let sub_scene_name = p_state.sub_scene_name();
         if scene_name.is_none() || sub_scene_name.is_none() {
             log::error!("Cannot load save {}: scene or sub_scene is empty", slot);
+            return None;
+        }
+        if !asset_mgr.scene_exists(
+            scene_name.as_ref().unwrap(),
+            sub_scene_name.as_ref().unwrap(),
+        ) {
+            log::error!("Cannot load save {slot}: saved scene is not installed");
             return None;
         }
 
@@ -108,6 +121,7 @@ impl AdventureDirector {
             sub_scene_name.as_ref().unwrap(),
         );
 
+        scene_manager.unload_all_scenes();
         scene_manager.push_scene(scene);
         scene_manager
             .scn_scene()

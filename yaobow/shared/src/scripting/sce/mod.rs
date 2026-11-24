@@ -214,6 +214,10 @@ impl SceState {
         });
     }
 
+    pub fn advance_dialog_page(&self) -> bool {
+        self.dialog_renderer.advance_page()
+    }
+
     /// Paint the scene-transition curtain/fade for this frame from the
     /// current `curtain` value. Mirrors the legacy
     /// `DialogBox::fade_window` driven by `SceVm::draw_curtain`.
@@ -252,5 +256,17 @@ impl SceState {
     /// without forging a synthetic avatar click.
     pub fn status_renderer(&self) -> ComRc<crate::openpal3::comdef::IPal3StatusRenderer> {
         self.status_renderer.clone()
+    }
+
+    pub fn take_menu_load(&self) -> Option<i32> {
+        self.menu_state
+            .inner::<crate::openpal3::menu_state::Pal3MenuState>()
+            .take_requested_load()
+    }
+
+    pub fn report_menu_load_failed(&self) {
+        self.menu_state
+            .inner::<crate::openpal3::menu_state::Pal3MenuState>()
+            .report_load_failed();
     }
 }

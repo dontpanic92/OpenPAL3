@@ -423,7 +423,7 @@ Differences from PAL4:
 | `POST /v1/player/teleport`            | **Supported**      | Teleports `GlobalState::role_controlled` and mirrors to `PersistentState` |
 | `POST /v1/dialog/advance`             | **Supported**      | Synthesises a `Space` tap |
 | `POST /v1/dialog/choose`              | **not_implemented**| Deferred; needs an injection point in the SCE dialog system. (Under fast-forward, PAL3 auto-picks the first option so runs don't stall.) |
-| `POST /v1/save`                       | **Supported**      | `PersistentState::save` |
+| `POST /v1/save`                       | **Supported**      | Checked `PersistentState::try_save` |
 | `POST /v1/load`                       | **Supported**      | Rebuilds the `AdventureDirector` from the slot (PAL3 has no in-place restore, so the menu/in-game auto-route resolves to the same fresh boot) |
 | `GET  /v1/script/globals`             | **Supported**      | Dense window over `PersistentState::get_global(i16)` |
 | `POST /v1/menu/new_game` / `/v1/menu/exit` | **Supported** | Routed through `Pal3Service`; `--pal3 --agent-port` must have been the launch flag so the asset path is known |
@@ -443,9 +443,8 @@ Differences from PAL4:
   that hands off to `AdventureDirector` on click. `EnterNewGame` and
   `EnterLoadGame` install a fresh adventure director directly on the
   scene manager, skipping the menu.
-* **Save slots**: PAL3 uses slots 1..=4 (matching the legacy quick-save
-  layout). PAL4's slot range is wider — agents that wrap both should
-  probe `IPal3Service::save_slot_count` (or trust the documented `4`).
+* **Save slots**: PAL3 uses slots 1..=36, matching its original save browser.
+  Num1..Num4 remain quick-save shortcuts. Failed writes are reported as errors.
 * **`script_running` semantics**: PAL4 derives this from the
   AngelScript VM call stack. PAL3 ORs the SCE proc stack with the
   inverse of `adv_input_enabled`, so dialogues and movies (which

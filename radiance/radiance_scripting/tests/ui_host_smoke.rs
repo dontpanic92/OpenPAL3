@@ -312,3 +312,74 @@ pub fn entry(ui: &radiance.IUiHost) -> int {
         "expected bool/int mismatch, got: {msg}",
     );
 }
+
+#[test]
+fn background_canvas_clipping_does_not_activate_the_implicit_debug_window() {
+    use radiance_scripting::services::ui_host::{ImguiFrameState, ImguiUiHost, with_imgui_frame};
+
+    struct NoTextures;
+    impl radiance_scripting::TextureResolver for NoTextures {
+        fn resolve(&mut self, _: i64) -> Option<imgui::TextureId> {
+            None
+        }
+    }
+
+    let host = ScriptHost::new();
+    host.load_source(
+        r#"
+        import radiance;
+        pub fn frame(ui: &radiance.IUiHost) {
+            ui.clip_rect(10.0, 20.0, 110.0, 120.0, () => {
+                ui.clip_rect(20.0, 30.0, 100.0, 110.0, () => {
+                    ui.fill_rect(0.0, 0.0, 200.0, 200.0, 1.0, 1.0, 1.0, 1.0);
+                    ui.text_at_size(30.0, 40.0, 20.0, 1.0, 1.0, 1.0, 1.0, "dialog");
+                });
+            });
+        }
+        "#,
+    )
+    .unwrap();
+    let id = host.intern(ImguiUiHost::create());
+    let ui_box = host.foreign_box("radiance.comdef.IUiHost", id).unwrap();
+    let mut context = imgui::Context::create();
+    context.set_ini_filename(None);
+    context.io_mut().display_size = [800.0, 600.0];
+    context.io_mut().delta_time = 1.0 / 60.0;
+    context.fonts().build_rgba32_texture();
+    context.fonts().tex_id = imgui::TextureId::new(1);
+    let fonts = context.fonts().fonts().to_vec();
+    let mut textures = NoTextures;
+
+    for in_window in [false, true] {
+        for dpi in [1.0, 2.0] {
+            let ui = context.frame();
+            let mut frame = ImguiFrameState::new(ui, &mut textures, &fonts, dpi);
+            let mut draw = || {
+                with_imgui_frame(&mut frame, || {
+                    host.call_void("frame", vec![ui_box.clone()]).unwrap();
+                });
+            };
+            if in_window {
+                ui.window("Explicit")
+                    .position([0.0, 0.0], imgui::Condition::Always)
+                    .size([400.0, 300.0], imgui::Condition::Always)
+                    .build(draw);
+            } else {
+                draw();
+            }
+            let data = context.render();
+            assert!(data.total_vtx_count > 0);
+            assert!(data.draw_lists().any(|list| {
+                list.commands().any(|command| {
+                    matches!(command, imgui::DrawCmd::Elements { cmd_params, .. }
+                        if cmd_params.clip_rect == [20.0 * dpi, 30.0 * dpi, 100.0 * dpi, 110.0 * dpi])
+                })
+            }));
+            assert_eq!(
+                context.io().metrics_render_windows,
+                i32::from(in_window),
+                "background-only drawing must not expose ImGui's Debug window"
+            );
+        }
+    }
+}

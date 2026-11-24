@@ -45,18 +45,13 @@ use shared::openpal3::comdef::{
     IPal3StatusRenderer, IPal3UiAtlas,
 };
 use shared::openpal3::directors::AdventureDirector;
-use shared::openpal3::states::persistent_state::PAL3_APP_NAME;
+use shared::openpal3::save_slots::{Pal3SaveSlots, SAVE_SLOT_COUNT};
+use shared::openpal3::states::persistent_state::PersistentState;
 use shared::openpal3::ui_atlas::{AtlasManifest, Pal3UiAtlas};
 use shared::scripting::sce::vm::SceExecutionOptions;
-use shared::ydirs;
 
 use crate::openpal3::debug_layer::OpenPal3DebugLayer;
 use crate::openpal3::sce_proc_hooks::SceRestHooks;
-
-/// Number of save slots surfaced by the load-menu overlay. Matches
-/// the rows accepted by `AdventureDirector::load` (`PersistentState`
-/// slot files `1.json`..`4.json`).
-const SAVE_SLOT_COUNT: i32 = 4;
 
 /// Map a script/registry game ordinal to the PAL3-family `GameType`.
 /// PAL3 and PAL3A share `Pal3Service`; anything else defaults to PAL3.
@@ -279,6 +274,31 @@ impl Pal3Service {
         if self.pending_debug_install.get() {
             self.pending_debug_install.set(false);
             self.install_debug_layer_once();
+        }
+        let Some(current) = self.active_adventure_director_owned() else {
+            return;
+        };
+        let slot = current
+            .inner::<AdventureDirector>()
+            .sce_vm()
+            .state()
+            .take_menu_load();
+        let Some(slot) = slot else {
+            return;
+        };
+        let path = self.last_asset_path.borrow().clone();
+        if let Some(director) = path.and_then(|path| self.load_adventure_director(&path, slot)) {
+            self.app
+                .engine()
+                .borrow()
+                .scene_manager()
+                .set_director(director);
+        } else {
+            current
+                .inner::<AdventureDirector>()
+                .sce_vm()
+                .state()
+                .report_menu_load_failed();
         }
     }
 
@@ -505,7 +525,7 @@ impl IPal3ServiceImpl for Pal3Service {
         let input_engine = self.input_engine_for_director();
 
         let adv = AdventureDirector::new(
-            PAL3_APP_NAME,
+            self.last_game.get().app_name(),
             asset_mgr,
             audio_engine,
             input_engine,
@@ -522,6 +542,9 @@ impl IPal3ServiceImpl for Pal3Service {
     }
 
     fn load_adventure_director(&self, asset_path: &str, slot: i32) -> Option<ComRc<IDirector>> {
+        if !(1..=SAVE_SLOT_COUNT).contains(&slot) {
+            return None;
+        }
         let asset_mgr = self.asset_manager_for(asset_path);
         let dialog_renderer = self.build_dialog_renderer(asset_mgr.clone());
         let status_renderer = self.build_status_renderer(asset_mgr.clone());
@@ -534,7 +557,7 @@ impl IPal3ServiceImpl for Pal3Service {
         let input_engine = self.input_engine_for_director();
 
         let adv = AdventureDirector::load(
-            PAL3_APP_NAME,
+            self.last_game.get().app_name(),
             asset_mgr,
             audio_engine,
             input_engine,
@@ -555,15 +578,15 @@ impl IPal3ServiceImpl for Pal3Service {
         if slot < 1 || slot > SAVE_SLOT_COUNT {
             return false;
         }
-        ydirs::save_dir()
-            .join(PAL3_APP_NAME)
-            .join("Save")
-            .join(format!("{}.json", slot))
-            .is_file()
+        PersistentState::try_load(self.last_game.get().app_name(), slot).is_ok()
     }
 
     fn save_slot_count(&self) -> i32 {
         SAVE_SLOT_COUNT
+    }
+
+    fn save_slots(&self) -> ComRc<shared::openpal3::comdef::IPal3SaveSlots> {
+        Pal3SaveSlots::snapshot(self.last_game.get().app_name())
     }
 
     fn load_menu_bgm(&self, asset_path: &str) -> Option<ComRc<IAudioSource>> {

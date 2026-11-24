@@ -344,18 +344,22 @@ fn handle_save_slot(ctx: &Pal3DispatchCtx, params: SlotParams) -> AgentResponse 
             "no active adventure director — cannot save without an in-progress playthrough",
         ));
     };
-    if params.slot < 1 || params.slot > 4 {
+    if !(1..=super::save_slots::SAVE_SLOT_COUNT).contains(&params.slot) {
         return AgentResponse::err(AgentError::bad_request(format!(
-            "PAL3 save slot must be in 1..=4, got {}",
+            "PAL3 save slot must be in 1..={}, got {}",
+            super::save_slots::SAVE_SLOT_COUNT,
             params.slot
         )));
     }
-    director
+    match director
         .sce_vm()
         .global_state()
         .persistent_state()
-        .save(params.slot);
-    AgentResponse::Ok
+        .try_save(params.slot)
+    {
+        Ok(()) => AgentResponse::Ok,
+        Err(error) => AgentResponse::err(AgentError::internal(format!("Cannot save: {error}"))),
+    }
 }
 
 fn handle_get_globals(ctx: &Pal3DispatchCtx, params: ScriptGlobalsParams) -> AgentResponse {

@@ -73,9 +73,9 @@ interface IPal3Service: IUnknown {
     // overlay renders the slot as selectable.
     bool save_slot_exists(int slot);
 
-    // Number of save slots surfaced by the load-menu overlay. Fixed at
-    // 4 to mirror the original PAL3 quick-save layout.
+    // Original PAL3 save browser has 36 slots.
     int save_slot_count();
+    IPal3SaveSlots save_slots();
 
     // Load the start-menu BGM from this asset path's game vfs and return
     // it as a generic `IAudioSource` the p7 menu holds and drives
@@ -176,6 +176,8 @@ interface IPal3DialogRenderer: IUnknown {
     void set_avatar(&str role, &str face, int side);
     // End of a `dlg` beat: drop the current portrait.
     void clear_avatar();
+    // Advance a wrapped text page; false when the current beat is complete.
+    bool advance_page();
     // Set the curtain/fade level (see interface doc).
     void set_curtain(float value);
 }
@@ -183,8 +185,24 @@ interface IPal3DialogRenderer: IUnknown {
 [uuid(c0373bc2-0823-4093-8f48-d42a076e8a4a)]
 class Pal3DialogRenderer: IPal3DialogRenderer {}
 
-// Read-only live PAL3 gameplay data. Invalid indices return zero, an empty
-// string, or -1 for a missing party member. No getter changes resources.
+// Immutable disk snapshot, refreshed when opening the browser or saving.
+[uuid(5545120b-9ef6-439f-a8dd-d6bdcbece1cb)]
+interface IPal3SaveSlots: IUnknown {
+    int slot_count();
+    // 0 empty, 1 loadable, 2 unreadable/incomplete.
+    int status(int slot);
+    &str scene(int slot);
+    int play_seconds(int slot);
+    int money(int slot);
+    int member_role(int slot, int index);
+    int role_level(int slot, int role);
+}
+
+[uuid(75c0c1a8-19e4-4bd0-84bb-d39c80c67ec5)]
+class Pal3SaveSlots: IPal3SaveSlots {}
+
+// Live PAL3 gameplay data. Invalid indices return zero, an empty string,
+// or -1 for a missing party member. Save/load actions are explicit.
 [uuid(d153792a-889a-434e-a68a-aac20e8bdba0)]
 interface IPal3MenuState: IUnknown {
     bool available();
@@ -204,6 +222,11 @@ interface IPal3MenuState: IUnknown {
     &str item_name(int id);
     &str item_description(int id);
     int item_price(int id);
+    IPal3SaveSlots save_slots();
+    bool save_slot(int slot);
+    // Deferred until the application's next pre-update, outside UI drawing.
+    bool request_load(int slot);
+    bool take_load_failed();
 }
 
 [uuid(367cc58a-61c5-447e-bd05-d855e637bfeb)]

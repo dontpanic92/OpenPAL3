@@ -1,4 +1,8 @@
-use std::{cell::RefCell, collections::HashMap, rc::Rc};
+use std::{
+    cell::{Cell, RefCell},
+    collections::HashMap,
+    rc::Rc,
+};
 
 use crosscom::ComRc;
 
@@ -12,6 +16,8 @@ pub struct Pal3MenuState {
     state: Rc<RefCell<PersistentState>>,
     data: Option<Rc<StatsData>>,
     descriptions: HashMap<u32, String>,
+    pending_load: Cell<Option<i32>>,
+    load_failed: Cell<bool>,
 }
 
 ComObject_Pal3MenuState!(super::Pal3MenuState);
@@ -30,11 +36,58 @@ impl Pal3MenuState {
             state,
             data,
             descriptions,
+            pending_load: Cell::new(None),
+            load_failed: Cell::new(false),
         })
+    }
+
+    pub fn take_requested_load(&self) -> Option<i32> {
+        self.pending_load.take()
+    }
+
+    pub fn report_load_failed(&self) {
+        self.load_failed.set(true);
     }
 }
 
 impl IPal3MenuStateImpl for Pal3MenuState {
+    fn save_slots(&self) -> ComRc<super::comdef::IPal3SaveSlots> {
+        super::save_slots::Pal3SaveSlots::snapshot(self.state.borrow().app_name())
+    }
+
+    fn save_slot(&self, slot: i32) -> bool {
+        if !self.available() || !(1..=super::save_slots::SAVE_SLOT_COUNT).contains(&slot) {
+            return false;
+        }
+        let state = self.state.borrow();
+        if state.scene_name().is_none() || state.sub_scene_name().is_none() {
+            return false;
+        }
+        match state.try_save(slot) {
+            Ok(()) => true,
+            Err(error) => {
+                log::error!("Cannot save slot {slot}: {error}");
+                false
+            }
+        }
+    }
+
+    fn request_load(&self, slot: i32) -> bool {
+        if !self.available() || !(1..=super::save_slots::SAVE_SLOT_COUNT).contains(&slot) {
+            return false;
+        }
+        if PersistentState::try_load(self.state.borrow().app_name(), slot).is_err() {
+            return false;
+        }
+        self.pending_load.set(Some(slot));
+        self.load_failed.set(false);
+        true
+    }
+
+    fn take_load_failed(&self) -> bool {
+        self.load_failed.replace(false)
+    }
+
     fn available(&self) -> bool {
         self.data.is_some()
     }
