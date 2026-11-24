@@ -103,6 +103,11 @@ impl AdventureDirector {
         );
 
         scene_manager.push_scene(scene);
+        scene_manager
+            .scn_scene()
+            .unwrap()
+            .inner::<crate::openpal3::scene::ScnScene>()
+            .restore_mechanisms(&p_state);
 
         let mut global_state = GlobalState::new(
             asset_mgr.clone(),
@@ -367,10 +372,19 @@ impl AdventureDirectorProps {
             scene.set_active(!freeze);
         }
 
-        if !adv_enabled {
+        if freeze {
             return None;
         }
-        if freeze {
+
+        if let Some(scene) = self.scene_manager.scn_scene() {
+            let scene = scene.inner::<crate::openpal3::scene::ScnScene>();
+            let procs = scene.update_mechanisms(delta_sec);
+            scene.snapshot_mechanisms(&mut self.sce_vm.global_state_mut().persistent_state_mut());
+            for proc_id in procs {
+                self.sce_vm.call_proc(proc_id);
+            }
+        }
+        if !adv_enabled {
             return None;
         }
 
@@ -477,12 +491,15 @@ impl AdventureDirectorProps {
                 let scene = scene_rc.inner::<crate::openpal3::scene::ScnScene>();
                 scene
                     .test_aabb_trigger(&position)
-                    .or_else(|| scene.test_item_trigger(&position))
-                    .or_else(|| {
-                        scene.test_role_trigger(
-                            &position,
-                            self.sce_vm.global_state().role_controlled(),
-                        )
+                    .map(Some)
+                    .or_else(|| scene.interact_mechanism(nav_layer, &position))
+                    .unwrap_or_else(|| {
+                        scene.test_item_trigger(&position).or_else(|| {
+                            scene.test_role_trigger(
+                                &position,
+                                self.sce_vm.global_state().role_controlled(),
+                            )
+                        })
                     })
             };
             if let Some(proc_id) = trigger_proc_id {

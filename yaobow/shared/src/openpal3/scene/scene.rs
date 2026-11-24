@@ -1,8 +1,13 @@
+use super::{
+    cvd_entity,
+    mechanism::{Activation, Mechanism},
+};
 use crate::openpal3::asset_manager::AssetManager;
 use crate::openpal3::comdef::IRoleController;
 use crate::openpal3::loaders::nav_loader::{NavFile, NavMapPoint};
 use crate::openpal3::loaders::scn_loader::ScnFile;
 use crate::openpal3::scene::RoleController;
+use crate::openpal3::states::persistent_state::PersistentState;
 use crosscom::ComRc;
 use radiance::comdef::{IComponentImpl, IEntity, IEntityExt, IScene, ISceneExt};
 use radiance::math::Vec3;
@@ -21,6 +26,7 @@ pub struct ScnScene {
     aabb_triggers: RefCell<Vec<SceAabbTrigger>>,
     item_triggers: RefCell<Vec<SceItemTrigger>>,
     ladder_triggers: RefCell<Vec<LadderTrigger>>,
+    mechanisms: RefCell<Vec<Mechanism>>,
 }
 
 ComObject_ScnSceneComponent!(super::ScnScene);
@@ -45,6 +51,15 @@ impl ScnScene {
         scn_file: ScnFile,
         nav_file: NavFile,
     ) -> Self {
+        let mechanisms = if asset_mgr.game() == crate::GameType::PAL3 {
+            scn_file
+                .nodes
+                .iter()
+                .filter_map(Mechanism::from_node)
+                .collect()
+        } else {
+            vec![]
+        };
         Self {
             scene,
             asset_mgr: asset_mgr.clone(),
@@ -56,7 +71,175 @@ impl ScnScene {
             aabb_triggers: RefCell::new(vec![]),
             item_triggers: RefCell::new(vec![]),
             ladder_triggers: RefCell::new(vec![]),
+            mechanisms: RefCell::new(mechanisms),
         }
+    }
+
+    pub fn snapshot_mechanisms(&self, state: &mut PersistentState) {
+        state.set_mechanism_states(
+            self.name(),
+            self.sub_name(),
+            self.mechanisms
+                .borrow()
+                .iter()
+                .map(|m| (m.id, m.saved_state()))
+                .collect(),
+        );
+    }
+
+    pub fn restore_mechanisms(&self, state: &PersistentState) {
+        let saved = state.mechanism_states(self.name(), self.sub_name());
+        for mechanism in self.mechanisms.borrow_mut().iter_mut() {
+            if let Some(state) = saved.and_then(|s| s.get(&mechanism.id)) {
+                mechanism.restore(state);
+            } else if mechanism.kind == 22 {
+                if let Some(node) = self.scn_file.nodes.iter().find(|n| n.index == mechanism.id) {
+                    let link = &node.b14a;
+                    if link.len() >= 33 && link[0] != 0 && link[32] != 255 {
+                        let end = link[..32].iter().position(|b| *b == 0).unwrap_or(32);
+                        let sub_scene = String::from_utf8_lossy(&link[..end]);
+                        if state
+                            .mechanism_states(self.name(), &sub_scene)
+                            .and_then(|states| states.get(&(link[32] as u16)))
+                            .is_some_and(|s| s.switched != 0)
+                        {
+                            mechanism.restore_raised();
+                        }
+                    }
+                }
+            }
+            self.apply_mechanism_pose(mechanism, mechanism.pose_at_end());
+        }
+    }
+
+    fn apply_mechanism_pose(&self, mechanism: &Mechanism, end: bool) {
+        if let Some(entity) = self.get_root_object(mechanism.id as i32) {
+            if mechanism.kind == 22 {
+                let transform = entity.transform();
+                let mut transform = transform.borrow_mut();
+                let mut position = transform.position();
+                position.y = mechanism.state.height;
+                transform.set_position(&position);
+                if let Some(node) = self.scn_file.nodes.iter().find(|n| n.index == mechanism.id) {
+                    if let Some(carried) = self.get_root_object(node.ladder_nav_coord2.0 as i32) {
+                        // Param 2 identifies an object carried by the platform (0x42b3c4).
+                        if node.ladder_nav_coord2.0 as u16 != mechanism.id {
+                            let position = carried.transform().borrow().position();
+                            carried.transform().borrow_mut().set_position(&Vec3::new(
+                                position.x,
+                                mechanism.state.height,
+                                position.z,
+                            ));
+                        }
+                    }
+                }
+            } else {
+                let time = mechanism.animation_time().unwrap_or_else(|| {
+                    if end {
+                        cvd_entity::animation_duration(&entity)
+                    } else {
+                        0.
+                    }
+                });
+                cvd_entity::set_animation_time(&entity, time);
+            }
+        }
+    }
+
+    pub fn trigger_mechanism(&self, id: u16) {
+        let mut mechanisms = self.mechanisms.borrow_mut();
+        if let Some(mechanism) = mechanisms.iter_mut().find(|m| m.id == id) {
+            if mechanism.activate(true) == Activation::Started {
+                self.apply_mechanism_pose(mechanism, false);
+            }
+        } else {
+            log::warn!(
+                "Unsupported PAL3 native Trigger({}) in {}/{}",
+                id,
+                self.name(),
+                self.sub_name()
+            );
+        }
+    }
+
+    pub fn switch_state(&self, id: u16) -> u8 {
+        self.mechanisms
+            .borrow()
+            .iter()
+            .find(|m| m.id == id)
+            .map(|m| m.state.switched)
+            .or_else(|| {
+                self.scn_file
+                    .nodes
+                    .iter()
+                    .find(|n| n.index == id)
+                    .map(|n| n.switch_state)
+            })
+            .unwrap_or(0)
+    }
+
+    /// Outer Option marks a consumed interaction, even when no script is called.
+    pub fn interact_mechanism(&self, layer: usize, position: &Vec3) -> Option<Option<u32>> {
+        for mechanism in self.mechanisms.borrow_mut().iter_mut() {
+            let visible = self
+                .get_root_object(mechanism.id as i32)
+                .map(|e| e.visible())
+                .unwrap_or(mechanism.active);
+            if mechanism.kind != 23
+                || !visible
+                || mechanism.layer as usize != layer
+                || Vec3::sub(
+                    position,
+                    &self
+                        .get_root_object(mechanism.id as i32)
+                        .map(|e| e.transform().borrow().position())
+                        .unwrap_or(mechanism.position),
+                )
+                .norm2()
+                    >= 200. * 200.
+            {
+                continue;
+            }
+            mechanism.active = visible;
+            match mechanism.activate(false) {
+                Activation::Ignored => continue,
+                Activation::Script(proc_id) => return Some(Some(proc_id)),
+                Activation::Started => {
+                    self.apply_mechanism_pose(mechanism, false);
+                    return Some(None);
+                }
+            }
+        }
+        None
+    }
+
+    pub fn update_mechanisms(&self, delta_sec: f32) -> Vec<u32> {
+        let mut procs = vec![];
+        let mut links = vec![];
+        for mechanism in self.mechanisms.borrow_mut().iter_mut() {
+            let duration = self
+                .get_root_object(mechanism.id as i32)
+                .map(|e| cvd_entity::animation_duration(&e))
+                .unwrap_or(0.);
+            let animating = mechanism.animation_time().is_some();
+            let completed = mechanism.update(delta_sec, duration);
+            if mechanism.kind == 22 || animating {
+                self.apply_mechanism_pose(mechanism, completed);
+            }
+            if completed {
+                if let Some(proc_id) = mechanism.completion_proc() {
+                    procs.push(proc_id);
+                }
+                if mechanism.target != u16::MAX {
+                    links.push(mechanism.target);
+                }
+            }
+        }
+        // Start links after releasing the state borrow; cycles advance at most once per tick.
+        for target in links {
+            self.trigger_mechanism(target);
+        }
+        procs
     }
 
     pub fn name(&self) -> &str {
@@ -511,8 +694,13 @@ impl ScnScene {
                 }
                 ScnNodeTypes::ITEM_TRIGGER
                 | ScnNodeTypes::ITEM_TRIGGER2
-                | ScnNodeTypes::ITEM_TRIGGER3
-                | ScnNodeTypes::TRIGGER_SOURCE => {
+                | ScnNodeTypes::ITEM_TRIGGER3 => {
+                    self.item_triggers.borrow_mut().push(SceItemTrigger {
+                        coord: obj.position,
+                        sce_proc_id: obj.sce_proc_id,
+                    });
+                }
+                ScnNodeTypes::TRIGGER_SOURCE if self.asset_mgr.game() != crate::GameType::PAL3 => {
                     self.item_triggers.borrow_mut().push(SceItemTrigger {
                         coord: obj.position,
                         sce_proc_id: obj.sce_proc_id,
@@ -531,6 +719,11 @@ impl ScnScene {
 
             if let Some(p) = entity {
                 Self::apply_position_rotation(p.clone(), &obj.position, obj.rotation.to_radians());
+                if self.asset_mgr.game() == crate::GameType::PAL3
+                    && matches!(obj.node_type, 22 | 23)
+                {
+                    p.set_visible(obj.active != 0);
+                }
                 entities.push(p);
             }
         }

@@ -6,7 +6,7 @@ use crate::openpal3::loaders::cvd_loader::{
 use crosscom::ComRc;
 use mini_fs::{MiniFs, StoreExt};
 use radiance::comdef::{IComponentImpl, IEntity, IEntityExt};
-use radiance::math::{Vec2, Vec3};
+use radiance::math::{Quaternion, Transform, Vec2, Vec3};
 use radiance::rendering::{
     ComponentFactory, MaterialDef, Pal3PropMaterialDef, VertexBuffer, VertexComponents,
 };
@@ -86,6 +86,7 @@ fn new_from_cvd_model_node<P: AsRef<Path>>(
         position_keyframes,
         rotation_keyframes,
         scale_keyframes,
+        scale_factor,
         meshes,
     };
 
@@ -138,6 +139,7 @@ pub struct CvdModelComponent {
     position_keyframes: Option<CvdPositionKeyFrames>,
     rotation_keyframes: Option<CvdRotationKeyFrames>,
     scale_keyframes: Option<CvdScaleKeyFrames>,
+    scale_factor: f32,
     meshes: Vec<CvdMesh>,
 }
 
@@ -175,6 +177,7 @@ impl CvdModelComponent {
             position_keyframes: None,
             rotation_keyframes: None,
             scale_keyframes: None,
+            scale_factor: 1.,
             meshes: vec![],
         }
     }
@@ -221,6 +224,130 @@ impl CvdModelComponent {
                 .scale_local(&scale)
                 .rotate_quaternion_local(&q3);
         }
+    }
+
+    fn duration(&self) -> f32 {
+        [
+            self.position_keyframes
+                .as_ref()
+                .map(|k| track_duration(&k.frames, |k| k.timestamp)),
+            self.rotation_keyframes
+                .as_ref()
+                .map(|k| track_duration(&k.frames, |k| k.timestamp)),
+            self.scale_keyframes
+                .as_ref()
+                .map(|k| track_duration(&k.frames, |k| k.timestamp)),
+        ]
+        .into_iter()
+        .flatten()
+        .fold(0., f32::max)
+    }
+
+    fn set_time(&self, time: f32) {
+        // Linear tracks/slerp are used until the CVD spline parameters are decoded.
+        let mut transform = Transform::new();
+        if let Some(keys) = &self.position_keyframes {
+            if let Some((a, b, t)) = sample_pair(&keys.frames, time, |k| k.timestamp) {
+                transform.translate_local(&Vec3::lerp(&a.position, &b.position, t));
+            }
+        }
+        transform.scale_local(&Vec3::new(
+            self.scale_factor,
+            self.scale_factor,
+            self.scale_factor,
+        ));
+        if let Some(keys) = &self.rotation_keyframes {
+            if let Some((a, b, t)) = sample_pair(&keys.frames, time, |k| k.timestamp) {
+                transform.rotate_quaternion_local(&Quaternion::slerp(
+                    &a.quaternion,
+                    &b.quaternion,
+                    t,
+                ));
+            }
+        }
+        if let Some(keys) = &self.scale_keyframes {
+            if let Some((a, b, t)) = sample_pair(&keys.frames, time, |k| k.timestamp) {
+                let q = Quaternion::slerp(&a.quaternion, &b.quaternion, t);
+                let mut inverse = q;
+                inverse.inverse();
+                transform
+                    .rotate_quaternion_local(&q)
+                    .scale_local(&Vec3::lerp(&a.scale, &b.scale, t))
+                    .rotate_quaternion_local(&inverse);
+            }
+        }
+        self.entity
+            .transform()
+            .borrow_mut()
+            .set_matrix(*transform.matrix());
+    }
+}
+
+fn sample_pair<T>(keys: &[T], time: f32, timestamp: impl Fn(&T) -> f32) -> Option<(&T, &T, f32)> {
+    let first = keys.first()?;
+    // gbGeomNode's original track loader subtracts each track's first timestamp.
+    let time = time + timestamp(first);
+    let upper = keys.partition_point(|k| timestamp(k) <= time);
+    if upper == 0 {
+        return Some((first, first, 0.));
+    }
+    let a = &keys[upper - 1];
+    let Some(b) = keys.get(upper) else {
+        return Some((a, a, 0.));
+    };
+    let span = timestamp(b) - timestamp(a);
+    Some((
+        a,
+        b,
+        if span > 0. {
+            (time - timestamp(a)) / span
+        } else {
+            0.
+        },
+    ))
+}
+
+fn track_duration<T>(keys: &[T], timestamp: impl Fn(&T) -> f32) -> f32 {
+    keys.first()
+        .zip(keys.last())
+        .map(|(first, last)| timestamp(last) - timestamp(first))
+        .unwrap_or(0.)
+}
+
+pub(super) fn animation_duration(entity: &ComRc<IEntity>) -> f32 {
+    let own = entity
+        .get_component(ICvdModel::uuid())
+        .map(|c| c.inner::<CvdModelComponent>().duration())
+        .unwrap_or(0.);
+    entity
+        .children()
+        .iter()
+        .map(animation_duration)
+        .fold(own, f32::max)
+}
+
+pub(super) fn set_animation_time(entity: &ComRc<IEntity>, time: f32) {
+    // Keep the scene object's placement; only animate its CVD-local children.
+    for child in entity.children() {
+        if let Some(component) = child.get_component(ICvdModel::uuid()) {
+            component.inner::<CvdModelComponent>().set_time(time);
+        }
+        set_animation_time(&child, time);
+    }
+}
+
+#[cfg(test)]
+mod animation_tests {
+    use super::*;
+
+    #[test]
+    fn mechanism_tracks_normalize_time_and_clamp_at_endpoints() {
+        let keys = [5., 6., 8.];
+        assert_eq!(track_duration(&keys, |t| *t), 3.);
+        assert_eq!(sample_pair(&keys, -1., |t| *t), Some((&5., &5., 0.)));
+        assert_eq!(sample_pair(&keys, 2., |t| *t), Some((&6., &8., 0.5)));
+        assert_eq!(sample_pair(&keys, 10., |t| *t), Some((&8., &8., 0.)));
+        assert!(sample_pair::<f32>(&[], 0., |t| *t).is_none());
     }
 }
 

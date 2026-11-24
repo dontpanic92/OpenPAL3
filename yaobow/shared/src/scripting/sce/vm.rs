@@ -675,7 +675,7 @@ impl SceProcContext {
             }
             124 => {
                 // Trigger
-                nop_command!(self, Trigger, i32)
+                command!(self, SceCommandTrigger, id: i32)
             }
             125 => {
                 // SetBigMapElement
@@ -683,7 +683,7 @@ impl SceProcContext {
             }
             126 => {
                 // GetSwitch
-                nop_command!(self, GetSwitch, string, i32, i16)
+                command!(self, SceCommandGetSwitch, sub_scene: string, id: i32, var: i16)
             }
             127 => {
                 command!(self, SceCommandEntryRow, id: i32, proc_id: i32)
@@ -948,6 +948,53 @@ mod data_read {
                 string(context)
             })
             .collect()
+    }
+}
+
+#[cfg(test)]
+mod mechanism_tests {
+    use super::*;
+    use crate::openpal3::loaders::sce_loader::{SceProc, SceProcHeader};
+
+    #[test]
+    fn trigger_and_get_switch_decode_reversed_arguments_without_losing_alignment() {
+        let mut inst = vec![];
+        inst.extend_from_slice(&124u16.to_le_bytes());
+        inst.extend_from_slice(&0u16.to_le_bytes());
+        inst.extend_from_slice(&8i32.to_le_bytes());
+        inst.extend_from_slice(&126u16.to_le_bytes());
+        inst.extend_from_slice(&4u16.to_le_bytes());
+        inst.extend_from_slice(&3i16.to_le_bytes());
+        inst.extend_from_slice(&9i32.to_le_bytes());
+        inst.extend_from_slice(&3u16.to_le_bytes());
+        inst.extend_from_slice(b"D1\0");
+        let sce = Rc::new(SceFile {
+            proc_num: 1,
+            proc_headers: vec![SceProcHeader {
+                id: 500,
+                offset: 0,
+                name: "test".into(),
+            }],
+            procs: HashMap::from([(
+                500,
+                SceProc {
+                    id: 500,
+                    name: "test".into(),
+                    local_vars: vec![],
+                    inst,
+                },
+            )]),
+        });
+        let mut context = SceProcContext::new_from_id(sce, 500);
+        assert_eq!(
+            context.get_next_cmd().unwrap().debug(),
+            "SceCommandTrigger { id: 8 }"
+        );
+        assert_eq!(
+            context.get_next_cmd().unwrap().debug(),
+            "SceCommandGetSwitch { sub_scene: \"D1\", id: 9, var: 3 }"
+        );
+        assert!(context.get_next_cmd().is_none());
     }
 }
 

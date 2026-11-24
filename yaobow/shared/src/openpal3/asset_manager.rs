@@ -71,6 +71,10 @@ impl AssetManager {
         &self.vfs
     }
 
+    pub fn game(&self) -> GameType {
+        self.game
+    }
+
     pub fn vfs_rc(&self) -> Rc<MiniFs> {
         self.vfs.clone()
     }

@@ -13,7 +13,9 @@ use crate::GameType;
 #[derive(Debug, Clone, Serialize)]
 pub struct ScnNode {
     pub index: u16,
-    pub w2: u16,
+    pub active: u8,
+    pub remaining_triggers: u8,
+    pub switch_state: u8,
     pub name: String,
     pub w24: u16,
     pub w26: u16,
@@ -213,8 +215,10 @@ fn read_scn_role(reader: &mut dyn Read) -> ScnRole {
 }
 
 fn read_scn_node(reader: &mut dyn Read, game: GameType) -> ScnNode {
-    let index = reader.read_u16::<LittleEndian>().unwrap();
-    let w2 = reader.read_u16::<LittleEndian>().unwrap();
+    let index = reader.read_u8().unwrap() as u16;
+    let active = reader.read_u8().unwrap();
+    let remaining_triggers = reader.read_u8().unwrap();
+    let switch_state = reader.read_u8().unwrap();
     let name = reader.read_gbk_string(32).unwrap();
     let w24 = reader.read_u16::<LittleEndian>().unwrap();
     let w26 = reader.read_u16::<LittleEndian>().unwrap();
@@ -258,7 +262,9 @@ fn read_scn_node(reader: &mut dyn Read, game: GameType) -> ScnNode {
 
     ScnNode {
         index,
-        w2,
+        active,
+        remaining_triggers,
+        switch_state,
         name,
         w24,
         w26,
@@ -283,5 +289,30 @@ fn read_scn_node(reader: &mut dyn Read, game: GameType) -> ScnNode {
         aabb_trigger_coord2: Vec3::new(vec2_x, vec2_y, vec2_z),
         dw184,
         b,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Cursor;
+
+    #[test]
+    fn mechanism_node_id_is_not_packed_with_active_flag() {
+        for (game, size) in [(GameType::PAL3, 620), (GameType::PAL3A, 604)] {
+            let mut data = vec![0; size];
+            data[..4].copy_from_slice(&[8, 1, 255, 1]);
+            data[0x48..0x4a].copy_from_slice(&23u16.to_le_bytes());
+            data[0x148..0x14a].copy_from_slice(&3u16.to_le_bytes());
+            let mut reader = Cursor::new(data);
+            let node = read_scn_node(&mut reader, game);
+            assert_eq!(node.index, 8);
+            assert_eq!(node.active, 1);
+            assert_eq!(node.remaining_triggers, 255);
+            assert_eq!(node.switch_state, 1);
+            assert_eq!(node.node_type, 23);
+            assert_eq!(node.w148, 3);
+            assert_eq!(reader.position(), size as u64);
+        }
     }
 }
