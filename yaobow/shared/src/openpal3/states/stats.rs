@@ -155,7 +155,7 @@ impl CharacterStats {
         &self.equipment
     }
 
-    pub fn attributes(&self, data: &StatsData) -> Attributes {
+    fn attributes(&self, data: &StatsData, magic_sword: &MagicSwordStats) -> Attributes {
         let mut values = self.base.values();
         // Native 0x40be80: weapon modifiers only use the first seven amounts.
         for (slot, id) in self.equipment.iter().enumerate() {
@@ -170,12 +170,18 @@ impl CharacterStats {
                     *value = value.wrapping_add(1);
                 }
             }
+            if slot == 5 && item.id == 6603 {
+                values[3] = values[3].wrapping_add(magic_sword.attack_bonus);
+                if let Some(&element) = [0, 1, 3, 2, 4].get(magic_sword.element as usize) {
+                    values[7 + element] = values[7 + element].wrapping_add(1);
+                }
+            }
         }
         Attributes::from_values(values)
     }
 
-    fn clamp_resources(&mut self, data: &StatsData) {
-        let max = self.attributes(data).resources();
+    fn clamp_resources(&mut self, data: &StatsData, magic_sword: &MagicSwordStats) {
+        let max = self.attributes(data, magic_sword).resources();
         self.current.hp = self.current.hp.clamp(0, max.hp.max(0));
         self.current.qi = self.current.qi.clamp(0, max.qi.max(0));
         self.current.mp = self.current.mp.clamp(0, max.mp.max(0));
@@ -183,14 +189,32 @@ impl CharacterStats {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+struct MagicSwordStats {
+    attack_bonus: i32,
+    element: i32,
+}
+
+impl Default for MagicSwordStats {
+    fn default() -> Self {
+        // Native reset 0x4078b8 / 0x4078dc seeds wind and +35 attack.
+        Self {
+            attack_bonus: 35,
+            element: 3,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StatsState {
     characters: [CharacterStats; 5],
+    magic_sword: MagicSwordStats,
 }
 
 impl Default for StatsState {
     fn default() -> Self {
         Self {
             characters: std::array::from_fn(CharacterStats::new),
+            magic_sword: MagicSwordStats::default(),
         }
     }
 }
@@ -200,9 +224,29 @@ impl StatsState {
         self.characters.get(role_id as usize)
     }
 
+    pub fn attributes(&self, role_id: i32, data: &StatsData) -> Option<Attributes> {
+        self.character(role_id)
+            .map(|character| character.attributes(data, &self.magic_sword))
+    }
+
+    pub(crate) fn set_jingtian_weapon(&mut self, id: u32, data: &StatsData) {
+        self.characters[0].equipment[5] = Some(id);
+        self.characters[0].clamp_resources(data, &self.magic_sword);
+    }
+
+    pub(crate) fn remove_equipped_item(&mut self, id: u32, slots: std::ops::Range<usize>) {
+        for character in &mut self.characters {
+            for slot in &mut character.equipment[slots.clone()] {
+                if *slot == Some(id) {
+                    *slot = None;
+                }
+            }
+        }
+    }
+
     pub fn fill_all_resources(&mut self, data: &StatsData) {
         for character in &mut self.characters {
-            character.current = character.attributes(data).resources();
+            character.current = character.attributes(data, &self.magic_sword).resources();
         }
     }
 
@@ -217,7 +261,7 @@ impl StatsState {
             return false;
         };
         *character.current.get_mut(resource) = value;
-        character.clamp_resources(data);
+        character.clamp_resources(data, &self.magic_sword);
         true
     }
 
@@ -225,7 +269,7 @@ impl StatsState {
         let Some(character) = self.characters.get_mut(role_id as usize) else {
             return false;
         };
-        let mut max = character.attributes(data).resources();
+        let mut max = character.attributes(data, &self.magic_sword).resources();
         *character.current.get_mut(resource) = *max.get_mut(resource);
         true
     }
@@ -243,7 +287,7 @@ impl StatsState {
         let bonus = bonus.values();
         character.base =
             Attributes::from_values(std::array::from_fn(|i| base[i].wrapping_add(bonus[i])));
-        character.clamp_resources(data);
+        character.clamp_resources(data, &self.magic_sword);
         true
     }
 
@@ -273,7 +317,7 @@ impl StatsState {
             base[i] = base[i].wrapping_sub(old[i]).wrapping_add(new[i]);
         }
         character.base = Attributes::from_values(base);
-        character.clamp_resources(data);
+        character.clamp_resources(data, &self.magic_sword);
         true
     }
 
@@ -307,7 +351,7 @@ impl StatsState {
         let mut base = character.base.values();
         base[..5].copy_from_slice(&new);
         character.base = Attributes::from_values(base);
-        character.current = character.attributes(data).resources();
+        character.current = character.attributes(data, &self.magic_sword).resources();
         true
     }
 }
@@ -348,6 +392,28 @@ mod tests {
     use crate::openpal3::loaders::stats::test_data;
 
     #[test]
+    fn equipped_item_cleanup_distinguishes_all_slots_from_linked_accessories() {
+        let mut stats = StatsState::default();
+        for role in &mut stats.characters {
+            role.equipment = [Some(8150); 6];
+        }
+        stats.remove_equipped_item(8150, 3..5);
+        for role in &stats.characters {
+            assert_eq!(
+                role.equipment,
+                [Some(8150), Some(8150), Some(8150), None, None, Some(8150)]
+            );
+        }
+        stats.remove_equipped_item(8150, 0..6);
+        assert!(
+            stats
+                .characters
+                .iter()
+                .all(|role| role.equipment == [None; 6])
+        );
+    }
+
+    #[test]
     fn native_seeds_and_growth_use_final_f32_and_ties_even_rounding() {
         let stats = StatsState::default();
         for (role, level, exp, expected) in [
@@ -373,7 +439,7 @@ mod tests {
         let mut stats = StatsState::default();
         stats.fill_all_resources(&data);
         let character = stats.character(1).unwrap();
-        let attributes = character.attributes(&data);
+        let attributes = stats.attributes(1, &data).unwrap();
         assert_eq!(attributes.hp, 87);
         assert_eq!(attributes.attack, 35);
         assert_eq!(attributes.defense, 14);
@@ -395,7 +461,7 @@ mod tests {
         let mut stats = StatsState::default();
         stats.characters[1].equipment[0] = Some(99999);
         assert_eq!(
-            stats.character(1).unwrap().attributes(&data),
+            stats.attributes(1, &data).unwrap(),
             Attributes {
                 hp: 107,
                 qi: 15,

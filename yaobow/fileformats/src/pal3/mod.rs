@@ -1,6 +1,6 @@
 //! Pure-Rust decoders for PAL3 game assets.
 //!
-//! [`gdb`] reads item stat metadata from the compiled gameplay database.
+//! [`gdb`] reads item definitions from the compiled gameplay database.
 //!
 //! Each PAL3 scene block ships a `<index>.lgt` / `<index>.dkl` / `<index>.DKM`
 //! triple alongside its `.scn` / `.pol` data:

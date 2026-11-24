@@ -1,9 +1,9 @@
+use crate::GameType;
 use crate::scripting::sce::{SceCommand, SceState};
 use crosscom::ComRc;
 use imgui::Ui;
 use radiance::comdef::ISceneManager;
 
-#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct SceCommandHaveItem {
     item_id: i32,
@@ -17,8 +17,16 @@ impl SceCommand for SceCommandHaveItem {
         state: &mut SceState,
         _delta_sec: f32,
     ) -> bool {
-        // TODO
-        state.global_state_mut().fop_state_mut().push_value(true);
+        let has_item = state.asset_mgr().game() != GameType::PAL3
+            || state
+                .global_state_mut()
+                .persistent_state()
+                .inventory()
+                .contains(self.item_id as u32);
+        state
+            .global_state_mut()
+            .fop_state_mut()
+            .push_value(has_item);
         true
     }
 }

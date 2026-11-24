@@ -7,6 +7,7 @@ use crate::openpal3::loaders::stats::StatsData;
 use crate::openpal3::scene::MechanismState;
 use crate::ydirs;
 
+use super::inventory::{InventoryState, linked_items};
 use super::party::PartyState;
 use super::stats::{Resource, StatsState};
 
@@ -24,6 +25,7 @@ pub struct PersistentState {
     party: PartyState,
     money: i32,
     stats: StatsState,
+    inventory: InventoryState,
     scene: Option<String>,
     sub_scene: Option<String>,
     #[serde(default)]
@@ -41,6 +43,7 @@ impl PersistentState {
             party: PartyState::default(),
             money: 0,
             stats: StatsState::default(),
+            inventory: InventoryState::default(),
             scene: None,
             sub_scene: None,
             scene_mechanisms: HashMap::new(),
@@ -142,6 +145,59 @@ impl PersistentState {
         &mut self.stats
     }
 
+    pub fn inventory(&self) -> &InventoryState {
+        &self.inventory
+    }
+
+    pub fn add_item(&mut self, item_id: i32, count: i32, data: &StatsData) -> bool {
+        let id = item_id as u32;
+        let Some(item) = data.item(id) else {
+            return false;
+        };
+        // Native AddItem auto-equips only weapons usable by Jing Tian.
+        if item.category == 11 && item.usable_by[0] {
+            let current = self.stats.character(0).unwrap().equipment()[5];
+            let equipped = match current {
+                Some(6603) => {
+                    self.inventory.add_stack(id, count);
+                    6603
+                }
+                // While Zhenyaojian is equipped, other grants are discarded except Mojian.
+                Some(6602) if id != 6603 => 6602,
+                _ => {
+                    if let Some(previous) = current {
+                        self.inventory.add_stack(previous, 1);
+                    }
+                    id
+                }
+            };
+            self.stats.set_jingtian_weapon(equipped, data);
+        } else {
+            self.inventory.add_stack(id, count);
+            for &linked in linked_items(id) {
+                self.inventory.add_stack(linked, 1);
+            }
+        }
+        true
+    }
+
+    pub fn remove_item(&mut self, item_id: i32, data: &StatsData) -> bool {
+        let id = item_id as u32;
+        if data.item(id).is_none() {
+            return false;
+        }
+        self.stats.remove_equipped_item(id, 0..6);
+        self.inventory.remove_one(id);
+        for &linked in linked_items(id) {
+            self.inventory.remove_one(linked);
+        }
+        // The extra earth-pearl consumable (6427) is removed only from the bag.
+        for &linked in linked_items(id).iter().take(1) {
+            self.stats.remove_equipped_item(linked, 3..5);
+        }
+        true
+    }
+
     pub fn restore_attribute(&mut self, role_id: i32, selector: i32, data: &StatsData) -> bool {
         let Ok(resource) = Resource::try_from(selector) else {
             return false;
@@ -210,6 +266,114 @@ mod gameplay_tests {
     };
 
     #[test]
+    fn inventory_commands_remove_one_copy_and_clear_even_inactive_roles_equipment() {
+        let data = test_data();
+        let mut state = PersistentState::new(PAL3_APP_NAME.into());
+        assert!(state.inventory().stacks().is_empty());
+        state.add_item(42, 3, &data);
+        state.add_item(6008, 2, &data);
+        state.remove_item(42, &data);
+        assert_eq!(state.inventory().quantity(42), 2);
+        assert_eq!(state.inventory().quantity(6008), 2);
+        assert!(!state.party().contains(1));
+        assert_eq!(state.stats().attributes(1, &data).unwrap().attack, 35);
+        state.remove_item(82201, &data);
+        assert_eq!(state.stats().character(1).unwrap().equipment()[5], None);
+        assert_eq!(state.stats().attributes(1, &data).unwrap().attack, 28);
+        let before = serde_json::to_string(&state).unwrap();
+        assert!(!state.add_item(-1, 1, &data));
+        assert!(!state.remove_item(123456, &data));
+        assert_eq!(serde_json::to_string(&state).unwrap(), before);
+    }
+
+    #[test]
+    fn pearl_grants_and_removals_apply_linked_items_once_per_command() {
+        let data = test_data();
+        let mut state = PersistentState::new(PAL3_APP_NAME.into());
+        for (primary, linked) in [
+            (6119, 8146),
+            (6120, 8147),
+            (6122, 8149),
+            (6123, 8150),
+            (6124, 8151),
+            (6125, 8152),
+        ] {
+            state.add_item(primary, 3, &data);
+            assert_eq!(state.inventory().quantity(primary as u32), 3);
+            assert_eq!(state.inventory().quantity(linked), 1);
+            state.remove_item(primary, &data);
+            assert_eq!(state.inventory().quantity(primary as u32), 2);
+            assert!(!state.inventory().contains(linked));
+        }
+        assert!(!state.inventory().contains(6427));
+        state.add_item(8146, 2, &data);
+        for _ in 0..3 {
+            state.remove_item(6119, &data);
+        }
+        assert!(!state.inventory().contains(6119));
+        assert!(!state.inventory().contains(8146));
+    }
+
+    #[test]
+    fn script_weapon_grants_obey_both_story_swords_and_preserve_injuries() {
+        let data = test_data();
+        let mut state = PersistentState::new(PAL3_APP_NAME.into());
+        state.stats_mut().set_resource(0, Resource::Hp, 12, &data);
+        for (id, equipped, wooden_in_bag) in [
+            (6601, 6601, 0),
+            (6602, 6602, 1),
+            (6601, 6602, 1),
+            (6603, 6603, 1),
+            (6601, 6603, 2),
+        ] {
+            state.add_item(id, 1, &data);
+            assert_eq!(
+                state.stats().character(0).unwrap().equipment()[5],
+                Some(equipped)
+            );
+            assert_eq!(state.inventory().quantity(6601), wooden_in_bag);
+        }
+        assert_eq!(state.inventory().quantity(6602), 1);
+        assert!(!state.inventory().contains(6603));
+        assert_eq!(state.stats().character(0).unwrap().current().hp, 12);
+        assert_eq!(state.stats().attributes(0, &data).unwrap().attack, 65);
+        assert_eq!(
+            state.stats().attributes(0, &data).unwrap().elements,
+            [3, 3, 7, 1, 2]
+        );
+        // A prior equipment removal may leave a pool above its newly reduced maximum.
+        let mut saved = serde_json::to_value(&state).unwrap();
+        saved["stats"]["characters"][0]["current"]["hp"] = 120.into();
+        let mut state: PersistentState = serde_json::from_value(saved).unwrap();
+        state.add_item(6601, 1, &data);
+        assert_eq!(state.stats().character(0).unwrap().current().hp, 88);
+        assert_eq!(
+            state.stats().character(0).unwrap().equipment()[5],
+            Some(6603)
+        );
+    }
+
+    #[test]
+    fn inventory_and_equipped_story_sword_survive_save_roundtrip() {
+        let data = test_data();
+        let mut state = PersistentState::new(PAL3_APP_NAME.into());
+        state.add_item(6603, 1, &data);
+        state.add_item(6123, 3, &data);
+        state.add_item(42, 0, &data);
+        state.remove_item(6123, &data);
+        let mut restored: PersistentState =
+            serde_json::from_str(&serde_json::to_string(&state).unwrap()).unwrap();
+        assert_eq!(restored.inventory(), state.inventory());
+        assert_eq!(restored.stats(), state.stats());
+        assert!(restored.inventory().contains(42));
+        assert_eq!(restored.inventory().quantity(6123), 2);
+        assert!(!restored.inventory().contains(6427));
+        assert_eq!(restored.stats().attributes(0, &data).unwrap().attack, 65);
+        restored.remove_item(6603, &data);
+        assert_eq!(restored.stats().attributes(0, &data).unwrap().attack, 30);
+    }
+
+    #[test]
     fn restoration_uses_actual_party_and_resource_selector_without_recruiting_roles() {
         let data = test_data();
         let mut state = PersistentState::new(PAL3_APP_NAME.into());
@@ -271,7 +435,7 @@ mod gameplay_tests {
         let character = restored.stats().character(1).unwrap();
         assert_eq!(character.level(), 7);
         assert_eq!(character.experience(), 650);
-        assert_eq!(character.attributes(&data).hp, 139);
+        assert_eq!(restored.stats().attributes(1, &data).unwrap().hp, 139);
         assert_eq!(character.current().hp, 12);
         assert_eq!(character.current().mp, 3);
         assert_eq!(character.equipment()[5], Some(82201));

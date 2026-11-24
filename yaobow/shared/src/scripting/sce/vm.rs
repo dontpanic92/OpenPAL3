@@ -475,11 +475,11 @@ impl SceProcContext {
             }
             46 => {
                 // AddItem
-                nop_command!(self, AddItem, i32, i32)
+                command!(self, SceCommandAddItem, item_id: i32, count: i32)
             }
             47 => {
                 // RemoveItem
-                nop_command!(self, RemoveItem, i32)
+                command!(self, SceCommandRemoveItem, item_id: i32)
             }
             48 => {
                 // AddMoney
@@ -989,6 +989,19 @@ mod gameplay_tests {
         for value in [153u16, 0] {
             inst.extend_from_slice(&value.to_le_bytes());
         }
+        for value in [46u16, 0] {
+            inst.extend_from_slice(&value.to_le_bytes());
+        }
+        inst.extend_from_slice(&3i32.to_le_bytes());
+        inst.extend_from_slice(&6123i32.to_le_bytes());
+        for value in [47u16, 0] {
+            inst.extend_from_slice(&value.to_le_bytes());
+        }
+        inst.extend_from_slice(&6123i32.to_le_bytes());
+        for value in [78u16, 0] {
+            inst.extend_from_slice(&value.to_le_bytes());
+        }
+        inst.extend_from_slice(&6123i32.to_le_bytes());
         let sce = Rc::new(SceFile {
             proc_num: 1,
             proc_headers: vec![SceProcHeader {
@@ -1015,6 +1028,9 @@ mod gameplay_tests {
             "SceCommandFullRoleAtt { role_id: 6, attribute: 2 }",
             "SceCommandAverageLv { role_id: 1, offset: -2 }",
             "SceCommandFullTeamAtt",
+            "SceCommandAddItem { item_id: 6123, count: 3 }",
+            "SceCommandRemoveItem { item_id: 6123 }",
+            "SceCommandHaveItem { item_id: 6123 }",
         ] {
             assert_eq!(context.get_next_cmd().unwrap().debug(), expected);
         }

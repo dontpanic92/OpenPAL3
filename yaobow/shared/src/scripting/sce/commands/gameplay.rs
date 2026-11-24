@@ -168,3 +168,70 @@ impl SceCommand for SceCommandAverageLv {
         true
     }
 }
+
+#[derive(Debug, Clone)]
+pub struct SceCommandAddItem {
+    item_id: i32,
+    count: i32,
+}
+
+impl SceCommandAddItem {
+    pub fn new(item_id: i32, count: i32) -> Self {
+        Self { item_id, count }
+    }
+}
+
+impl SceCommand for SceCommandAddItem {
+    fn update(
+        &mut self,
+        _scene_manager: ComRc<ISceneManager>,
+        _ui: &Ui,
+        state: &mut SceState,
+        _delta_sec: f32,
+    ) -> bool {
+        if state.asset_mgr().game() == GameType::PAL3 {
+            let data = state.asset_mgr().stats_data();
+            if !state.global_state_mut().persistent_state_mut().add_item(
+                self.item_id,
+                self.count,
+                &data,
+            ) {
+                log::warn!("AddItem: unknown PAL3 item {}", self.item_id);
+            }
+        }
+        true
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct SceCommandRemoveItem {
+    item_id: i32,
+}
+
+impl SceCommandRemoveItem {
+    pub fn new(item_id: i32) -> Self {
+        Self { item_id }
+    }
+}
+
+impl SceCommand for SceCommandRemoveItem {
+    fn update(
+        &mut self,
+        _scene_manager: ComRc<ISceneManager>,
+        _ui: &Ui,
+        state: &mut SceState,
+        _delta_sec: f32,
+    ) -> bool {
+        if state.asset_mgr().game() == GameType::PAL3 {
+            let data = state.asset_mgr().stats_data();
+            if !state
+                .global_state_mut()
+                .persistent_state_mut()
+                .remove_item(self.item_id, &data)
+            {
+                log::warn!("RemoveItem: unknown PAL3 item {}", self.item_id);
+            }
+        }
+        true
+    }
+}

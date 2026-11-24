@@ -3,16 +3,24 @@ use std::io::{self, ErrorKind};
 const MAGIC: &[u8] = b"__PAL(Softstar_Ltd: Cool_J)_GameDataBase_OutFile__";
 const ITEM_SIZE: usize = 800;
 
-#[derive(Debug, Clone)]
-pub struct ItemStats {
+#[derive(Debug, Default, Clone)]
+pub struct ItemDefinition {
     pub id: u32,
+    pub name: String,
+    pub model: String,
+    pub image: String,
+    pub description: String,
+    pub price: i32,
+    pub category: u8,
+    pub subtype: u8,
+    pub usable_by: [bool; 5],
     pub modes: [u8; 12],
     pub amounts: [i16; 12],
     pub elements: [bool; 5],
 }
 
-/// Read the stat-related fields of the compiled database's item block.
-pub fn read_item_stats(bytes: &[u8]) -> io::Result<Vec<ItemStats>> {
+/// Read common metadata and stat effects from the compiled database's item block.
+pub fn read_items(bytes: &[u8]) -> io::Result<Vec<ItemDefinition>> {
     let invalid = || io::Error::new(ErrorKind::InvalidData, "Invalid PAL3 GDB item block");
     if bytes.len() < 0xa0 || !bytes.starts_with(MAGIC) {
         return Err(invalid());
@@ -26,17 +34,32 @@ pub fn read_item_stats(bytes: &[u8]) -> io::Result<Vec<ItemStats>> {
         return Err(invalid());
     }
     let records = bytes.get(offset..end).ok_or_else(invalid)?;
-    Ok(records
+    let text = |bytes: &[u8]| {
+        let end = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
+        crate::utils::to_gbk_string(&bytes[..end]).map_err(|_| invalid())
+    };
+    records
         .chunks_exact(ITEM_SIZE)
-        .map(|record| ItemStats {
-            id: u32::from_le_bytes(record[..4].try_into().unwrap()),
-            modes: record[0x277..0x283].try_into().unwrap(),
-            amounts: std::array::from_fn(|i| {
-                i16::from_le_bytes(record[0x284 + i * 2..0x286 + i * 2].try_into().unwrap())
-            }),
-            elements: std::array::from_fn(|i| record[0x26b + i] != 0),
+        .map(|record| {
+            Ok(ItemDefinition {
+                id: u32::from_le_bytes(record[..4].try_into().unwrap()),
+                name: text(&record[4..0x24])?,
+                model: text(&record[0x24..0x42])?,
+                image: text(&record[0x42..0x60])?,
+                description: text(&record[0x60..0x260])?,
+                price: i32::from_le_bytes(record[0x260..0x264].try_into().unwrap()),
+                category: record[0x264],
+                subtype: record[0x265],
+                // Disk order puts Changqing before Longkui and Zixuan.
+                usable_by: [0x266, 0x267, 0x269, 0x26a, 0x268].map(|i| record[i] != 0),
+                modes: record[0x277..0x283].try_into().unwrap(),
+                amounts: std::array::from_fn(|i| {
+                    i16::from_le_bytes(record[0x284 + i * 2..0x286 + i * 2].try_into().unwrap())
+                }),
+                elements: std::array::from_fn(|i| record[0x26b + i] != 0),
+            })
         })
-        .collect())
+        .collect()
 }
 
 #[cfg(test)]
@@ -54,9 +77,25 @@ mod tests {
         bytes[0xa0 + 0x28a..0xa0 + 0x28c].copy_from_slice(&(-7i16).to_le_bytes());
         bytes[0xa0 + 0x26d] = 1;
         bytes[0xa0 + ITEM_SIZE..0xa4 + ITEM_SIZE].copy_from_slice(&456u32.to_le_bytes());
-        let items = read_item_stats(&bytes).unwrap();
+        bytes[0xa4..0xa8].copy_from_slice(&[0xb2, 0xe2, 0xca, 0xd4]);
+        bytes[0xa0 + 0x24..0xa0 + 0x29].copy_from_slice(b"model");
+        bytes[0xa0 + 0x42] = b'7';
+        bytes[0xa0 + 0x60..0xa0 + 0x64].copy_from_slice(b"desc");
+        bytes[0xa0 + 0x260..0xa0 + 0x264].copy_from_slice(&1234i32.to_le_bytes());
+        bytes[0xa0 + 0x264] = 11;
+        bytes[0xa0 + 0x265] = 2;
+        bytes[0xa0 + 0x268] = 1;
+        let items = read_items(&bytes).unwrap();
         assert_eq!(items.len(), 2);
         assert_eq!(items[0].id, 123);
+        assert_eq!(items[0].name, "\u{6d4b}\u{8bd5}");
+        assert_eq!(items[0].model, "model");
+        assert_eq!(items[0].image, "7");
+        assert_eq!(items[0].description, "desc");
+        assert_eq!(items[0].price, 1234);
+        assert_eq!(items[0].category, 11);
+        assert_eq!(items[0].subtype, 2);
+        assert_eq!(items[0].usable_by, [false, false, false, false, true]);
         assert_eq!(items[0].modes[0], 1);
         assert_eq!(items[0].amounts[3], -7);
         assert_eq!(items[0].elements, [false, false, true, false, false]);
@@ -66,16 +105,16 @@ mod tests {
 
     #[test]
     fn rejects_truncated_or_out_of_bounds_item_blocks() {
-        assert!(read_item_stats(&[0; 0xa0]).is_err());
+        assert!(read_items(&[0; 0xa0]).is_err());
         let mut bytes = vec![0; 0xa0 + ITEM_SIZE - 1];
         bytes[..MAGIC.len()].copy_from_slice(MAGIC);
         bytes[0x90..0x94].copy_from_slice(&0xa0u32.to_le_bytes());
         bytes[0x94..0x98].copy_from_slice(&1u32.to_le_bytes());
-        assert!(read_item_stats(&bytes).is_err());
+        assert!(read_items(&bytes).is_err());
         bytes[0x90..0x94].copy_from_slice(&u32::MAX.to_le_bytes());
-        assert!(read_item_stats(&bytes).is_err());
+        assert!(read_items(&bytes).is_err());
         bytes[0x90..0x94].copy_from_slice(&0u32.to_le_bytes());
         bytes[0x94..0x98].copy_from_slice(&0u32.to_le_bytes());
-        assert!(read_item_stats(&bytes).is_err());
+        assert!(read_items(&bytes).is_err());
     }
 }

@@ -1,12 +1,12 @@
 use std::collections::HashMap;
 
 use anyhow::{Context, Result, bail};
-use fileformats::pal3::gdb::{ItemStats, read_item_stats};
+use fileformats::pal3::gdb::{ItemDefinition, read_items};
 use ini::Ini;
 
 pub struct StatsData {
     experience: [i32; 100],
-    items: HashMap<u32, ItemStats>,
+    items: HashMap<u32, ItemDefinition>,
 }
 
 impl StatsData {
@@ -29,7 +29,7 @@ impl StatsData {
             bail!("Invalid PAL3 EXP threshold order");
         }
         let mut items = HashMap::new();
-        for item in read_item_stats(database)? {
+        for item in read_items(database)? {
             items.entry(item.id).or_insert(item);
         }
         Ok(Self { experience, items })
@@ -46,8 +46,12 @@ impl StatsData {
             .unwrap_or(100) as i32
     }
 
-    pub fn item(&self, id: u32) -> Option<&ItemStats> {
+    pub fn item(&self, id: u32) -> Option<&ItemDefinition> {
         self.items.get(&id)
+    }
+
+    pub fn items(&self) -> impl Iterator<Item = &ItemDefinition> {
+        self.items.values()
     }
 }
 
@@ -55,29 +59,47 @@ impl StatsData {
 pub(crate) fn test_data() -> StatsData {
     let mut experience = std::array::from_fn(|i| i as i32 * 100);
     experience[99] = i32::MAX;
-    StatsData {
-        experience,
-        items: HashMap::from([
-            (
-                82201,
-                ItemStats {
-                    id: 82201,
-                    modes: [0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-                    amounts: [5, 0, 99, 7, -2, -1, 0, 120, 0, -100, 0, 0],
-                    elements: [false, false, false, true, false],
+    let mut items = HashMap::from([
+        (
+            82201,
+            ItemDefinition {
+                id: 82201,
+                modes: [0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                amounts: [5, 0, 99, 7, -2, -1, 0, 120, 0, -100, 0, 0],
+                elements: [false, false, false, true, false],
+                ..Default::default()
+            },
+        ),
+        (
+            99999,
+            ItemDefinition {
+                id: 99999,
+                modes: [0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                amounts: [20, 5, -3, -2, 0, 2, 1, -2, 0, 4, 0, 0],
+                elements: [true, false, true, false, false],
+                ..Default::default()
+            },
+        ),
+    ]);
+    for id in [
+        42, 6008, 6119, 6120, 6122, 6123, 6124, 6125, 6427, 6601, 6602, 6603, 8146, 8147, 8149,
+        8150, 8151, 8152,
+    ] {
+        items.insert(
+            id,
+            ItemDefinition {
+                id,
+                category: if [6601, 6602, 6603].contains(&id) {
+                    11
+                } else {
+                    2
                 },
-            ),
-            (
-                99999,
-                ItemStats {
-                    id: 99999,
-                    modes: [0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-                    amounts: [20, 5, -3, -2, 0, 2, 1, -2, 0, 4, 0, 0],
-                    elements: [true, false, true, false, false],
-                },
-            ),
-        ]),
+                usable_by: [true; 5],
+                ..Default::default()
+            },
+        );
     }
+    StatsData { experience, items }
 }
 
 #[cfg(test)]
