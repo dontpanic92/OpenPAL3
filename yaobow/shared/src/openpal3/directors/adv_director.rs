@@ -271,6 +271,13 @@ impl IDirectorImpl for AdventureDirector {
             None => (delta_sec, false),
         };
         let mut props = self.props_mut();
+        if props.sce_vm.global_state().asset_mgr().game() == crate::GameType::PAL3 {
+            props
+                .sce_vm
+                .global_state_mut()
+                .persistent_state_mut()
+                .advance_play_time(effective_dt);
+        }
         props.sce_vm.state_mut().set_fast_forward(fast_forward);
         props.do_update(effective_dt)
     }

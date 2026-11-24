@@ -88,6 +88,7 @@ pub struct SceState {
     // has control (no SCE running). Same immediate-mode draw path as the
     // dialog renderer.
     status_renderer: ComRc<crate::openpal3::comdef::IPal3StatusRenderer>,
+    menu_state: ComRc<crate::openpal3::comdef::IPal3MenuState>,
 }
 
 impl SceState {
@@ -104,6 +105,7 @@ impl SceState {
         status_renderer: ComRc<IPal3StatusRenderer>,
     ) -> Self {
         let ext = HashMap::<String, Box<dyn Any>>::new();
+        let menu_state = global_state.menu_state();
 
         Self {
             asset_mgr: asset_mgr.clone(),
@@ -118,6 +120,7 @@ impl SceState {
             ui,
             dialog_renderer,
             status_renderer,
+            menu_state,
         }
     }
 
@@ -240,7 +243,7 @@ impl SceState {
     pub fn render_status(&mut self, delta_sec: f32) {
         let renderer = self.status_renderer.clone();
         self.ui.with_ui_host(|ui_host| {
-            renderer.render_status(ui_host.clone(), delta_sec);
+            renderer.render_status(ui_host.clone(), delta_sec, self.menu_state.clone());
         });
     }
 

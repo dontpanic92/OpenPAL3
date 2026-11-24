@@ -24,6 +24,7 @@ pub struct PersistentState {
     role_controlled: i32,
     party: PartyState,
     money: i32,
+    play_seconds: f64,
     stats: StatsState,
     inventory: InventoryState,
     scene: Option<String>,
@@ -42,6 +43,7 @@ impl PersistentState {
             role_controlled: 0,
             party: PartyState::default(),
             money: 0,
+            play_seconds: 0.0,
             stats: StatsState::default(),
             inventory: InventoryState::default(),
             scene: None,
@@ -130,6 +132,16 @@ impl PersistentState {
 
     pub fn money(&self) -> i32 {
         self.money
+    }
+
+    pub fn play_seconds(&self) -> i32 {
+        self.play_seconds as i32
+    }
+
+    pub fn advance_play_time(&mut self, delta_sec: f32) {
+        if delta_sec.is_finite() && delta_sec > 0.0 {
+            self.play_seconds += f64::from(delta_sec);
+        }
     }
 
     pub fn add_money(&mut self, amount: i32) {
@@ -264,6 +276,20 @@ mod gameplay_tests {
         loaders::stats::test_data,
         states::stats::{Attributes, Resources},
     };
+
+    #[test]
+    fn play_time_preserves_fractional_seconds_across_save_and_ignores_invalid_deltas() {
+        let mut state = PersistentState::new(PAL3_APP_NAME.into());
+        state.advance_play_time(0.75);
+        assert_eq!(state.play_seconds(), 0);
+        let mut restored: PersistentState =
+            serde_json::from_str(&serde_json::to_string(&state).unwrap()).unwrap();
+        for delta in [-1.0, f32::NAN, f32::INFINITY] {
+            restored.advance_play_time(delta);
+        }
+        restored.advance_play_time(0.5);
+        assert_eq!(restored.play_seconds(), 1);
+    }
 
     #[test]
     fn inventory_commands_remove_one_copy_and_clear_even_inactive_roles_equipment() {

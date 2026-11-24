@@ -1,17 +1,6 @@
-// PAL3 in-game status indicator (top-right HUD), declarative-UI port.
-//
-// Owns all of its state in p7: it `load_sprite`s the `ui/scene/face`
-// panel art once (`bk.tga` background ring, `hp.tga`/`mp.tga` gauges, and
-// the team-lead avatar `face0` normal/hover/click variants) and holds the
-// handles for its lifetime so the textures stay uploaded. The SCE command
-// loop forwards a per-frame `render_status` call only while the player has
-// control (no SCE running).
-//
-// HP/MP render full (no HP/MP state exists yet). The avatar swaps variant
-// on mouse-over (hover) / mouse-down (click). Clicking the avatar opens
-// the full-screen character-status (状态) menu, delegated to
-// `state_menu.paint_state_menu`; it closes on its exit button or an
-// outside click. The agent server can also drive it via `set_menu_open`.
+// PAL3 HUD and menu. Preload all portraits before drawing: texture uploads
+// cannot borrow the shared texture cache during an imgui frame.
+// Gameplay data is read-only; the p7 renderer owns navigation and press state.
 
 import radiance;
 import scripting_services;
@@ -32,7 +21,7 @@ let ST_TOP_GAP_PX: float   = 6.0;
 
 // --- Native-pixel layout (relative to bk's top-left corner, 128px canvas) ---
 // Each element is positioned + sized in bk's native pixels; the whole panel
-// is scaled by (panel / BK_SIZE) to actual screen pixels. Tune these freely.
+// is scaled by (panel / BK_SIZE) to actual screen pixels.
 let ST_BK_SIZE: float    = 128.0;
 let ST_AVATAR_X: float   = 16.0;
 let ST_AVATAR_Y: float   = 42.0;
@@ -54,16 +43,16 @@ pub struct[openpal3.IPal3StatusRenderer] Pal3StatusRendererImpl(
     pub bk: ?&scripting_services.ISprite,
     pub hp: ?&scripting_services.ISprite,
     pub mp: ?&scripting_services.ISprite,
-    // Team-lead avatar variants: 0 normal, 1 hover, 2 click.
-    pub face_n: ?&scripting_services.ISprite,
-    pub face_h: ?&scripting_services.ISprite,
-    pub face_c: ?&scripting_services.ISprite,
+    // Three avatar variants per role: normal, hover, pressed.
+    pub faces: array<?&scripting_services.ISprite>,
+    pub menu: &state_menu.MenuState,
+    pub hud_pressed: bool = false,
     // Whether the full-screen character-status menu is open.
     pub menu_open: bool = false,
-    // Previous-frame left-button state, for click rising-edge detection.
+    // Previous-frame left-button state for press/release detection.
     pub prev_down: bool = false,
 ) {
-    pub fn render_status(self: &Self, ui: &radiance.IUiHost, dt: float) -> int {
+    pub fn render_status(self: &Self, ui: &radiance.IUiHost, dt: float, gameplay: &openpal3.IPal3MenuState) -> int {
         let lw = ui.display_size_x() as float;
         let lh = ui.display_size_y() as float;
         if lw <= 0.0 || lh <= 0.0 { return 0; }
@@ -96,36 +85,49 @@ pub struct[openpal3.IPal3StatusRenderer] Pal3StatusRendererImpl(
         let pmy = ui.mouse_pos_y();
         let down = ui.mouse_down(0);
         // Rising edge: pressed this frame but not last.
-        let click = down && !self.prev_down;
-        let over = pmx >= x0 && pmx <= x1 && pmy >= y0 && pmy <= y1;
+        let press = down && !self.prev_down;
+        let release = !down && self.prev_down;
+        let over = pmx >= ax0 && pmx <= ax1 && pmy >= ay0 && pmy <= ay1;
         let was_open = self.menu_open;
+        if press { self.hud_pressed = over && !was_open; }
 
         // Decorative variant: click (mouse down over panel) > hover > normal.
-        let mut face = self.face_n;
-        if over {
-            if down { face = self.face_c; } else { face = self.face_h; }
+        let mut role = 0;
+        let mut hp_fraction = 1.0;
+        let mut mp_fraction = 1.0;
+        if gameplay.available() {
+            let game = gameplay;
+            role = game.controlled_role();
+            if role < 0 || role >= 5 { role = 0; }
+            hp_fraction = state_menu.resource_fraction(game.role_value(role, 3), game.role_value(role, 6));
+            mp_fraction = state_menu.resource_fraction(game.role_value(role, 5), game.role_value(role, 8));
         }
+        let mut variant = 0;
+        if over {
+            variant = if down { 2 } else { 1 };
+        }
+        let face = self.faces[role * 3 + variant];
 
         // Draw the HUD dial first so the full-screen menu (drawn below)
         // composites OVER it — the menu owns the screen while open.
         let items: array<box<gui.Element>> = [
             sprite_rect(self.bk, x0, y0, x1, y1),
             sprite_rect(face, ax0, ay0, ax1, ay1),
-            sprite_rect(self.hp, hx0, hy0, hx1, hy1),
-            sprite_rect(self.mp, mx0, my0, mx1, my1),
         ];
         let root = gui.Stack(items);
         gui.paint_root(root, ui, gui.make_ctx());
+        paint_gauge(ui, self.hp, hx0, hy0, hx1, hy1, hp_fraction, 37.0 / 64.0);
+        paint_gauge(ui, self.mp, mx0, my0, mx1, my1, mp_fraction, 29.0 / 64.0);
 
         // The full-screen character-status menu, painted on top of the HUD.
         if was_open {
-            let stay = state_menu.paint_state_menu(ui, self.atlas, pmx, pmy, down, click);
+            let stay = self.menu.paint(ui, self.atlas, gameplay, pmx, pmy, press, release, down);
             self.menu_open = stay;
         }
 
-        // Avatar click opens the menu (only when it wasn't already open, so
-        // the menu's own outside-click dismissal isn't instantly undone).
-        if !was_open && over && click { self.menu_open = true; }
+        // A release only opens the menu after a press inside the avatar.
+        if !was_open && over && release && self.hud_pressed { self.menu_open = true; }
+        if release { self.hud_pressed = false; }
         self.prev_down = down;
         0
     }
@@ -134,6 +136,7 @@ pub struct[openpal3.IPal3StatusRenderer] Pal3StatusRendererImpl(
     // synthetic avatar click. Takes effect on the next idle frame.
     pub fn set_menu_open(self: &Self, open: bool) -> int {
         self.menu_open = open;
+        self.hud_pressed = false;
         0
     }
 
@@ -155,6 +158,16 @@ fn sprite_rect(
     return gui.Positioned(x0, y0, x1 - x0, y1 - y0, gui.Sprite(s));
 }
 
+fn paint_gauge(ui: &radiance.IUiHost, sprite: ?&scripting_services.ISprite,
+    x0: float, y0: float, x1: float, y1: float, fraction: float, visible_height: float) {
+    if sprite == null || fraction <= 0.0 { return; }
+    let sp = sprite!;
+    // Both shipped arc textures have transparent padding above the gauge.
+    let top = y1 - (y1 - y0) * visible_height * fraction;
+    let v0 = sp.v1() - (sp.v1() - sp.v0()) * visible_height * fraction;
+    ui.image_rect(sp.com_id(), x0, top, x1, y1, sp.u0(), v0, sp.u1(), sp.v1());
+}
+
 pub fn make_pal3_status_renderer(
     sprites: &scripting_services.ISpriteService,
     atlas: &openpal3.IPal3UiAtlas,
@@ -163,9 +176,13 @@ pub fn make_pal3_status_renderer(
     let bk = sprites.load_sprite(face + "bk.tga");
     let hp = sprites.load_sprite(face + "mp.tga");
     let mp = sprites.load_sprite(face + "hp.tga");
-    let face_n = sprites.load_sprite(face + "face0/face00.tga");
-    let face_h = sprites.load_sprite(face + "face0/face01.tga");
-    let face_c = sprites.load_sprite(face + "face0/face02.tga");
-    return &Pal3StatusRendererImpl(sprites, atlas, bk, hp, mp, face_n, face_h, face_c,
-        false, false);
+    let mut faces: array<?&scripting_services.ISprite> = [];
+    let digits: array<string> = ["0", "1", "2", "3", "4"];
+    for role in Range(0, 5) {
+        for variant in Range(0, 3) {
+            faces.push(sprites.load_sprite(face + "face" + digits[role] + "/face" + digits[role] + digits[variant] + ".tga"));
+        }
+    }
+    return &Pal3StatusRendererImpl(sprites, atlas, bk, hp, mp, faces, state_menu.make_menu(),
+        false, false, false);
 }

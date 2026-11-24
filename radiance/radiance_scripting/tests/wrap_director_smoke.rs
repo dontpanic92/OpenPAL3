@@ -11,11 +11,12 @@
 
 use std::sync::Mutex;
 
-use crosscom::ComRc;
+use crosscom::{ComRc, IUnknown};
 use p7::errors::RuntimeError;
 use p7::interpreter::context::Context;
-use radiance::comdef::IDirector;
-use radiance_scripting::{ScriptHost, wrap_director};
+use radiance::comdef::{IDirector, IUiLayer};
+use radiance_scripting::services::ui_host_recording::RecordingUiHost;
+use radiance_scripting::{ScriptHost, register_ui_layer_proto, wrap_director};
 
 const SCRIPT: &str = r#"
 import radiance;
@@ -43,6 +44,34 @@ struct[radiance.IDirector] StubDir(
 pub fn make_stub(seed: int) -> &radiance.IDirector {
     let d = box(StubDir(seed));
     d as &radiance.IDirector
+}
+
+struct[radiance.IDirector, radiance.IUiLayer] Screen() {
+    pub fn activate(self: &Self) -> int { 0 }
+    pub fn deactivate(self: &Self) -> int { 0 }
+    pub fn update(self: &Self, dt: float) -> ?&radiance.IDirector {
+        return null;
+    }
+    pub fn render(self: &Self, ui: &radiance.IUiHost, dt: float) -> int {
+        record_event(123, 4);
+        0
+    }
+}
+
+struct[radiance.IDirector] Transition(next: &radiance.IDirector) {
+    pub fn activate(self: &Self) -> int { 0 }
+    pub fn deactivate(self: &Self) -> int { 0 }
+    pub fn update(self: &Self, dt: float) -> ?&radiance.IDirector {
+        return self.next;
+    }
+}
+
+pub fn make_screen() -> &radiance.IDirector {
+    &Screen() as &radiance.IDirector
+}
+
+pub fn make_transition(next: &radiance.IDirector) -> &radiance.IDirector {
+    &Transition(next) as &radiance.IDirector
 }
 "#;
 
@@ -150,4 +179,64 @@ fn wrap_director_drop_after_host_drop_is_safe() {
         !after[before..].iter().any(|(s, _)| *s == 99),
         "no deactivate should record when runtime is gone; got {after:?}"
     );
+}
+
+#[test]
+fn returned_foreign_director_keeps_its_ui_layer_and_com_identity() {
+    let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    EVENTS.lock().unwrap().clear();
+    register_ui_layer_proto();
+
+    let host = ScriptHost::new();
+    host.with_ctx_mut(|ctx| {
+        ctx.register_host_function("wd_test.record_event".to_string(), record_event_host_fn);
+    });
+    host.load_source(SCRIPT).expect("load_source");
+    let handle = host_runtime_handle(&host);
+    let screen = host.call_returning_data("make_screen", vec![]).unwrap();
+    let screen = wrap_director(&handle, screen).unwrap();
+    let identity = screen.query_interface::<IUnknown>().unwrap();
+    let id = host.intern(screen);
+    let foreign = host.foreign_box("radiance.comdef.IDirector", id).unwrap();
+    let foreign = host
+        .with_ctx_mut(|ctx| ctx.retain_reference(&foreign))
+        .unwrap();
+    <ScriptHost as crosscom_protosept::RuntimeAccess>::with_ctx(&host, &mut |_ctx| {
+        assert!(crosscom_protosept::with_services(|s| s.com_table_mut().release(id)).unwrap());
+    });
+    let transition = host
+        .call_returning_data("make_transition", vec![foreign])
+        .unwrap();
+    let transition = wrap_director(&handle, transition).unwrap();
+    let next = transition.update(0.016).expect("screen transition");
+
+    let layer = next
+        .query_interface::<IUiLayer>()
+        .expect("a native director returned through p7 must keep its UI layer");
+    let next_identity = next.query_interface::<IUnknown>().unwrap();
+    let layer_identity = layer.query_interface::<IUnknown>().unwrap();
+    assert!(std::ptr::eq(&*identity, &*next_identity));
+    assert!(std::ptr::eq(&*identity, &*layer_identity));
+    assert!(next.query_interface::<crosscom::IAction>().is_none());
+    let (_recorder, ui) = RecordingUiHost::create();
+    layer.render(ui, 0.016);
+    assert_eq!(*EVENTS.lock().unwrap(), vec![(123, 4)]);
+
+    drop((
+        layer,
+        next,
+        transition,
+        identity,
+        next_identity,
+        layer_identity,
+    ));
+    <ScriptHost as crosscom_protosept::RuntimeAccess>::with_ctx(&host, &mut |ctx| {
+        ctx.collect_garbage().unwrap();
+        ctx.collect_garbage().unwrap();
+        assert_eq!(ctx.box_heap.live_count(), 0);
+        assert_eq!(
+            crosscom_protosept::with_services(|s| s.com_table_mut().live()).unwrap(),
+            0
+        );
+    });
 }

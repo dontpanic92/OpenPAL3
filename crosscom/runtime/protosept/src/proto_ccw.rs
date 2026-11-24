@@ -554,6 +554,35 @@ unsafe extern "system" fn proto_query_interface(
         let slot0 = recover_slot0_addr(this);
         let bytes = *guid.as_bytes();
 
+        // A retained native reference only declares its static protocol.
+        // Resolve QI through its current owner to preserve sibling interfaces
+        // and the native object's canonical IUnknown identity.
+        let native = header
+            .payload
+            .handle
+            .try_with_ctx(|ctx| {
+                let receiver = header.payload.root.get(ctx).ok()?;
+                let ProtocolValue::Foreign { handle, .. } =
+                    ctx.inspect_protocol_value(&receiver).ok()?
+                else {
+                    return None;
+                };
+                Some(
+                    with_services(|s| s.com_table_mut().get_raw_qi(handle, bytes))
+                        .ok()
+                        .flatten(),
+                )
+            })
+            .flatten();
+        if let Some(native) = native {
+            *retval = native.unwrap_or(std::ptr::null());
+            return if native.is_some() {
+                ResultCode::Ok as c_long
+            } else {
+                ResultCode::ENoInterface as c_long
+            };
+        }
+
         if bytes == IUnknown::INTERFACE_ID {
             // IUnknown is conventionally satisfied via slot 0.
             *retval = slot0;

@@ -1,266 +1,294 @@
-// PAL3 in-game character-status (状态) menu — standalone overlay.
-//
-// Opened from the top-right HUD avatar (status_ui.p7) or via the agent
-// server (`POST /v1/menu/status {"open":true}` -> IPal3StatusRenderer
-// .set_menu_open). Reference: generated/pal3_menu.png.
-//
-// Composed entirely from PAL3's `UI_opt.tli` atlas (resolved by name
-// through `IPal3UiAtlas`). The real atlas paths live under
-// `ui/GameMainState/*` and `ui/GameMainCommunal/*` — NOT the
-// `ui/gamemainui/state/*` the first port guessed (those keys don't
-// exist, which is why the old menu rendered blank).
-//
-// Layout is anchored, not letterboxed, so it tracks any window aspect:
-//   * left character panel  (Shade + Portrait + 五行 + exp) docked left
-//   * bottom action toolbar (StpBar + StpCtl buttons) full width
-//   * right 状态 dragon panel (Frame + money/time) docked right
-// All native sizes are PAL3's 800x600 reference; `s = height/600`.
-//
-// Stats are placeholders for the lead (景天) matching the reference
-// screenshot — the party/stat model is not yet threaded into p7. Returns
-// whether the menu should stay open (false = the exit button or an
-// outside click dismissed it).
-
+// Native PAL3 800x600 menu geometry, reconstructed from the shipped executable.
 import radiance;
 import shared.openpal3;
-// Used for its geometry primitives (`Rect.fit`) only — this screen is still
-// painted imperatively rather than as an `Element` tree.
 import radiance_scripting.ui as gui;
 
-// --- Native (800x600) layout constants -----------------------------------
-// The whole menu is authored in PAL3's native 800x600 (4:3) space and
-// drawn into a CENTERED, LETTERBOXED 4:3 canvas, with a full-screen
-// semi-transparent dim behind it (covering both the canvas and the
-// margins), so the panels keep their original aspect and relative
-// positions regardless of the display aspect ratio.
-let REF_W: float = 800.0;
-let REF_H: float = 600.0;
+let ROOT: string = "ui/GameMainUI/";
+let COMMON: string = "ui/GameMainUI/Communal/";
+let TOOLBAR: string = "ui/GameMainUI/Communal/StpCtl/";
 
-// Left character panel (GameMainState/Shade.tga is 149x530). Native coords.
-let LP_X: float = 0.0;
-let LP_Y: float = 0.0;
-let LP_W: float = 150.0;
-let LP_H: float = 530.0;
-
-// Standing portrait (GameMainState/Portrait0.tga is 128x288).
-let POR_W: float = 128.0;
-let POR_H: float = 288.0;
-let POR_TOP: float = 24.0;
-
-// 五行 numbers sit just under each element glyph baked into Shade's
-// pentagram. Panel-local native coords (origin = panel top-left),
-// calibrated against the rendered Shade panel.
-let WX_SHUI_X: float = 72.0;  let WX_SHUI_Y: float = 344.0;
-let WX_TU_X: float   = 36.0;  let WX_TU_Y: float   = 380.0;
-let WX_HUO_X: float  = 112.0; let WX_HUO_Y: float  = 380.0;
-let WX_FENG_X: float = 48.0;  let WX_FENG_Y: float = 426.0;
-let WX_LEI_X: float  = 104.0; let WX_LEI_Y: float  = 426.0;
-
-// Left-panel text, panel-local native coords (origin = panel top-left).
-// 等级 (top-right) and the two experience lines (near the bottom).
-let LV_X: float       = 109.0; let LV_Y: float       = 6.0;
-let EXP_CUR_X: float  = 8.0;   let EXP_CUR_Y: float  = 500.0;
-let EXP_NEXT_X: float = 8.0;   let EXP_NEXT_Y: float = 516.0;
-
-// Money + game-time text, plate-local native coords (origin = TimeMoney
-// plate top-left).
-let MONEY_X: float = 30.0; let MONEY_Y: float = 2.0;
-let TIME_X: float  = 78.0; let TIME_Y: float  = 24.0;
-
-// Bottom toolbar (StpBar* are 57 tall; StpCtl buttons 110x50). Native.
-let TB_H: float = 57.0;
-let TB_Y: float = 543.0;          // 600 - 57, docked to the canvas bottom.
-let TB_LEFT_W: float = 256.0;     // StpBarL native width.
-let TB_RIGHT_W: float = 32.0;     // StpBarR native width.
-let TB_BTN_W: float = 92.0;
-let TB_BTN_H: float = 50.0;
-let TB_FIRST_X: float = 78.0;
-let TB_GAP: float = 90.0;
-
-// Right 状态 dragon panel (GameMainState/Frame.tga is 195x526). Native.
-let FR_W: float = 195.0;
-let FR_H: float = 526.0;
-let FR_X: float = 590.0;          // 800 - 195, docked to the canvas right.
-let FR_Y: float = 20.0;
-// TimeMoney plate (GameMainCommunal/TimeMoney.tga is 204x64). Native.
-let TM_W: float = 204.0;
-let TM_H: float = 64.0;
-let TM_X: float = 596.0;          // 800 - 204.
-let TM_Y: float = 2.0;
-
-// Right-edge vertical border bar (GameMainCommunal/Frame_Line.tga, 16x526).
-// The State `Frame.tga` art carries its own left + top border but not the
-// right edge; this thin cyan bar caps the panel's right side. Offsets are
-// native px relative to the Frame panel's top-RIGHT corner so it tracks
-// `FR_X`/`FR_W`/`FR_Y` when those are tuned.
-let FRL_W: float = 15.0;
-let FRL_H: float = 526.0;
-let FRL_DX: float = 0.0;          // shift left (+) from the panel right edge.
-let FRL_DY: float = 20.0;          // shift down (+) from the panel top edge.
-
-// Exit button (GameMainCommunal/StpCtl/Exit*.tga is 37x48). Native.
-let EX_W: float = 37.0;
-let EX_H: float = 48.0;
-let EX_X: float = 763.0;          // 800 - 37 - 8.
-
-// --- Atlas sprite names (case-insensitive; resolved through the TLI) -----
-let SPR_SHADE: string   = "ui/GameMainUI/State/Shade.tga";
-let SPR_FRAME: string   = "ui/GameMainUI/State/Frame.tga";
-let SPR_PORTRAIT: string = "ui/GameMainUI/State/Portrait";
-let SPR_STPBARL: string = "ui/GameMainUI/Communal/StpCtl/StpBarL.tga";
-let SPR_STPBARM: string = "ui/GameMainUI/Communal/StpCtl/StpBarM.tga";
-let SPR_STPBARR: string = "ui/GameMainUI/Communal/StpCtl/StpBarR.tga";
-let SPR_TIMEMONEY: string = "ui/GameMainUI/Communal/TimeMoney.tga";
-let SPR_FRAME_LINE: string = "ui/GameMainUI/Communal/Frame_Line.tga";
-let SPR_EXIT: string    = "ui/GameMainUI/Communal/StpCtl/Exit";
-
-// Compose the menu over the live scene + HUD. `mx`/`my` are the cursor,
-// `click` is the left-button rising edge this frame.
-pub fn paint_state_menu(
-    ui: &radiance.IUiHost, atlas: &openpal3.IPal3UiAtlas,
-    mx: float, my: float, down: bool, click: bool,
-) -> bool {
-    let lw = ui.display_size_x() as float;
-    let lh = ui.display_size_y() as float;
-    if lw <= 0.0 || lh <= 0.0 { return true; }
-
-    // Fit a 4:3 (800x600) canvas inside the window and centre it; the
-    // leftover margins become black letterbox bars. `s` scales native px
-    // to screen px; (ox, oy) is the canvas top-left in screen space.
-    let viewport = gui.Rect(0.0, 0.0, lw, lh);
-    let native = gui.Size(REF_W, REF_H);
-    let canvas = viewport.fit(native);
-    let s = viewport.fit_scale(native);
-    let cw = canvas.w;
-    let ch = canvas.h;
-    let ox = canvas.x;
-    let oy = canvas.y;
-
-    // Dim the whole screen with a semi-transparent overlay (covers both
-    // the menu's 4:3 area and the letterbox margins), so the live scene
-    // reads as paused/behind the menu without hard black bars.
-    ui.fill_rect(0.0, 0.0, lw, lh, 0.0, 0.0, 0.0, 0.8);
-
-    // Lead character (景天 / role 0) — placeholder stats matching the
-    // reference until the party model is threaded through.
-    let role = 0;
-    let level = 1;
-    let exp_cur = 0;
-    let exp_next = 19;
-    let wx_shui = 3; let wx_tu = 2; let wx_huo = 3; let wx_feng = 6; let wx_lei = 1;
-
-    // ---- Left character panel --------------------------------------------
-    let lp_x0 = ox + LP_X * s;
-    let lp_y0 = oy + LP_Y * s;
-    let lp_x1 = lp_x0 + LP_W * s;
-    let lp_y1 = lp_y0 + LP_H * s;
-    blit(ui, atlas, SPR_SHADE, lp_x0, lp_y0, lp_x1, lp_y1);
-
-    // Standing portrait, horizontally centred in the panel.
-    let por_x0 = lp_x0 + (LP_W - POR_W) * 0.5 * s;
-    let por_y0 = lp_y0 + POR_TOP * s;
-    blit(ui, atlas, SPR_PORTRAIT + int_str(role) + ".tga",
-        por_x0, por_y0, por_x0 + POR_W * s, por_y0 + POR_H * s);
-
-    // Level (top-right of the panel).
-    ui.text_at_small(lp_x0 + LV_X * s, lp_y0 + LV_Y * s,
-        0.0, 0.0, 0.0, 1.0, int_str(level) + "级");
-
-    // 五行 values, drawn under the glyphs baked into Shade.
-    let wc_r = 0.0; let wc_g = 0.0; let wc_b = 0.0;
-    ui.text_at_small(lp_x0 + WX_SHUI_X * s, lp_y0 + WX_SHUI_Y * s, wc_r, wc_g, wc_b, 1.0, int_str(wx_shui));
-    ui.text_at_small(lp_x0 + WX_TU_X * s,   lp_y0 + WX_TU_Y * s,   wc_r, wc_g, wc_b, 1.0, int_str(wx_tu));
-    ui.text_at_small(lp_x0 + WX_HUO_X * s,  lp_y0 + WX_HUO_Y * s,  wc_r, wc_g, wc_b, 1.0, int_str(wx_huo));
-    ui.text_at_small(lp_x0 + WX_FENG_X * s, lp_y0 + WX_FENG_Y * s, wc_r, wc_g, wc_b, 1.0, int_str(wx_feng));
-    ui.text_at_small(lp_x0 + WX_LEI_X * s,  lp_y0 + WX_LEI_Y * s,  wc_r, wc_g, wc_b, 1.0, int_str(wx_lei));
-
-    // Experience (bottom of the panel).
-    ui.text_at_small(lp_x0 + EXP_CUR_X * s, lp_y0 + EXP_CUR_Y * s, 0.0, 0.0, 0.0, 1.0,
-        "经验值 " + int_str(exp_cur));
-    ui.text_at_small(lp_x0 + EXP_NEXT_X * s, lp_y0 + EXP_NEXT_Y * s, 0.0, 0.0, 0.0, 1.0,
-        "升级所需经验值 " + int_str(exp_next));
-
-    // ---- Right 状态 dragon panel + money/time ----------------------------
-    let fr_x0 = ox + FR_X * s;
-    let fr_y0 = oy + FR_Y * s;
-    blit(ui, atlas, SPR_FRAME, fr_x0, fr_y0, fr_x0 + FR_W * s, fr_y0 + FR_H * s);
-
-    // Right-edge vertical border bar, capping the panel's right side.
-    let frl_x0 = ox + (FR_X + FR_W - FRL_DX) * s;
-    let frl_y0 = oy + (FR_Y + FRL_DY) * s;
-    blit(ui, atlas, SPR_FRAME_LINE, frl_x0, frl_y0, frl_x0 + FRL_W * s, frl_y0 + FRL_H * s);
-
-    let tm_x0 = ox + TM_X * s;
-    let tm_y0 = oy + TM_Y * s;
-    blit(ui, atlas, SPR_TIMEMONEY, tm_x0, tm_y0, tm_x0 + TM_W * s, tm_y0 + TM_H * s);
-    ui.text_at_small(tm_x0 + MONEY_X * s, tm_y0 + MONEY_Y * s, 1.0, 0.95, 0.5, 1.0, "0");
-    ui.text_at_small(tm_x0 + TIME_X * s, tm_y0 + TIME_Y * s, 0.85, 1.0, 0.95, 1.0, "00:43:46");
-
-    // ---- Bottom action toolbar -------------------------------------------
-    let tb_y0 = oy + TB_Y * s;
-    let tb_y1 = oy + ch;
-    let bl_x1 = ox + TB_LEFT_W * s;
-    let br_x0 = ox + (REF_W - TB_RIGHT_W) * s;
-    blit(ui, atlas, SPR_STPBARL, ox, tb_y0, bl_x1, tb_y1);
-    blit(ui, atlas, SPR_STPBARM, bl_x1, tb_y0, br_x0, tb_y1);
-    blit(ui, atlas, SPR_STPBARR, br_x0, tb_y0, ox + cw, tb_y1);
-
-    // Category buttons. `<base>1.tga` is the lit/selected art; the open
-    // screen (State) shows lit, the rest normal (`0`).
-    let btn_y0 = tb_y0 + (TB_H - TB_BTN_H) * 0.5 * s;
-    let bases: array<string> = [
-        "State", "Prop", "Magic", "Sword", "Equip", "JusticeBook", "Battle_Array", "System",
-    ];
-    for i in Range(0, 8) {
-        let bx0 = ox + (TB_FIRST_X + (i as float) * TB_GAP) * s;
-        let variant = if i == 0 { "1" } else { "0" };
-        blit(ui, atlas, "ui/GameMainUI/Communal/StpCtl/" + bases[i] + variant + ".tga",
-            bx0, btn_y0, bx0 + TB_BTN_W * s, btn_y0 + TB_BTN_H * s);
+struct Canvas(
+    ui: &radiance.IUiHost,
+    atlas: &openpal3.IPal3UiAtlas,
+    x: float, y: float, scale: float,
+) {
+    fn blit(self: &Self, name: string, x: float, y: float, w: float, h: float) {
+        let sprite = self.atlas.sprite(name);
+        if sprite == null { return; }
+        let sp = sprite!;
+        self.ui.image_rect(sp.com_id(), self.x + x * self.scale, self.y + y * self.scale,
+            self.x + (x + w) * self.scale, self.y + (y + h) * self.scale,
+            sp.u0(), sp.v0(), sp.u1(), sp.v1());
     }
 
-    // Exit button, far right of the toolbar.
-    let ex_w = EX_W * s;
-    let ex_h = EX_H * s;
-    let ex_x0 = ox + EX_X * s;
-    let ex_y0 = tb_y0 + (TB_H * s - ex_h) * 0.5;
-    let on_exit = mx >= ex_x0 && mx <= ex_x0 + ex_w && my >= ex_y0 && my <= ex_y0 + ex_h;
-    let ex_variant = if on_exit { "1" } else { "0" };
-    blit(ui, atlas, SPR_EXIT + ex_variant + ".tga", ex_x0, ex_y0, ex_x0 + ex_w, ex_y0 + ex_h);
+    fn text(self: &Self, x: float, y: float, text: string, light: bool) {
+        let color = if light { 0.94 } else { 0.05 };
+        self.ui.text_at_small(self.x + x * self.scale, self.y + y * self.scale,
+            color, color, if light { 0.80 } else { 0.08 }, 1.0, text);
+    }
 
-    // ---- Dismissal -------------------------------------------------------
-    // The menu only closes via the exit button (no outside-click
-    // dismissal) — clicks elsewhere are swallowed while it's open.
-    if click && on_exit { return false; }
-    return true;
+    fn shade(self: &Self, x: float, y: float, w: float, h: float) {
+        self.ui.fill_rect(self.x + x * self.scale, self.y + y * self.scale,
+            self.x + (x + w) * self.scale, self.y + (y + h) * self.scale,
+            0.02, 0.09, 0.10, 0.92);
+    }
 }
 
-// Blit an atlas sprite stretched into the screen rect (x0,y0)-(x1,y1).
-fn blit(ui: &radiance.IUiHost, atlas: &openpal3.IPal3UiAtlas, name: string,
-        x0: float, y0: float, x1: float, y1: float) {
-    let osp = atlas.sprite(name);
-    if osp == null { return; }
-    let sp = osp!;
-    ui.image_rect(sp.com_id(), x0, y0, x1, y1, sp.u0(), sp.v0(), sp.u1(), sp.v1());
+pub struct MenuState(
+    tab: int, role: int, page: int, party_page: int,
+    item: int, equipment_slot: int, held: int,
+) {
+    fn button(self: &Self, id: int, over: bool, press: bool, release: bool) -> bool {
+        if press && over { self.held = id; }
+        return release && over && self.held == id;
+    }
+
+    pub fn paint(
+        self: &Self, ui: &radiance.IUiHost, atlas: &openpal3.IPal3UiAtlas,
+        gameplay: &openpal3.IPal3MenuState, mx: float, my: float,
+        press: bool, release: bool, down: bool,
+    ) -> bool {
+        let viewport = gui.Rect(0.0, 0.0, ui.display_size_x() as float, ui.display_size_y() as float);
+        let native = gui.Size(800.0, 600.0);
+        let rect = viewport.fit(native);
+        let s = viewport.fit_scale(native);
+        if s <= 0.0 { return true; }
+        let c = &Canvas(ui, atlas, rect.x, rect.y, s);
+        let nx = (mx - rect.x) / s;
+        let ny = (my - rect.y) / s;
+        ui.fill_rect(0.0, 0.0, viewport.w, viewport.h, 0.0, 0.0, 0.0, 0.8);
+
+        let frames: array<string> = ["State", "Prop", "Equip"];
+        c.blit(ROOT + frames[self.tab] + "/Frame.tga", 592.0, 18.0, 192.0, 526.0);
+        c.blit(COMMON + "Frame_Line.tga", 784.0, 44.0, 17.0, 526.0);
+        c.blit(COMMON + "TimeMoney.tga", 579.0, 0.0, 203.0, 64.0);
+
+        if gameplay.available() {
+            let game = gameplay;
+            c.text(618.0, 0.0, int_str(game.money()), true);
+            let seconds = game.play_seconds();
+            c.text(668.0, 24.0, two_digits(seconds / 3600) + ":" +
+                two_digits((seconds / 60) % 60) + ":" + two_digits(seconds % 60), true);
+
+            let count = game.member_count();
+            if self.party_page >= count { self.party_page = 0; }
+            let mut selected_present = false;
+            for i in Range(0, count) {
+                if game.member_role(i) == self.role { selected_present = true; }
+            }
+            if !selected_present { self.role = game.member_role(0); }
+            for i in Range(0, 4) {
+                let role = game.member_role(self.party_page + i);
+                if role >= 0 {
+                    if self.tab == 0 { paint_character(c, game, role, i); }
+                    paint_resources(c, game, role, i, self.role == role);
+                    let y = 62.0 + (i as float) * 122.0;
+                    let over = inside(nx, ny, 606.0, y, 184.0, 100.0);
+                    if self.tab == 0 && inside(nx, ny, (i as float) * 148.0, 0.0, 148.0, 330.0) {
+                        paint_capabilities(c, game, role, (i as float) * 148.0 + 8.0, 188.0);
+                    }
+                    if self.button(30 + i, over, press, release) { self.role = role; }
+                } else if self.tab == 0 {
+                    c.blit(ROOT + "State/NoBodyFrame.tga", (i as float) * 148.0, 0.0, 147.0, 176.0);
+                }
+            }
+            // The native layout has four visible slots; page a fifth member
+            // instead of silently omitting a valid party member.
+            if count > 4 {
+                c.text(608.0, 524.0, "切换队员", true);
+                if self.button(40, inside(nx, ny, 600.0, 518.0, 164.0, 24.0), press, release) {
+                    self.party_page = if self.party_page == 0 { 4 } else { 0 };
+                }
+            }
+            if self.tab == 1 { self.paint_inventory(c, game, nx, ny, press, release); }
+            if self.tab == 2 { self.paint_equipment(c, game, nx, ny, press, release); }
+            if count == 0 && self.tab == 0 { c.text(190.0, 240.0, "队伍中没有角色", true); }
+        } else {
+            c.text(180.0, 240.0, "此游戏的角色与物品数据尚未接入", true);
+        }
+
+        c.blit(TOOLBAR + "StpBarL.tga", 0.0, 543.0, 256.0, 57.0);
+        c.blit(TOOLBAR + "StpBarM.tga", 256.0, 543.0, 512.0, 57.0);
+        c.blit(TOOLBAR + "StpBarR.tga", 768.0, 543.0, 32.0, 57.0);
+        let tabs: array<string> = ["State", "Prop", "Equip", "Magic", "Battle_Array", "Sword", "JusticeBook", "System"];
+        for i in Range(0, 8) {
+            let x = 38.0 + (i as float) * 88.0;
+            let over = inside(nx, ny, x + 35.0, 551.0, 39.0, 40.0);
+            let enabled = i < 3 && gameplay.available();
+            let mut name = TOOLBAR + tabs[i] + "0.tga";
+            if self.tab == i {
+                name = TOOLBAR + "Un" + tabs[i] + ".tga";
+            } else if enabled {
+                let variant = if over && down { "2" } else { if over { "1" } else { "0" } };
+                name = TOOLBAR + tabs[i] + variant + ".tga";
+            }
+            c.blit(name, x, 546.0, 110.0, 50.0);
+            if enabled && self.button(i, over, press, release) {
+                self.tab = i; self.page = 0; self.item = 0;
+            }
+            if over && !enabled { c.text(312.0, 524.0, "此功能尚未实现", true); }
+        }
+        let exit_over = inside(nx, ny, 763.0, 547.0, 37.0, 48.0);
+        let exit_variant = if exit_over && down { "2" } else { if exit_over { "1" } else { "0" } };
+        c.blit(TOOLBAR + "Exit" + exit_variant + ".tga", 763.0, 547.0, 37.0, 48.0);
+        let close = self.button(20, exit_over, press, release);
+        if !down { self.held = -1; }
+        return !close;
+    }
+
+    fn paint_inventory(self: &Self, c: &Canvas, game: &openpal3.IPal3MenuState,
+        nx: float, ny: float, press: bool, release: bool) {
+        let count = game.inventory_count();
+        let pages = if count == 0 { 1 } else { (count + 15) / 16 };
+        if self.page >= pages { self.page = pages - 1; }
+        let wheel = if inside(nx, ny, 0.0, 0.0, 592.0, 530.0) { c.ui.mouse_wheel() } else { 0.0 };
+        if (wheel > 0.0 || self.button(50, inside(nx, ny, 390.0, 20.0, 56.0, 30.0), press, release)) && self.page > 0 {
+            self.page = self.page - 1; self.item = 0;
+        }
+        if (wheel < 0.0 || self.button(51, inside(nx, ny, 514.0, 20.0, 56.0, 30.0), press, release)) && self.page + 1 < pages {
+            self.page = self.page + 1; self.item = 0;
+        }
+        c.text(24.0, 24.0, "物品", true);
+        c.text(390.0, 24.0, "上一页", true);
+        c.text(453.0, 24.0, int_str(self.page + 1) + "/" + int_str(pages), true);
+        c.text(514.0, 24.0, "下一页", true);
+        let mut present = false;
+        for i in Range(0, 16) {
+            let index = self.page * 16 + i;
+            if index < count && game.inventory_item(index) == self.item { present = true; }
+        }
+        if !present { self.item = if count == 0 { 0 } else { game.inventory_item(self.page * 16) }; }
+        for i in Range(0, 16) {
+            let index = self.page * 16 + i;
+            if index < count {
+                let id = game.inventory_item(index);
+                let x = 24.0 + ((i / 8) as float) * 280.0;
+                let y = 64.0 + ((i % 8) as float) * 34.0;
+                let over = inside(nx, ny, x, y, 256.0, 30.0);
+                if id == self.item || over { c.shade(x, y, 256.0, 30.0); }
+                c.blit(ROOT + "Prop/List_Grid.tga", x, y + 3.0, 256.0, 24.0);
+                c.text(x + 8.0, y + 6.0, game.item_name(id), true);
+                c.text(x + 213.0, y + 6.0, int_str(game.inventory_quantity(index)), true);
+                if self.button(100 + i, over, press, release) { self.item = id; }
+            }
+        }
+        if count == 0 { c.text(208.0, 170.0, "没有携带物品", true); }
+        paint_item(c, game, self.item, "物品使用尚未实现");
+    }
+
+    fn paint_equipment(self: &Self, c: &Canvas, game: &openpal3.IPal3MenuState,
+        nx: float, ny: float, press: bool, release: bool) {
+        c.text(24.0, 24.0, "装备  " + role_name(self.role), true);
+        if self.role < 0 { return; }
+        c.blit(ROOT + "State/Portrait" + int_str(self.role) + ".tga", 10.0, 58.0, 128.0, 288.0);
+        paint_capabilities(c, game, self.role, 148.0, 86.0);
+        // Native equipment UI order (0x493312..0x493398).
+        let slots: array<int> = [5, 1, 0, 2, 3, 4];
+        let labels: array<string> = ["武器", "头饰", "衣服", "鞋", "饰品一", "饰品二"];
+        for row in Range(0, 6) {
+            let slot = slots[row];
+            let y = 64.0 + (row as float) * 44.0;
+            let over = inside(nx, ny, 302.0, y, 272.0, 38.0);
+            if slot == self.equipment_slot || over { c.shade(302.0, y, 272.0, 38.0); }
+            let id = game.equipment_item(self.role, slot);
+            c.text(308.0, y + 10.0, labels[row], true);
+            c.text(366.0, y + 10.0, if id == 0 { "无" } else { game.item_name(id) }, true);
+            if self.button(200 + slot, over, press, release) { self.equipment_slot = slot; }
+        }
+        paint_item(c, game, game.equipment_item(self.role, self.equipment_slot), "装备更换尚未实现");
+    }
 }
 
-// stdlib-less integer -> decimal string.
+pub fn make_menu() -> &MenuState { return &MenuState(0, 0, 0, 0, 0, 5, -1); }
+
+fn paint_character(c: &Canvas, game: &openpal3.IPal3MenuState, role: int, column: int) {
+    let x = (column as float) * 148.0;
+    c.blit(ROOT + "State/Shade.tga", x, 0.0, 148.0, 530.0);
+    let top = if role == 2 { 32.0 } else { if role == 4 { 16.0 } else { 30.0 } };
+    let height = if role == 2 { 283.0 } else { if role == 4 { 301.0 } else { 288.0 } };
+    c.blit(ROOT + "State/Portrait" + int_str(role) + ".tga", x + 10.0, top, 128.0, height);
+    c.text(x + 106.0, 5.0, int_str(game.role_value(role, 0)), false);
+    let xs: array<float> = [72.0, 112.0, 48.0, 104.0, 36.0];
+    let ys: array<float> = [344.0, 380.0, 426.0, 426.0, 380.0];
+    for i in Range(0, 5) { c.text(x + xs[i], ys[i], int_str(game.role_value(role, 13 + i)), false); }
+    c.text(x + 10.0, 444.0, "经验值\n" + int_str(game.role_value(role, 1)), false);
+    let next = if game.role_value(role, 0) >= 99 { "－" } else { int_str(game.role_value(role, 2)) };
+    c.text(x + 10.0, 480.0, "升级所需经验值\n" + next, false);
+}
+
+fn paint_resources(c: &Canvas, game: &openpal3.IPal3MenuState, role: int, row: int, selected: bool) {
+    let y = 62.0 + (row as float) * 122.0;
+    c.blit(COMMON + "HeadBk.tga", 686.0, y, 110.0, 95.0);
+    let variant = if selected { "1" } else { "0" };
+    c.blit(COMMON + "RoleHead" + int_str(role) + variant + ".tga", 711.0, y + 10.0, 65.0, 86.0);
+    let names: array<string> = ["jt", "xj", "lk", "zx", "cq"];
+    c.blit(COMMON + names[role] + "_name.tga", 769.0, y + 36.0, 22.0, 32.0);
+    let bars: array<string> = ["J", "Q", "S"];
+    let offsets: array<float> = [614.0, 606.0, 616.0];
+    for i in Range(0, 3) {
+        let by = y + 21.0 + (i as float) * 28.0;
+        let current = game.role_value(role, 3 + i);
+        let maximum = game.role_value(role, 6 + i);
+        c.blit(COMMON + "Bar.tga", offsets[i], by, 85.0, 12.0);
+        let fraction = resource_fraction(current, maximum);
+        let sp = c.atlas.sprite(COMMON + bars[i] + "_BarProgress.tga");
+        if sp != null && fraction > 0.0 {
+            let sprite = sp!;
+            let x = c.x + (offsets[i] + 3.0) * c.scale;
+            let y0 = c.y + (by + 3.0) * c.scale;
+            c.ui.image_rect(sprite.com_id(), x, y0, x + 80.0 * fraction * c.scale, y0 + 6.0 * c.scale,
+                sprite.u0(), sprite.v0(), sprite.u0() + (sprite.u1() - sprite.u0()) * fraction, sprite.v1());
+        }
+        c.text(offsets[i] + 2.0, by - 1.0, int_str(current) + "/" + int_str(maximum), false);
+    }
+}
+
+fn paint_capabilities(c: &Canvas, game: &openpal3.IPal3MenuState, role: int, x: float, y: float) {
+    c.shade(x - 4.0, y - 4.0, 132.0, 120.0);
+    c.text(x + 4.0, y + 2.0, role_name(role), true);
+    let labels: array<string> = ["武", "防", "速", "运"];
+    for i in Range(0, 4) { c.text(x + 8.0, y + 26.0 + (i as float) * 21.0, labels[i] + "  " + int_str(game.role_value(role, 9 + i)), true); }
+}
+
+fn paint_item(c: &Canvas, game: &openpal3.IPal3MenuState, id: int, note: string) {
+    c.shade(16.0, 346.0, 560.0, 184.0);
+    if id != 0 {
+        c.text(26.0, 352.0, game.item_name(id), true);
+        c.text(428.0, 352.0, "价格 " + int_str(game.item_price(id)), true);
+        c.text(26.0, 378.0, game.item_description(id), true);
+    }
+    c.text(26.0, 514.0, note, true);
+}
+
+pub fn resource_fraction(current: int, maximum: int) -> float {
+    if maximum <= 0 || current <= 0 { return 0.0; }
+    if current >= maximum { return 1.0; }
+    return (current as float) / (maximum as float);
+}
+
+fn inside(mx: float, my: float, x: float, y: float, w: float, h: float) -> bool {
+    return mx >= x && mx < x + w && my >= y && my < y + h;
+}
+
+fn role_name(role: int) -> string {
+    let names: array<string> = ["景天", "雪见", "龙葵", "紫萱", "长卿"];
+    if role < 0 || role >= 5 { return ""; }
+    return names[role];
+}
+
+fn two_digits(n: int) -> string {
+    return if n < 10 { "0" + int_str(n) } else { int_str(n) };
+}
+
 fn int_str(n: int) -> string {
     if n == 0 { return "0"; }
-    let mut v = n; let mut neg = false;
-    if v < 0 { neg = true; v = -v; }
+    // Work in the negative range so even the native signed minimum fits.
+    let mut v = if n > 0 { -n } else { n };
     let mut out: string = "";
-    while v > 0 {
-        let d = v - (v / 10) * 10;
-        out = digit(d) + out; v = v / 10;
+    let digits: array<string> = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"];
+    while v < 0 {
+        let digit = -(v % 10);
+        out = digits[digit] + out; v = v / 10;
     }
-    if neg { out = "-" + out; }
-    return out;
-}
-
-fn digit(d: int) -> string {
-    if d == 0 { return "0"; } if d == 1 { return "1"; }
-    if d == 2 { return "2"; } if d == 3 { return "3"; }
-    if d == 4 { return "4"; } if d == 5 { return "5"; }
-    if d == 6 { return "6"; } if d == 7 { return "7"; }
-    if d == 8 { return "8"; } return "9";
+    return if n < 0 { "-" + out } else { out };
 }

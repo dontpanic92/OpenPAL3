@@ -146,6 +146,13 @@ impl GlobalState {
         self.persistent_state.borrow()
     }
 
+    pub fn menu_state(&self) -> crosscom::ComRc<crate::openpal3::comdef::IPal3MenuState> {
+        crate::openpal3::menu_state::Pal3MenuState::create(
+            self.persistent_state.clone(),
+            (self.asset_mgr.game() == crate::GameType::PAL3).then(|| self.asset_mgr.stats_data()),
+        )
+    }
+
     pub fn persistent_state_mut(&mut self) -> RefMut<'_, PersistentState> {
         self.persistent_state.borrow_mut()
     }

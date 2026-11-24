@@ -183,19 +183,38 @@ interface IPal3DialogRenderer: IUnknown {
 [uuid(c0373bc2-0823-4093-8f48-d42a076e8a4a)]
 class Pal3DialogRenderer: IPal3DialogRenderer {}
 
-// Scripted PAL3 in-game status indicator (top-right HUD). A
-// `[protosept(scriptable)]` interface implemented by a p7 struct, drawn
-// every frame the player has control (no SCE running). Owns all its
-// state in p7: it `load_sprite`s the `ui/scene/face` panel art once
-// (background `bk.tga`, the `hp.tga`/`mp.tga` gauges, and the team-lead
-// avatar `face0` normal/hover/click variants) and holds the handles for
-// its lifetime. HP/MP render full; the avatar swaps variant on
-// mouse-over / mouse-down (decorative).
+// Read-only live PAL3 gameplay data. Invalid indices return zero, an empty
+// string, or -1 for a missing party member. No getter changes resources.
+[uuid(d153792a-889a-434e-a68a-aac20e8bdba0)]
+interface IPal3MenuState: IUnknown {
+    bool available();
+    int controlled_role();
+    int member_count();
+    int member_role(int index);
+    int money();
+    int play_seconds();
+    // 0 level, 1 EXP, 2 EXP remaining; 3..5 current HP/Qi/MP;
+    // 6..8 maximum HP/Qi/MP; 9..12 attack/defense/speed/luck;
+    // 13..17 water/fire/wind/thunder/earth.
+    int role_value(int role, int field);
+    int equipment_item(int role, int slot);
+    int inventory_count();
+    int inventory_item(int index);
+    int inventory_quantity(int index);
+    &str item_name(int id);
+    &str item_description(int id);
+    int item_price(int id);
+}
+
+[uuid(367cc58a-61c5-447e-bd05-d855e637bfeb)]
+class Pal3MenuState: IPal3MenuState {}
+
+// Scripted PAL3 HUD and in-game menu. PAL3A supplies an unavailable service.
 [uuid(7d4f0c2e-3b1a-4f5e-9c6d-2a8b1e74f9a0), protosept(scriptable)]
 interface IPal3StatusRenderer: IUnknown {
     // Compose the top-right status panel (bk + hp/mp gauges + team-lead
     // avatar) for the current frame. `dt` advances any blink/timers.
-    void render_status(IUiHost ui, float dt);
+    void render_status(IUiHost ui, float dt, IPal3MenuState gameplay);
 
     // Open (`true`) or close (`false`) the full-screen character-status
     // (状态) menu overlay. Lets the agent server pop the menu without a
