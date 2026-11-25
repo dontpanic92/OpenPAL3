@@ -22,6 +22,7 @@ members = [
     "tools/pol_exporter",
     "tools/pal4_plot_dump",
     "tools/pal4_gob_inspect",
+    "tools/pal4_data_inspect",
     "tools/csb_inspect",
 #   "tools/asdebug",
 #   "tools/dbexp",

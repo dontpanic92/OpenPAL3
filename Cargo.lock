@@ -3362,6 +3362,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "pal4_data_inspect"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "fileformats",
+ "md5",
+ "packfs",
+ "serde_json",
+]
+
+[[package]]
 name = "pal4_gob_inspect"
 version = "0.1.0"
 dependencies = [

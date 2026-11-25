@@ -1,0 +1,12 @@
+[package]
+name = "pal4_data_inspect"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+fileformats = { path = "../../yaobow/fileformats" }
+md5 = "0.7"
+packfs = { path = "../../yaobow/packfs" }
+serde_json = "1"
