@@ -522,11 +522,7 @@ impl BinRead for GobProperty {
                 )?)),
                 _ => Err(binrw::Error::AssertFail {
                     pos: start_position,
-                    message: format!(
-                        "unknown GOB property tag {} for {:?}",
-                        ty,
-                        name.to_string()
-                    ),
+                    message: format!("unknown GOB property tag {} for {:?}", ty, name.to_string()),
                 }),
             }
         }
@@ -1052,4 +1048,3 @@ mod tests {
         println!("{:#?}", gob_file);
     }
 }
-

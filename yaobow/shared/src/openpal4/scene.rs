@@ -328,10 +328,11 @@ impl Pal4SceneLoader {
         if self.sub_block_name.is_empty() {
             return &self.block_name;
         }
-        if self
-            .asset_loader
-            .scene_data_file_exists(&self.scene_name, &self.sub_block_name, file_name)
-        {
+        if self.asset_loader.scene_data_file_exists(
+            &self.scene_name,
+            &self.sub_block_name,
+            file_name,
+        ) {
             &self.sub_block_name
         } else {
             &self.block_name
@@ -672,11 +673,14 @@ impl Pal4SceneLoader {
                         // attached in `stage_finalize` (world transforms
                         // are only final once the scene has been
                         // assembled).
-                        let script_function =
-                            npc.script_function.to_string().unwrap_or_default().trim().to_string();
+                        let script_function = npc
+                            .script_function
+                            .to_string()
+                            .unwrap_or_default()
+                            .trim()
+                            .to_string();
                         if !script_function.is_empty() {
-                            self.npc_functions
-                                .insert(npc_name.clone(), script_function);
+                            self.npc_functions.insert(npc_name.clone(), script_function);
                         }
                         entity
                             .transform()
@@ -969,12 +973,7 @@ impl Pal4SceneLoader {
                 let Some(function) = self.npc_functions.get(&e.name()) else {
                     continue;
                 };
-                world.attach_proximity_trigger(
-                    &e,
-                    i as i64,
-                    function.clone(),
-                    NPC_TALK_DISTANCE,
-                );
+                world.attach_proximity_trigger(&e, i as i64, function.clone(), NPC_TALK_DISTANCE);
             }
         }
 
@@ -1584,4 +1583,3 @@ mod tests {
         assert!(!s.reset_object("nope"));
     }
 }
-
