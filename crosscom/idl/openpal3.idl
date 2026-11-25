@@ -222,6 +222,8 @@ interface IPal3MenuState: IUnknown {
     &str item_name(int id);
     &str item_description(int id);
     int item_price(int id);
+    // Original GDB category; zero if metadata is missing.
+    int item_category(int id);
     IPal3SaveSlots save_slots();
     bool save_slot(int slot);
     // Deferred until the application's next pre-update, outside UI drawing.

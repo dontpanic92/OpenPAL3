@@ -30,7 +30,7 @@ impl Pal3MenuState {
         let descriptions = data
             .iter()
             .flat_map(|data| data.items())
-            .map(|item| (item.id, wrap_description(&item.description)))
+            .map(|item| (item.id, clean_description(&item.description)))
             .collect();
         ComRc::from_object(Self {
             state,
@@ -201,25 +201,17 @@ impl IPal3MenuStateImpl for Pal3MenuState {
             .and_then(|data| data.item(id as u32))
             .map_or(0, |item| item.price)
     }
+
+    fn item_category(&self, id: i32) -> i32 {
+        self.data
+            .as_ref()
+            .and_then(|data| data.item(id as u32))
+            .map_or(0, |item| item.category as i32)
+    }
 }
 
-fn wrap_description(text: &str) -> String {
-    let mut output = String::new();
-    let mut columns = 0;
-    for ch in text.chars().filter(|&ch| ch != '$' && ch != '\r') {
-        let width = if ch.is_ascii() { 1 } else { 2 };
-        if ch == '\n' {
-            columns = 0;
-        } else {
-            if columns + width > 64 {
-                output.push('\n');
-                columns = 0;
-            }
-            columns += width;
-        }
-        output.push(ch);
-    }
-    output
+fn clean_description(text: &str) -> String {
+    text.chars().filter(|&ch| ch != '$' && ch != '\r').collect()
 }
 
 #[cfg(test)]
@@ -240,10 +232,11 @@ mod tests {
     }
 
     #[test]
-    fn description_runs_are_plain_text_wrapped_without_splitting_unicode() {
-        assert_eq!(wrap_description("$test\r\n$next"), "test\nnext");
+    fn description_is_plain_text_and_leaves_wrapping_to_the_menu() {
+        assert_eq!(clean_description("$test\r\n$next"), "test\nnext");
         let text = format!("{}abc", "水".repeat(32));
-        assert_eq!(wrap_description(&text), format!("{}\nabc", "水".repeat(32)));
+        assert_eq!(clean_description(&text), text);
+        assert_eq!(clean_description(""), "");
     }
 
     #[test]

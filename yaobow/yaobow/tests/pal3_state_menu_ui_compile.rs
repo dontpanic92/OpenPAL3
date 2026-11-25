@@ -10,6 +10,7 @@ use crosscom::ComRc;
 use p7::interpreter::context::Data;
 use radiance_scripting::{
     ScriptHost,
+    comdef::services::{ISprite, ISpriteImpl},
     services::ui_host_recording::{RecordingUiHost, UiCall},
 };
 use shared::openpal3::{
@@ -32,15 +33,51 @@ mod openpal3 {
     pub use shared::openpal3::comdef;
 }
 
-struct EmptyAtlas;
-shared::ComObject_Pal3UiAtlas!(crate::EmptyAtlas);
+mod comdef {
+    pub use radiance_scripting::comdef::*;
+}
 
-impl IPal3UiAtlasImpl for EmptyAtlas {
-    fn has_sprite(&self, _: &str) -> bool {
-        false
+struct TestSprite(i32);
+radiance_scripting::ComObject_Sprite!(crate::TestSprite);
+impl ISpriteImpl for TestSprite {
+    fn com_id(&self) -> i32 {
+        self.0
     }
-    fn sprite(&self, _: &str) -> Option<ComRc<radiance_scripting::comdef::services::ISprite>> {
-        None
+    fn width(&self) -> i32 {
+        256
+    }
+    fn height(&self) -> i32 {
+        32
+    }
+    fn u0(&self) -> f32 {
+        0.125
+    }
+    fn v0(&self) -> f32 {
+        0.25
+    }
+    fn u1(&self) -> f32 {
+        0.75
+    }
+    fn v1(&self) -> f32 {
+        0.875
+    }
+}
+
+fn sprite_id(name: &str) -> i32 {
+    (name.bytes().fold(17u32, |hash, byte| {
+        hash.wrapping_mul(31).wrapping_add(byte as u32)
+    }) & 0x7fffffff) as i32
+}
+
+struct TestAtlas;
+shared::ComObject_Pal3UiAtlas!(crate::TestAtlas);
+
+impl IPal3UiAtlasImpl for TestAtlas {
+    fn has_sprite(&self, _: &str) -> bool {
+        true
+    }
+    fn sprite(&self, name: &str) -> Option<ComRc<ISprite>> {
+        Some(ComRc::from_object(TestSprite(sprite_id(name))))
     }
     fn native_width(&self) -> i32 {
         800
@@ -51,20 +88,26 @@ impl IPal3UiAtlasImpl for EmptyAtlas {
 }
 
 fn menu_data() -> StatsData {
-    let mut database = vec![0u8; 0xa0 + 3 * 800];
+    menu_data_with_items(&[
+        (42, "Medicine", 1),
+        (43, "Second", 1),
+        (82201, "Weapon", 11),
+    ])
+}
+
+fn menu_data_with_items(items: &[(u32, &str, u8)]) -> StatsData {
+    let mut database = vec![0u8; 0xa0 + items.len() * 800];
     let magic = b"__PAL(Softstar_Ltd: Cool_J)_GameDataBase_OutFile__";
     database[..magic.len()].copy_from_slice(magic);
     database[0x90..0x94].copy_from_slice(&0xa0u32.to_le_bytes());
-    database[0x94..0x98].copy_from_slice(&3u32.to_le_bytes());
-    for (index, (id, name)) in [(42u32, "Medicine"), (43, "Second"), (82201, "Weapon")]
-        .iter()
-        .enumerate()
-    {
+    database[0x94..0x98].copy_from_slice(&(items.len() as u32).to_le_bytes());
+    for (index, (id, name, category)) in items.iter().enumerate() {
         let record = &mut database[0xa0 + index * 800..0xa0 + (index + 1) * 800];
         record[..4].copy_from_slice(&id.to_le_bytes());
         record[4..4 + name.len()].copy_from_slice(name.as_bytes());
         record[0x60..0x6c].copy_from_slice(b"$Description");
         record[0x260..0x264].copy_from_slice(&17i32.to_le_bytes());
+        record[0x264] = *category;
     }
     let combat = format!(
         "[Level]\n{}",
@@ -106,7 +149,7 @@ fn menu_renders_live_party_and_release_latched_inventory_equipment_navigation() 
         state.add_item(43, 0, &data);
     }
     let service = Pal3MenuState::create(state.clone(), Some(data.clone()));
-    let atlas: ComRc<IPal3UiAtlas> = ComRc::from_object(EmptyAtlas);
+    let atlas: ComRc<IPal3UiAtlas> = ComRc::from_object(TestAtlas);
     let ui_id = host.intern(ui);
     let atlas_id = host.intern(atlas);
     let game_id = host.intern(service);
@@ -207,6 +250,210 @@ fn menu_renders_live_party_and_release_latched_inventory_equipment_navigation() 
     );
     frame(1180.0, 570.0, true, false, true);
     assert_eq!(frame(1180.0, 570.0, false, true, false), Data::Int(0));
+}
+
+#[test]
+fn native_item_panels_filter_scroll_and_select_without_changing_gameplay() {
+    let host = ScriptHost::new();
+    host.set_script_assets(install_script_assets());
+    host.load_source(
+        r#"
+            import radiance;
+            import shared.openpal3;
+            import yaobow.openpal3.state_menu;
+            pub fn make() -> &state_menu.MenuState { state_menu.make_menu() }
+            pub fn frame(menu: &state_menu.MenuState, ui: &radiance.IUiHost,
+                atlas: &openpal3.IPal3UiAtlas, game: &openpal3.IPal3MenuState,
+                x: float, y: float, press: bool, release: bool, down: bool) {
+                menu.paint(ui, atlas, game, x, y, press, release, down);
+            }
+        "#,
+    )
+    .unwrap();
+    let names: Vec<_> = (0..14).map(|i| format!("Row{i:02}")).collect();
+    let mut items: Vec<_> = names
+        .iter()
+        .enumerate()
+        .map(|(i, name)| (1000 + i as u32, name.as_str(), 1))
+        .collect();
+    items.extend([
+        (42, "Ore", 5),
+        (43, "MonsterPart", 12),
+        (44, "Unknown", 0),
+        (82201, "Weapon", 11),
+        (222, "Cloth", 7),
+        (111, "Hat", 8),
+    ]);
+    let data = Rc::new(menu_data_with_items(&items));
+    let state = Rc::new(RefCell::new(PersistentState::new("test".into())));
+    for &(id, _, _) in &items {
+        state
+            .borrow_mut()
+            .add_item(id as i32, if id == 1000 { -2 } else { 1 }, &data);
+    }
+    let before = serde_json::to_string(&*state.borrow()).unwrap();
+    let service = Pal3MenuState::create(state.clone(), Some(data.clone()));
+    let (recorder, ui) = RecordingUiHost::create();
+    let ui_id = host.intern(ui);
+    let atlas_id = host.intern(ComRc::<IPal3UiAtlas>::from_object(TestAtlas));
+    let game_id = host.intern(service);
+    let ui = host.foreign_box("radiance.comdef.IUiHost", ui_id).unwrap();
+    let atlas = host
+        .foreign_box("shared.openpal3.comdef.IPal3UiAtlas", atlas_id)
+        .unwrap();
+    let game = host
+        .foreign_box("shared.openpal3.comdef.IPal3MenuState", game_id)
+        .unwrap();
+    for (width, height, scale, ox, oy) in [
+        (800, 600, 1.0, 0.0, 0.0),
+        (1600, 600, 1.0, 400.0, 0.0),
+        (400, 300, 0.5, 0.0, 0.0),
+        (800, 1200, 1.0, 0.0, 300.0),
+    ] {
+        recorder.set_display_size(width, height);
+        let menu = host.call_returning_data("make", vec![]).unwrap();
+        let frame = |nx: f64, ny: f64, press: bool, release: bool, down: bool| {
+            recorder.calls.borrow_mut().clear();
+            host.call_void(
+                "frame",
+                vec![
+                    menu.clone(),
+                    ui.clone(),
+                    atlas.clone(),
+                    game.clone(),
+                    Data::Float(ox + nx * scale),
+                    Data::Float(oy + ny * scale),
+                    Data::Int(press as i64),
+                    Data::Int(release as i64),
+                    Data::Int(down as i64),
+                ],
+            )
+            .unwrap();
+        };
+        let click = |nx, ny| {
+            frame(nx, ny, true, false, true);
+            frame(nx, ny, false, true, false);
+            frame(0.0, 0.0, false, false, false);
+        };
+        let has_row = |name: &str| {
+            recorder.calls.borrow().iter().any(|call|
+                matches!(call, UiCall::TextAt { x, s, .. } if *x == (ox + 269.0 * scale) as f32 && s == name))
+        };
+        let info_is = |name: &str| {
+            recorder.calls.borrow().iter().any(|call|
+                matches!(call, UiCall::TextAt { x, y, s, .. }
+                    if *x == (ox + 22.0 * scale) as f32 && *y == (oy + 142.0 * scale) as f32 && s == name))
+        };
+        click(180.0, 570.0);
+        assert!(has_row("Row00") && has_row("Row11") && !has_row("Row12"));
+        assert!(info_is("Row00"));
+        for (row, name) in names.iter().take(12).enumerate() {
+            assert!(recorder.calls.borrow().iter().any(|call| matches!(call,
+                UiCall::TextAt { x, y, size: Some(size), s, .. }
+                    if s == name && *x == (ox + 269.0 * scale) as f32
+                    && *y == (oy + (203.0 + row as f64 * 23.0) * scale) as f32
+                    && *size == (16.0 * scale) as f32)));
+        }
+        for (name, x, y, w, h) in [
+            ("ui/GameMainUI/Communal/Info.tga", 10.0, 125.0, 232.0, 414.0),
+            (
+                "ui/GameMainUI/Equip/ListFrame.tga",
+                251.0,
+                125.0,
+                336.0,
+                393.0,
+            ),
+            ("ui/GameMainUI/Prop/Resume2.tga", 266.0, 123.0, 42.0, 50.0),
+            (
+                "ui/GameMainUI/Communal/EquipTopFrame/TopFrameL.tga",
+                12.0,
+                0.0,
+                29.0,
+                119.0,
+            ),
+        ] {
+            assert!(recorder.calls.borrow().iter().any(|call| matches!(call,
+                    UiCall::ImageRect { texture_com_id, x0, y0, x1, y1, .. }
+                        if *texture_com_id == sprite_id(name)
+                        && (*x0, *y0, *x1, *y1) == ((ox + x * scale) as f32, (oy + y * scale) as f32,
+                            (ox + (x + w) * scale) as f32, (oy + (y + h) * scale) as f32))), "{name}");
+        }
+        frame(300.0, 250.0, true, false, true);
+        frame(0.0, 0.0, false, true, false);
+        assert!(info_is("Row00"), "dragging off must cancel selection");
+        click(300.0, 250.0);
+        assert!(info_is("Row02"));
+        click(548.0, 460.0);
+        assert!(!has_row("Row00") && has_row("Row12"));
+        assert!(
+            info_is("Row02"),
+            "scrolling preserves the selected item's details"
+        );
+        frame(548.0, 440.0, true, false, true);
+        frame(548.0, 440.0, false, true, false);
+        assert!(has_row("Row13") && !has_row("Row01"));
+        click(437.0, 147.0);
+        assert!(has_row("Ore") && has_row("MonsterPart") && !has_row("Unknown"));
+        click(390.0, 147.0);
+        assert!(
+            !info_is("Ore") && !has_row("MonsterPart"),
+            "empty filters must clear stale details"
+        );
+        click(268.0, 570.0);
+        assert!(has_row("Weapon") && !has_row("Cloth"));
+        click(353.0, 147.0);
+        assert!(has_row("Cloth") && !has_row("Weapon"));
+        click(419.0, 147.0);
+        assert!(has_row("Hat") && !has_row("Cloth"));
+        click(300.0, 207.0);
+        assert!(
+            info_is("Hat"),
+            "bag equipment can be inspected without equipping"
+        );
+    }
+    assert_eq!(serde_json::to_string(&*state.borrow()).unwrap(), before);
+}
+
+#[test]
+fn item_descriptions_wrap_for_the_narrow_native_panel_without_splitting_unicode() {
+    let host = ScriptHost::new();
+    host.set_script_assets(install_script_assets());
+    host.load_source(r#"
+            import yaobow.openpal3.state_menu;
+            pub fn count(text: string) -> int { state_menu.description_lines(text).len() }
+            pub fn line(text: string, index: int) -> string { state_menu.description_lines(text)[index] }
+        "#).unwrap();
+    for (text, expected) in [
+        ("".to_string(), vec![]),
+        (
+            "first\n\nlast".to_string(),
+            vec!["first".to_string(), "".to_string(), "last".to_string()],
+        ),
+        (
+            format!("{}abc", "水".repeat(13)),
+            vec!["水".repeat(13), "abc".to_string()],
+        ),
+        (
+            format!("{}水", "a".repeat(25)),
+            vec!["a".repeat(25), "水".to_string()],
+        ),
+    ] {
+        assert_eq!(
+            host.call_returning_data("count", vec![Data::string(&text)])
+                .unwrap(),
+            Data::Int(expected.len() as i64)
+        );
+        for (index, line) in expected.iter().enumerate() {
+            assert_eq!(
+                host.call_returning_data(
+                    "line",
+                    vec![Data::string(&text), Data::Int(index as i64)]
+                )
+                .unwrap(),
+                Data::string(line)
+            );
+        }
+    }
 }
 
 #[test]

@@ -28,6 +28,11 @@ struct Canvas(
             18.0 * self.scale, color, color, if light { 0.80 } else { 0.08 }, 1.0, text);
     }
 
+    fn small_text(self: &Self, x: float, y: float, text: string) {
+        self.ui.text_at_size(self.x + x * self.scale, self.y + y * self.scale,
+            16.0 * self.scale, 0.047, 0.122, 0.0, 1.0, text);
+    }
+
     fn shade(self: &Self, x: float, y: float, w: float, h: float) {
         self.ui.fill_rect(self.x + x * self.scale, self.y + y * self.scale,
             self.x + (x + w) * self.scale, self.y + (y + h) * self.scale,
@@ -38,6 +43,7 @@ struct Canvas(
 pub struct MenuState(
     tab: int, role: int, page: int, party_page: int,
     item: int, equipment_slot: int, held: int,
+    category: int, equipment_category: int, from_bag: bool, description_first: int,
     browser: &save_load.Browser,
 ) {
     pub fn on_open(self: &Self, gameplay: &openpal3.IPal3MenuState) {
@@ -96,7 +102,9 @@ pub struct MenuState(
                     if self.tab == 0 && inside(nx, ny, (i as float) * 148.0, 0.0, 148.0, 330.0) {
                         paint_capabilities(c, game, role, (i as float) * 148.0 + 8.0, 188.0);
                     }
-                    if self.button(30 + i, over, press, release) { self.role = role; }
+                    if self.button(30 + i, over, press, release) {
+                        self.role = role; self.from_bag = false; self.page = 0;
+                    }
                 } else if self.tab == 0 {
                     c.blit(ROOT + "State/NoBodyFrame.tga", (i as float) * 148.0, 0.0, 147.0, 176.0);
                 }
@@ -109,8 +117,8 @@ pub struct MenuState(
                     self.party_page = if self.party_page == 0 { 4 } else { 0 };
                 }
             }
-            if self.tab == 1 { self.paint_inventory(c, game, nx, ny, press, release); }
-            if self.tab == 2 { self.paint_equipment(c, game, nx, ny, press, release); }
+            if self.tab == 1 { self.paint_inventory(c, game, nx, ny, press, release, down); }
+            if self.tab == 2 { self.paint_equipment(c, game, nx, ny, press, release, down); }
             if count == 0 && self.tab == 0 { c.text(190.0, 240.0, "队伍中没有角色", true); }
         } else if !gameplay.available() {
             c.text(180.0, 240.0, "此游戏的角色与物品数据尚未接入", true);
@@ -134,6 +142,7 @@ pub struct MenuState(
             c.blit(name, x, 546.0, 110.0, 50.0);
             if enabled && self.browser.confirmation == 0 && self.button(i, over, press, release) {
                 self.tab = i; self.page = 0; self.item = 0;
+                self.from_bag = false; self.description_first = 0;
                 if i == 7 { self.browser.begin(gameplay.save_slots(), true); }
             }
             if over && !enabled { c.text(312.0, 524.0, "此功能尚未实现", true); }
@@ -163,69 +172,216 @@ pub struct MenuState(
     }
 
     fn paint_inventory(self: &Self, c: &Canvas, game: &openpal3.IPal3MenuState,
-        nx: float, ny: float, press: bool, release: bool) {
-        let count = game.inventory_count();
-        let pages = if count == 0 { 1 } else { (count + 15) / 16 };
-        if self.page >= pages { self.page = pages - 1; }
-        let wheel = if inside(nx, ny, 0.0, 0.0, 592.0, 530.0) { c.ui.mouse_wheel() } else { 0.0 };
-        if (wheel > 0.0 || self.button(50, inside(nx, ny, 390.0, 20.0, 56.0, 30.0), press, release)) && self.page > 0 {
-            self.page = self.page - 1; self.item = 0;
-        }
-        if (wheel < 0.0 || self.button(51, inside(nx, ny, 514.0, 20.0, 56.0, 30.0), press, release)) && self.page + 1 < pages {
-            self.page = self.page + 1; self.item = 0;
-        }
-        c.text(24.0, 24.0, "物品", true);
-        c.text(390.0, 24.0, "上一页", true);
-        c.text(453.0, 24.0, int_str(self.page + 1) + "/" + int_str(pages), true);
-        c.text(514.0, 24.0, "下一页", true);
-        let mut present = false;
-        for i in Range(0, 16) {
-            let index = self.page * 16 + i;
-            if index < count && game.inventory_item(index) == self.item { present = true; }
-        }
-        if !present { self.item = if count == 0 { 0 } else { game.inventory_item(self.page * 16) }; }
-        for i in Range(0, 16) {
-            let index = self.page * 16 + i;
-            if index < count {
-                let id = game.inventory_item(index);
-                let x = 24.0 + ((i / 8) as float) * 280.0;
-                let y = 64.0 + ((i % 8) as float) * 34.0;
-                let over = inside(nx, ny, x, y, 256.0, 30.0);
-                if id == self.item || over { c.shade(x, y, 256.0, 30.0); }
-                c.blit(ROOT + "Prop/List_Grid.tga", x, y + 3.0, 256.0, 24.0);
-                c.text(x + 8.0, y + 6.0, game.item_name(id), true);
-                c.text(x + 213.0, y + 6.0, int_str(game.inventory_quantity(index)), true);
-                if self.button(100 + i, over, press, release) { self.item = id; }
+        nx: float, ny: float, press: bool, release: bool, down: bool) {
+        paint_item_header(c, game, self.role, false);
+        c.blit(ROOT + "Equip/ListFrame.tga", 251.0, 125.0, 336.0, 393.0);
+        let names: array<string> = ["Resume", "Treasure", "Attack", "Smelt", "Ancient", "Special"];
+        for i in Range(0, 6) {
+            let x = if i == 5 { 529.0 } else { 266.0 + (i as float) * 53.0 };
+            let over = inside(nx, ny, x, 123.0, 42.0, 50.0);
+            let variant = if self.category == i { "2" } else { if over { "1" } else { "0" } };
+            c.blit(ROOT + "Prop/" + names[i] + variant + ".tga", x, 123.0, 42.0, 50.0);
+            if self.button(60 + i, over, press, release) {
+                self.category = i; self.page = 0; self.select_item(0);
             }
         }
-        if count == 0 { c.text(208.0, 170.0, "没有携带物品", true); }
-        paint_item(c, game, self.item, "物品使用尚未实现");
+        self.paint_list(c, game, nx, ny, press, release, down);
+        self.paint_item(c, game, names[self.category] + "_word.tga", nx, ny, "物品使用尚未实现");
     }
 
     fn paint_equipment(self: &Self, c: &Canvas, game: &openpal3.IPal3MenuState,
-        nx: float, ny: float, press: bool, release: bool) {
-        c.text(24.0, 24.0, "装备  " + role_name(self.role), true);
-        if self.role < 0 { return; }
-        c.blit(ROOT + "State/Portrait" + int_str(self.role) + ".tga", 10.0, 58.0, 128.0, 288.0);
-        paint_capabilities(c, game, self.role, 148.0, 86.0);
-        // Native equipment UI order (0x493312..0x493398).
-        let slots: array<int> = [5, 1, 0, 2, 3, 4];
-        let labels: array<string> = ["武器", "头饰", "衣服", "鞋", "饰品一", "饰品二"];
-        for row in Range(0, 6) {
-            let slot = slots[row];
-            let y = 64.0 + (row as float) * 44.0;
-            let over = inside(nx, ny, 302.0, y, 272.0, 38.0);
-            if slot == self.equipment_slot || over { c.shade(302.0, y, 272.0, 38.0); }
-            let id = game.equipment_item(self.role, slot);
-            c.text(308.0, y + 10.0, labels[row], true);
-            c.text(366.0, y + 10.0, if id == 0 { "无" } else { game.item_name(id) }, true);
-            if self.button(200 + slot, over, press, release) { self.equipment_slot = slot; }
+        nx: float, ny: float, press: bool, release: bool, down: bool) {
+        paint_item_header(c, game, self.role, true);
+        c.blit(ROOT + "Equip/ListFrame.tga", 251.0, 125.0, 336.0, 393.0);
+        let names: array<string> = ["Weapon", "Cloth", "Hat", "Shoes", "Adorn"];
+        let category_slots: array<int> = [5, 0, 1, 2, 3];
+        for i in Range(0, 5) {
+            let x = 266.0 + (i as float) * 66.0;
+            let over = inside(nx, ny, x, 123.0, 42.0, 50.0);
+            let variant = if self.equipment_category == i { "2" } else { if over { "1" } else { "0" } };
+            c.blit(ROOT + "Equip/" + names[i] + variant + ".tga", x, 123.0, 42.0, 50.0);
+            if self.button(70 + i, over, press, release) {
+                self.equipment_category = i; self.equipment_slot = category_slots[i];
+                self.page = 0; self.from_bag = false;
+            }
         }
-        paint_item(c, game, game.equipment_item(self.role, self.equipment_slot), "装备更换尚未实现");
+        let weapon_over = inside(nx, ny, 368.0, 4.0, 32.0, 108.0);
+        let weapon_variant = if weapon_over && down { "2" } else { if weapon_over { "1" } else { "0" } };
+        c.blit(ROOT + "Equip/Weapon_Ctrl" + weapon_variant + ".tga", 368.0, 4.0, 32.0, 108.0);
+        c.blit(ROOT + "Equip/WeaponIcon.tga", 336.0, 40.0, 20.0, 32.0);
+        if self.button(205, weapon_over, press, release) {
+            self.equipment_slot = 5; self.equipment_category = 0;
+            self.page = 0; self.from_bag = false;
+        }
+        let slots: array<int> = [1, 0, 2, 3, 4];
+        let icons: array<string> = ["Hat", "Cloth", "Shoes", "Adorn", "Adorn"];
+        for row in Range(0, 5) {
+            let slot = slots[row];
+            let y = 2.0 + (row as float) * 20.0;
+            let over = inside(nx, ny, 426.0, y + 6.0, 148.0, 20.0);
+            let variant = if slot == self.equipment_slot { "2" } else { if over { "1" } else { "0" } };
+            c.blit(ROOT + "Equip/Equip_Ctrl" + variant + ".tga", 426.0, y, 148.0, 32.0);
+            c.blit(ROOT + "Equip/" + icons[row] + "Icon.tga", 438.0, y + 6.0, 18.0, 20.0);
+            let id = game.equipment_item(self.role, slot);
+            c.ui.clip_rect(c.x + 464.0 * c.scale, c.y + (y + 6.0) * c.scale,
+                c.x + 574.0 * c.scale, c.y + (y + 26.0) * c.scale, () => {
+                    c.small_text(464.0, y + 7.0, if id == 0 { "无" } else { game.item_name(id) });
+                });
+            if self.button(200 + slot, over, press, release) {
+                self.equipment_slot = slot;
+                self.equipment_category = if slot == 1 { 2 } else { if slot == 0 { 1 } else { if slot == 2 { 3 } else { 4 } } };
+                self.page = 0; self.from_bag = false;
+            }
+        }
+        if !self.from_bag { self.select_item(game.equipment_item(self.role, self.equipment_slot)); }
+        self.paint_list(c, game, nx, ny, press, release, down);
+        let words: array<string> = ["wq", "fj", "tb", "jb", "Adorn"];
+        self.paint_item(c, game, words[self.equipment_category] + "_word.tga", nx, ny, "装备更换尚未实现");
+    }
+
+    fn select_item(self: &Self, id: int) {
+        if self.item != id { self.description_first = 0; }
+        self.item = id;
+    }
+
+    fn paint_list(self: &Self, c: &Canvas, game: &openpal3.IPal3MenuState,
+        nx: float, ny: float, press: bool, release: bool, down: bool) {
+        let mut indices: array<int> = [];
+        let categories: array<int> = if self.tab == 2 { [11, 7, 8, 9, 10] } else { [1, 3, 2, 5, 4, 6] };
+        let category = categories[if self.tab == 2 { self.equipment_category } else { self.category }];
+        for index in Range(0, game.inventory_count()) {
+            let id = game.inventory_item(index);
+            let item_category = game.item_category(id);
+            if item_category == category || (self.tab == 1 && self.category == 3 && item_category == 12) {
+                indices.push(index);
+            }
+        }
+        let count = indices.len();
+        let maximum = if count > 12 { count - 12 } else { 0 };
+        self.page = clamp(self.page, maximum);
+        let wheel = if inside(nx, ny, 251.0, 177.0, 336.0, 341.0) { c.ui.mouse_wheel() } else { 0.0 };
+        let up = inside(nx, ny, 536.0, 216.0, 22.0, 26.0);
+        let bottom = inside(nx, ny, 536.0, 448.0, 22.0, 26.0);
+        if wheel > 0.0 || self.button(50, up, press, release) { self.page = clamp(self.page - 1, maximum); }
+        if wheel < 0.0 || self.button(51, bottom, press, release) { self.page = clamp(self.page + 1, maximum); }
+        if press && inside(nx, ny, 536.0, 242.0, 22.0, 206.0) { self.held = 52; }
+        if down && self.held == 52 {
+            let mut first = 0;
+            while first < maximum && ny > 256.0 + 178.0 * ((first as float) + 0.5) / (maximum as float) {
+                first = first + 1;
+            }
+            self.page = first;
+        }
+        c.small_text(269.0, 177.0, "物品种类：" + int_str(count));
+        let up_variant = if up && down { "6" } else { if up { "5" } else { "4" } };
+        let down_variant = if bottom && down { "9" } else { if bottom { "8" } else { "7" } };
+        c.blit(COMMON + "Scroll/scrollbar" + up_variant + ".tga", 536.0, 216.0, 22.0, 26.0);
+        c.blit(COMMON + "Scroll/scrollbar" + down_variant + ".tga", 536.0, 448.0, 22.0, 26.0);
+        let thumb_y = 242.0 + if maximum == 0 { 0.0 } else { 178.0 * (self.page as float) / (maximum as float) };
+        c.blit(COMMON + "Scroll/scrollbar0.tga", 534.0, thumb_y, 26.0, 28.0);
+        let mut present = false;
+        for index in indices {
+            if game.inventory_item(index) == self.item { present = true; }
+        }
+        if (self.tab == 1 || self.from_bag) && !present {
+            self.select_item(if count == 0 { 0 } else { game.inventory_item(indices[self.page]) });
+            if count == 0 { self.from_bag = false; }
+        }
+        for row in Range(0, 12) {
+            if self.page + row >= count { break; }
+            let index = indices[self.page + row];
+            let id = game.inventory_item(index);
+            let y = 201.0 + (row as float) * 23.0;
+            let over = inside(nx, ny, 269.0, y, 256.0, 23.0);
+            if id == self.item || over { c.blit(ROOT + "Prop/List_Grid.tga", 269.0, y, 256.0, 24.0); }
+            c.ui.clip_rect(c.x + 269.0 * c.scale, c.y + y * c.scale,
+                c.x + 485.0 * c.scale, c.y + (y + 23.0) * c.scale, () => {
+                    c.small_text(269.0, y + 2.0, game.item_name(id));
+                });
+            c.ui.clip_rect(c.x + 489.0 * c.scale, c.y + y * c.scale,
+                c.x + 535.0 * c.scale, c.y + (y + 23.0) * c.scale, () => {
+                    c.small_text(489.0, y + 2.0, int_str(game.inventory_quantity(index)));
+                });
+            if self.button(100 + row, over, press, release) {
+                self.select_item(id); self.from_bag = self.tab == 2;
+            }
+        }
+        if count == 0 { c.small_text(290.0, 230.0, "此类别没有物品"); }
+    }
+
+    fn paint_item(self: &Self, c: &Canvas, game: &openpal3.IPal3MenuState,
+        word: string, nx: float, ny: float, note: string) {
+        c.blit(COMMON + "Info.tga", 10.0, 125.0, 232.0, 414.0);
+        c.blit(COMMON + word, 195.0, 142.0, 16.0, 32.0);
+        if self.item != 0 {
+            c.ui.clip_rect(c.x + 22.0 * c.scale, c.y + 142.0 * c.scale,
+                c.x + 187.0 * c.scale, c.y + 174.0 * c.scale, () => {
+                    c.text(22.0, 142.0, game.item_name(self.item), true);
+                });
+            let lines = description_lines(game.item_description(self.item));
+            let maximum = if lines.len() > 6 { lines.len() - 6 } else { 0 };
+            let wheel = if inside(nx, ny, 22.0, 372.0, 212.0, 124.0) { c.ui.mouse_wheel() } else { 0.0 };
+            if wheel > 0.0 { self.description_first = self.description_first - 1; }
+            if wheel < 0.0 { self.description_first = self.description_first + 1; }
+            self.description_first = clamp(self.description_first, maximum);
+            c.ui.clip_rect(c.x + 22.0 * c.scale, c.y + 372.0 * c.scale,
+                c.x + 234.0 * c.scale, c.y + 496.0 * c.scale, () => {
+                    for row in Range(0, 6) {
+                        let index = self.description_first + row;
+                        if index >= lines.len() { break; }
+                        c.small_text(22.0, 372.0 + (row as float) * 20.0, lines[index]);
+                    }
+                });
+            c.small_text(22.0, 504.0, "价格 " + int_str(game.item_price(self.item)));
+        }
+        c.small_text(269.0, 500.0, note);
     }
 }
 
-pub fn make_menu() -> &MenuState { return &MenuState(0, 0, 0, 0, 0, 5, -1, save_load.make_browser()); }
+pub fn make_menu() -> &MenuState {
+    return &MenuState(0, 0, 0, 0, 0, 5, -1, 0, 0, false, 0, save_load.make_browser());
+}
+
+fn paint_item_header(c: &Canvas, game: &openpal3.IPal3MenuState, role: int, equipment: bool) {
+    let top = COMMON + "EquipTopFrame/";
+    c.blit(top + "TopFrameL.tga", 12.0, 0.0, 29.0, 119.0);
+    c.blit(top + "TopFrameLM.tga", 41.0, 0.0, 240.0, 119.0);
+    c.blit(top + "TopFrameM.tga", 281.0, 0.0, 14.0, 119.0);
+    c.blit(if equipment { top + "TopFrameRM.tga" } else { COMMON + "PropTopFrame/TopFrameRM.tga" },
+        295.0, 0.0, 256.0, 119.0);
+    c.blit(top + "TopFrameR.tga", 551.0, 0.0, 32.0, 119.0);
+    if role < 0 { return; }
+    c.blit(COMMON + "RoleHead" + int_str(role) + "0.tga", 56.0, 16.0, 64.0, 85.0);
+    c.small_text(118.0, 0.0, role_name(role));
+    c.small_text(118.0, 22.0, "等级 " + int_str(game.role_value(role, 0)));
+    c.small_text(118.0, 42.0, "经验 " + int_str(game.role_value(role, 1)));
+    let next = if game.role_value(role, 0) >= 99 { "－" } else { int_str(game.role_value(role, 2)) };
+    c.small_text(118.0, 66.0, "升级 " + next);
+    let labels: array<string> = ["武", "防", "速", "运"];
+    let ys: array<float> = [0.0, 22.0, 42.0, 66.0];
+    for field in Range(0, 4) {
+        c.small_text(242.0, ys[field], labels[field] + " " + int_str(game.role_value(role, 9 + field)));
+    }
+}
+
+pub fn description_lines(text: string) -> array<string> {
+    let mut lines: array<string> = [];
+    let mut line = "";
+    let mut width = 0;
+    for i in Range(0, text.len_chars()) {
+        let ch = text.char_at(i)!;
+        if ch == "\n" { lines.push(line); line = ""; width = 0; continue; }
+        let advance = if ch.len_bytes() == 1 { 1 } else { 2 };
+        if width + advance > 26 { lines.push(line); line = ""; width = 0; }
+        line = line + ch; width = width + advance;
+    }
+    if line != "" { lines.push(line); }
+    return lines;
+}
+
+fn clamp(value: int, maximum: int) -> int {
+    return if value < 0 { 0 } else { if value > maximum { maximum } else { value } };
+}
 
 fn paint_character(c: &Canvas, game: &openpal3.IPal3MenuState, role: int, column: int) {
     let x = (column as float) * 148.0;
@@ -274,16 +430,6 @@ fn paint_capabilities(c: &Canvas, game: &openpal3.IPal3MenuState, role: int, x: 
     c.text(x + 4.0, y + 2.0, role_name(role), true);
     let labels: array<string> = ["武", "防", "速", "运"];
     for i in Range(0, 4) { c.text(x + 8.0, y + 26.0 + (i as float) * 21.0, labels[i] + "  " + int_str(game.role_value(role, 9 + i)), true); }
-}
-
-fn paint_item(c: &Canvas, game: &openpal3.IPal3MenuState, id: int, note: string) {
-    c.shade(16.0, 346.0, 560.0, 184.0);
-    if id != 0 {
-        c.text(26.0, 352.0, game.item_name(id), true);
-        c.text(428.0, 352.0, "价格 " + int_str(game.item_price(id)), true);
-        c.text(26.0, 378.0, game.item_description(id), true);
-    }
-    c.text(26.0, 514.0, note, true);
 }
 
 pub fn resource_fraction(current: int, maximum: int) -> float {
