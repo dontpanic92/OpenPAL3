@@ -45,6 +45,37 @@
 
     编译好的 ffmpeg 二进制文件将自动保存在 `vcpkg_installed` 目录下。
 
+    Cargo 通过 `.cargo\config.toml` 中的 `VCPKG_INSTALLED_ROOT` 使用这些文件；
+    Windows 默认链接 `vcpkg_installed\x64-windows-static-md\lib`，不需要启用
+    Rust `ffmpeg` 依赖的 `build` feature，也不会在 Cargo 构建期间重新编译 FFmpeg。
+
+*   **LLVM / libclang**:
+    FFmpeg 的 Rust FFI 绑定仍需要在构建时根据已安装的头文件生成，因此使用预编译
+    FFmpeg 也需要 `libclang.dll`。当前绑定生成器使用 bindgen 0.64，推荐安装
+    LLVM 18，并将 `LIBCLANG_PATH` 指向包含该 DLL 的目录：
+    ```powershell
+    $env:LIBCLANG_PATH = "C:\Program Files\LLVM\bin"
+    Test-Path "$env:LIBCLANG_PATH\libclang.dll"
+    ```
+
+    也可以通过 Python 安装同版本的 libclang：
+    ```powershell
+    python -m pip install --user libclang==18.1.1
+    $env:LIBCLANG_PATH = python -c "from pathlib import Path; import clang; print(Path(clang.__file__).parent / 'native')"
+    ```
+
+    验证路径后，可以将其保存为当前用户的环境变量，供新终端使用：
+    ```powershell
+    [Environment]::SetEnvironmentVariable("LIBCLANG_PATH", $env:LIBCLANG_PATH, "User")
+    ```
+
+    不要使用不存在的旧路径。Visual Studio 附带的 LLVM 22 与当前绑定生成器不兼容，
+    可能生成只有 `_address` 字段的 `AVFormatContext`，导致 `no field pb` 等错误。
+    更换 libclang 后，如果 Cargo 仍复用旧绑定，请先清理该依赖再构建：
+    ```powershell
+    cargo clean --release -p ffmpeg-sys
+    ```
+
 ### 2. 构建项目
 
 ```powershell
