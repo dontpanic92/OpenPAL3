@@ -14,6 +14,13 @@ pub struct ItemDefinition {
     pub category: u8,
     pub subtype: u8,
     pub usable_by: [bool; 5],
+    pub use_kind: u8,
+    /// 1: single character; 2: party/world.
+    pub use_scope: u8,
+    /// Bit 0: battle; bit 1: adventure.
+    pub use_context: u8,
+    /// Native condition effects, starting with wind/thunder/water/fire/earth poison.
+    pub conditions: [i16; 31],
     pub modes: [u8; 12],
     pub amounts: [i16; 12],
     pub elements: [bool; 5],
@@ -52,6 +59,12 @@ pub fn read_items(bytes: &[u8]) -> io::Result<Vec<ItemDefinition>> {
                 subtype: record[0x265],
                 // Disk order puts Changqing before Longkui and Zixuan.
                 usable_by: [0x266, 0x267, 0x269, 0x26a, 0x268].map(|i| record[i] != 0),
+                use_kind: record[0x274],
+                use_scope: record[0x275],
+                use_context: record[0x276],
+                conditions: std::array::from_fn(|i| {
+                    i16::from_le_bytes(record[0x2bc + i * 2..0x2be + i * 2].try_into().unwrap())
+                }),
                 modes: record[0x277..0x283].try_into().unwrap(),
                 amounts: std::array::from_fn(|i| {
                     i16::from_le_bytes(record[0x284 + i * 2..0x286 + i * 2].try_into().unwrap())
@@ -85,6 +98,11 @@ mod tests {
         bytes[0xa0 + 0x264] = 11;
         bytes[0xa0 + 0x265] = 2;
         bytes[0xa0 + 0x268] = 1;
+        bytes[0xa0 + 0x274] = 15;
+        bytes[0xa0 + 0x275] = 2;
+        bytes[0xa0 + 0x276] = 3;
+        bytes[0xa0 + 0x2c0..0xa0 + 0x2c2].copy_from_slice(&2i16.to_le_bytes());
+        bytes[0xa0 + 0x2f8..0xa0 + 0x2fa].copy_from_slice(&(-1i16).to_le_bytes());
         let items = read_items(&bytes).unwrap();
         assert_eq!(items.len(), 2);
         assert_eq!(items[0].id, 123);
@@ -95,6 +113,11 @@ mod tests {
         assert_eq!(items[0].price, 1234);
         assert_eq!(items[0].category, 11);
         assert_eq!(items[0].subtype, 2);
+        assert_eq!(items[0].use_kind, 15);
+        assert_eq!(items[0].use_scope, 2);
+        assert_eq!(items[0].use_context, 3);
+        assert_eq!(items[0].conditions[2], 2);
+        assert_eq!(items[0].conditions[30], -1);
         assert_eq!(items[0].usable_by, [false, false, false, false, true]);
         assert_eq!(items[0].modes[0], 1);
         assert_eq!(items[0].amounts[3], -7);

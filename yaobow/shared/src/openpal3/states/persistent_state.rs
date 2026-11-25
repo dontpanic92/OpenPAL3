@@ -179,6 +179,95 @@ impl PersistentState {
         &self.inventory
     }
 
+    pub fn can_equip_item(&self, role: i32, slot: i32, id: i32, data: &StatsData) -> bool {
+        if !self.party.contains(role) || !(0..6).contains(&slot) {
+            return false;
+        }
+        let current = self.stats.character(role).unwrap().equipment()[slot as usize];
+        if id == 0 {
+            return current.is_some();
+        }
+        let Some(item) = data.item(id as u32) else {
+            return false;
+        };
+        item.category == [7, 8, 9, 10, 10, 11][slot as usize]
+            && item.usable_by[role as usize]
+            && self.inventory.contains(item.id)
+            && current != Some(item.id)
+    }
+
+    pub fn equip_item(&mut self, role: i32, slot: i32, id: i32, data: &StatsData) -> bool {
+        if !self.can_equip_item(role, slot, id, data) {
+            return false;
+        }
+        let previous = self.stats.character(role).unwrap().equipment()[slot as usize];
+        // Native 0x494880 swaps bag copies without SCE's automatic weapons or linked-item cleanup.
+        if id != 0 {
+            self.inventory.remove_one(id as u32);
+        }
+        self.stats.set_equipment(
+            role,
+            slot as usize,
+            if id == 0 { None } else { Some(id as u32) },
+            data,
+        );
+        if let Some(previous) = previous {
+            self.inventory.add_stack(previous, 1);
+        }
+        true
+    }
+
+    pub fn item_use_scope(&self, id: i32, data: &StatsData) -> i32 {
+        let Some(item) = data.item(id as u32) else {
+            return 0;
+        };
+        if !matches!(item.category, 1 | 3)
+            || item.use_context & 2 == 0
+            || !matches!(item.use_scope, 1 | 2)
+            || !matches!(item.use_kind, 0 | 12..=15)
+            || item.conditions[27..].iter().any(|&effect| effect != 0)
+        {
+            return 0;
+        }
+        item.use_scope as i32
+    }
+
+    pub fn can_use_item(&self, role: i32, id: i32, data: &StatsData) -> bool {
+        if !self.inventory.contains(id as u32) {
+            return false;
+        }
+        let scope = self.item_use_scope(id, data);
+        let Some(item) = data.item(id as u32) else {
+            return false;
+        };
+        match scope {
+            1 => self.party.contains(role) && self.stats.item_applies(role, item, data),
+            2 if role == -1 => self
+                .party
+                .members()
+                .any(|role| self.stats.item_applies(role, item, data)),
+            _ => false,
+        }
+    }
+
+    pub fn use_item(&mut self, role: i32, id: i32, data: &StatsData) -> bool {
+        if !self.can_use_item(role, id, data) {
+            return false;
+        }
+        let item = data.item(id as u32).unwrap();
+        if item.use_scope == 2 {
+            for role in self.party.members() {
+                if self.stats.item_applies(role, item, data) {
+                    self.stats.apply_item(role, item, data);
+                }
+            }
+        } else {
+            self.stats.apply_item(role, item, data);
+        }
+        self.inventory.remove_one(item.id);
+        true
+    }
+
     pub fn add_item(&mut self, item_id: i32, count: i32, data: &StatsData) -> bool {
         let id = item_id as u32;
         let Some(item) = data.item(id) else {
@@ -294,6 +383,245 @@ mod gameplay_tests {
         loaders::stats::test_data,
         states::stats::{Attributes, Resources},
     };
+    use fileformats::pal3::gdb::ItemDefinition;
+
+    fn inventory_data() -> StatsData {
+        let medicine = ItemDefinition {
+            id: 6201,
+            category: 1,
+            use_scope: 1,
+            use_context: 3,
+            amounts: [100, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            ..Default::default()
+        };
+        let mut poison = ItemDefinition {
+            id: 6226,
+            amounts: [0; 12],
+            ..medicine.clone()
+        };
+        poison.conditions[2] = 2;
+        let mut world = ItemDefinition {
+            id: 6402,
+            category: 3,
+            use_scope: 2,
+            ..medicine.clone()
+        };
+        world.conditions[27] = 1;
+        crate::openpal3::loaders::stats::test_data_with_items(&[
+            medicine.clone(),
+            ItemDefinition {
+                id: 6211,
+                modes: [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                amounts: [10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                ..medicine.clone()
+            },
+            ItemDefinition {
+                id: 6414,
+                category: 3,
+                use_kind: 12,
+                modes: [3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                amounts: [10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                ..medicine.clone()
+            },
+            ItemDefinition {
+                id: 6418,
+                category: 3,
+                modes: [0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0],
+                amounts: [0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0],
+                ..medicine.clone()
+            },
+            ItemDefinition {
+                id: 6426,
+                category: 3,
+                use_kind: 15,
+                amounts: [0; 12],
+                ..medicine.clone()
+            },
+            ItemDefinition {
+                id: 6231,
+                use_context: 1,
+                ..medicine.clone()
+            },
+            ItemDefinition {
+                id: 6410,
+                category: 3,
+                use_kind: 8,
+                ..medicine.clone()
+            },
+            ItemDefinition {
+                id: 6214,
+                amounts: [0; 12],
+                ..medicine.clone()
+            },
+            ItemDefinition {
+                id: 6209,
+                use_scope: 2,
+                ..medicine
+            },
+            ItemDefinition {
+                id: 7000,
+                category: 7,
+                usable_by: [false, true, false, false, false],
+                ..Default::default()
+            },
+            ItemDefinition {
+                id: 8146,
+                category: 10,
+                usable_by: [true; 5],
+                amounts: [15, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                ..Default::default()
+            },
+            poison,
+            world,
+        ])
+    }
+
+    #[test]
+    fn manual_equipment_transfers_preserve_other_owners_and_clamp_without_sce_side_effects() {
+        let data = inventory_data();
+        let mut state = PersistentState::new(PAL3_APP_NAME.into());
+        state.party.set_in_team(1, true);
+        state.inventory.add_stack(8146, 3);
+        for (role, slot) in [(0, 3), (0, 4), (1, 3)] {
+            assert!(state.equip_item(role, slot, 8146, &data));
+        }
+        assert!(!state.inventory.contains(8146));
+        assert!(!state.equip_item(1, 4, 8146, &data));
+        state.inventory.add_stack(8146, 1);
+        state.inventory.add_stack(7000, 1);
+        let before = serde_json::to_string(&state).unwrap();
+        for (role, slot, id) in [
+            (0, 3, 8146),
+            (-1, 3, 8146),
+            (2, 3, 8146),
+            (0, 6, 8146),
+            (0, 0, 8146),
+            (0, 3, -1),
+            (0, 0, 7000),
+        ] {
+            assert!(!state.equip_item(role, slot, id, &data));
+        }
+        assert_eq!(serde_json::to_string(&state).unwrap(), before);
+        assert!(state.equip_item(1, 0, 7000, &data));
+        state.stats.restore_resource(0, Resource::Hp, &data);
+        let max = state.stats.attributes(0, &data).unwrap().hp;
+        assert!(state.equip_item(0, 3, 0, &data));
+        assert_eq!(state.inventory.quantity(8146), 2);
+        assert_eq!(state.stats.character(0).unwrap().current().hp, max - 15);
+        assert_eq!(state.stats.character(0).unwrap().equipment()[4], Some(8146));
+        assert_eq!(state.stats.character(1).unwrap().equipment()[3], Some(8146));
+        state.inventory.add_stack(6603, 1);
+        state.inventory.add_stack(6601, -2);
+        assert!(state.equip_item(0, 5, 6603, &data));
+        assert!(state.equip_item(0, 5, 6601, &data));
+        assert_eq!(state.stats.character(0).unwrap().equipment()[5], Some(6601));
+        assert_eq!(state.inventory.quantity(6603), 1);
+        assert!(!state.inventory.contains(6601));
+        assert!(state.equip_item(0, 5, 0, &data));
+        assert_eq!(state.stats.character(0).unwrap().equipment()[5], None);
+        assert_eq!(state.inventory.quantity(6601), 1);
+    }
+
+    #[test]
+    fn adventure_items_match_native_healing_rounding_poison_and_permanent_growth() {
+        let data = inventory_data();
+        let mut state = PersistentState::new(PAL3_APP_NAME.into());
+        let base_hp = state.stats.character(0).unwrap().base().hp;
+        state.stats.add_base_attributes(
+            0,
+            Attributes {
+                hp: 85 - base_hp,
+                ..Default::default()
+            },
+            &data,
+        );
+        state.stats.set_resource(0, Resource::Hp, 0, &data);
+        state.inventory.add_stack(6211, 2);
+        assert!(state.use_item(0, 6211, &data));
+        assert_eq!(state.stats.character(0).unwrap().current().hp, 8);
+        assert!(state.use_item(0, 6211, &data));
+        assert_eq!(state.stats.character(0).unwrap().current().hp, 16);
+        state.inventory.add_stack(6414, 1);
+        assert!(state.use_item(0, 6414, &data));
+        assert_eq!(state.stats.character(0).unwrap().base().hp, 95);
+        assert_eq!(state.stats.character(0).unwrap().current().hp, 16);
+        let attack = state.stats.attributes(0, &data).unwrap().attack;
+        state.inventory.add_stack(6418, 1);
+        assert!(state.use_item(0, 6418, &data));
+        assert_eq!(state.stats.attributes(0, &data).unwrap().attack, attack + 2);
+        assert_eq!(state.stats.character(0).unwrap().current().hp, 16);
+        state.stats.set_poison(0, 2, 1);
+        state.stats.set_poison(0, 3, 1);
+        state.inventory.add_stack(6226, 2);
+        assert!(state.use_item(0, 6226, &data));
+        assert_eq!(
+            state.stats.character(0).unwrap().poisons(),
+            &[0, 0, 0, 1, 0]
+        );
+        assert!(!state.use_item(0, 6226, &data));
+        assert_eq!(state.inventory.quantity(6226), 1);
+        let experience = state.stats.character(0).unwrap().experience();
+        state.inventory.add_stack(6426, 2);
+        assert!(state.use_item(0, 6426, &data));
+        assert_eq!(state.stats.character(0).unwrap().level(), 2);
+        assert_eq!(state.stats.character(0).unwrap().experience(), experience);
+        assert_eq!(state.stats.character(0).unwrap().current().hp, 16);
+        let restored: PersistentState =
+            serde_json::from_str(&serde_json::to_string(&state).unwrap()).unwrap();
+        assert_eq!(restored.stats, state.stats);
+        assert_eq!(restored.inventory.stacks(), state.inventory.stacks());
+    }
+
+    #[test]
+    fn unsupported_or_inapplicable_items_never_consume_and_party_use_consumes_once() {
+        let data = inventory_data();
+        let mut state = PersistentState::new(PAL3_APP_NAME.into());
+        for id in [6201, 6214, 6231, 6402, 6410, 6209] {
+            state.inventory.add_stack(id, 3);
+        }
+        let before = serde_json::to_string(&state).unwrap();
+        for (role, id) in [
+            (0, 6201),
+            (0, 6214),
+            (0, 6231),
+            (-1, 6402),
+            (0, 6410),
+            (-1, 6201),
+            (1, 6201),
+            (0, 999),
+            (0, 6209),
+        ] {
+            assert!(!state.use_item(role, id, &data));
+        }
+        assert_eq!(serde_json::to_string(&state).unwrap(), before);
+        state.party.set_in_team(1, true);
+        state.stats.set_resource(0, Resource::Hp, 0, &data);
+        state.stats.set_resource(1, Resource::Hp, 0, &data);
+        state.stats.set_resource(2, Resource::Hp, 0, &data);
+        assert!(state.use_item(-1, 6209, &data));
+        for role in [0, 1] {
+            assert_eq!(
+                state.stats.character(role).unwrap().current().hp,
+                state.stats.attributes(role, &data).unwrap().hp.min(100)
+            );
+        }
+        assert_eq!(state.stats.character(2).unwrap().current().hp, 0);
+        assert_eq!(state.inventory.quantity(6209), 2);
+        while state.stats.character(0).unwrap().level() < 99 {
+            state.stats.advance_level(0, &data);
+        }
+        state.inventory.add_stack(6426, 1);
+        assert!(state.use_item(0, 6426, &data));
+        assert_eq!(state.stats.character(0).unwrap().level(), 99);
+        assert!(!state.inventory.contains(6426));
+        state.average_level(0, 99, &data);
+        assert_eq!(state.stats.character(0).unwrap().level(), 100);
+        let experience = state.stats.character(0).unwrap().experience();
+        state.inventory.add_stack(6426, 1);
+        assert!(state.use_item(0, 6426, &data));
+        assert_eq!(state.stats.character(0).unwrap().level(), 99);
+        assert_eq!(state.stats.character(0).unwrap().experience(), experience);
+    }
 
     #[test]
     fn play_time_preserves_fractional_seconds_across_save_and_ignores_invalid_deltas() {

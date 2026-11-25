@@ -56,6 +56,15 @@ impl StatsData {
 }
 
 #[cfg(test)]
+pub(crate) fn test_data_with_items(items: &[ItemDefinition]) -> StatsData {
+    let mut data = test_data();
+    for item in items {
+        data.items.insert(item.id, item.clone());
+    }
+    data
+}
+
+#[cfg(test)]
 pub(crate) fn test_data() -> StatsData {
     let mut experience = std::array::from_fn(|i| i as i32 * 100);
     experience[99] = i32::MAX;

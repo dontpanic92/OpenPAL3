@@ -108,6 +108,15 @@ fn menu_data_with_items(items: &[(u32, &str, u8)]) -> StatsData {
         record[0x60..0x6c].copy_from_slice(b"$Description");
         record[0x260..0x264].copy_from_slice(&17i32.to_le_bytes());
         record[0x264] = *category;
+        if *category == 1 {
+            record[0x275] = 1;
+            record[0x276] = 3;
+            record[0x284..0x286].copy_from_slice(&20i16.to_le_bytes());
+        }
+        record[0x267] = 1;
+        if *id == 9001 {
+            record[0x28a..0x28c].copy_from_slice(&9i16.to_le_bytes());
+        }
     }
     let combat = format!(
         "[Level]\n{}",
@@ -116,6 +125,149 @@ fn menu_data_with_items(items: &[(u32, &str, u8)]) -> StatsData {
             .collect::<String>()
     );
     StatsData::load(&database, &combat).unwrap()
+}
+
+#[test]
+fn explicit_menu_actions_target_items_and_transfer_equipment_only_on_release() {
+    let host = ScriptHost::new();
+    host.set_script_assets(install_script_assets());
+    host.load_source(
+        r#"
+        import radiance;
+        import shared.openpal3;
+        import yaobow.openpal3.state_menu;
+        pub fn make() -> &state_menu.MenuState { state_menu.make_menu() }
+        pub fn frame(menu: &state_menu.MenuState, ui: &radiance.IUiHost,
+            atlas: &openpal3.IPal3UiAtlas, game: &openpal3.IPal3MenuState,
+            x: float, y: float, press: bool, release: bool, down: bool) -> bool {
+            menu.paint(ui, atlas, game, x, y, press, release, down)
+        }
+    "#,
+    )
+    .unwrap();
+    let (recorder, ui) = RecordingUiHost::create();
+    recorder.set_display_size(800, 600);
+    let data = Rc::new(menu_data_with_items(&[
+        (42, "Medicine", 1),
+        (43, "Other", 1),
+        (82201, "Old weapon", 11),
+        (9001, "New weapon", 11),
+    ]));
+    let state = Rc::new(RefCell::new(PersistentState::new("test".into())));
+    {
+        let mut state = state.borrow_mut();
+        state.party_mut().set_in_team(1, true);
+        state.stats_mut().set_resource(0, Resource::Hp, 12, &data);
+        state.add_item(42, 2, &data);
+        state.add_item(43, 1, &data);
+        state.add_item(9001, 1, &data);
+    }
+    let service = Pal3MenuState::create(state.clone(), Some(data.clone()));
+    let ui_id = host.intern(ui);
+    let atlas_id = host.intern(ComRc::<IPal3UiAtlas>::from_object(TestAtlas));
+    let game_id = host.intern(service);
+    let ui = host.foreign_box("radiance.comdef.IUiHost", ui_id).unwrap();
+    let atlas = host
+        .foreign_box("shared.openpal3.comdef.IPal3UiAtlas", atlas_id)
+        .unwrap();
+    let game = host
+        .foreign_box("shared.openpal3.comdef.IPal3MenuState", game_id)
+        .unwrap();
+    let menu = host.call_returning_data("make", vec![]).unwrap();
+    let frame = |x: f64, y: f64, press: bool, release: bool, down: bool| {
+        host.call_returning_data(
+            "frame",
+            vec![
+                menu.clone(),
+                ui.clone(),
+                atlas.clone(),
+                game.clone(),
+                Data::Float(x),
+                Data::Float(y),
+                Data::Int(press as i64),
+                Data::Int(release as i64),
+                Data::Int(down as i64),
+            ],
+        )
+        .unwrap();
+    };
+    let click = |x, y| {
+        frame(x, y, true, false, true);
+        frame(x, y, false, true, false);
+    };
+    click(180.0, 570.0);
+    frame(0.0, 0.0, false, false, false);
+    click(300.0, 205.0);
+    assert_eq!(
+        state.borrow().stats().character(0).unwrap().current().hp,
+        12
+    );
+    frame(300.0, 505.0, true, false, true);
+    assert_eq!(state.borrow().inventory().quantity(42), 2);
+    frame(300.0, 505.0, false, true, false);
+    assert_eq!(
+        state.borrow().inventory().quantity(42),
+        2,
+        "arming requires an explicit target"
+    );
+    click(740.0, 210.0);
+    assert_eq!(
+        state.borrow().inventory().quantity(42),
+        2,
+        "full target must not consume"
+    );
+    click(740.0, 100.0);
+    assert_eq!(
+        state.borrow().stats().character(0).unwrap().current().hp,
+        32
+    );
+    assert_eq!(state.borrow().inventory().quantity(42), 1);
+    click(740.0, 100.0);
+    assert_eq!(
+        state.borrow().inventory().quantity(42),
+        1,
+        "one action cannot repeat"
+    );
+
+    // A different item becoming selected between press/release cancels the action.
+    frame(300.0, 505.0, true, false, true);
+    state.borrow_mut().remove_item(42, &data);
+    frame(300.0, 505.0, false, true, false);
+    click(740.0, 100.0);
+    assert_eq!(state.borrow().inventory().quantity(43), 1);
+    assert_eq!(
+        state.borrow().stats().character(0).unwrap().current().hp,
+        32
+    );
+
+    click(740.0, 210.0);
+    click(268.0, 570.0);
+    frame(0.0, 0.0, false, false, false);
+    click(300.0, 205.0);
+    assert_eq!(
+        state.borrow().stats().character(1).unwrap().equipment()[5],
+        Some(82201)
+    );
+    frame(300.0, 505.0, true, false, true);
+    assert_eq!(state.borrow().inventory().quantity(9001), 1);
+    frame(300.0, 505.0, false, true, false);
+    assert_eq!(
+        state.borrow().stats().character(1).unwrap().equipment()[5],
+        Some(9001)
+    );
+    assert_eq!(
+        state.borrow().stats().attributes(1, &data).unwrap().attack,
+        37
+    );
+    assert!(!state.borrow().inventory().contains(9001));
+    assert_eq!(state.borrow().inventory().quantity(82201), 1);
+    click(300.0, 505.0);
+    assert_eq!(
+        state.borrow().stats().character(1).unwrap().equipment()[5],
+        None
+    );
+    assert_eq!(state.borrow().inventory().quantity(9001), 1);
+    assert_eq!(state.borrow().inventory().quantity(82201), 1);
 }
 
 #[test]

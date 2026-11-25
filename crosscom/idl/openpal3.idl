@@ -202,7 +202,7 @@ interface IPal3SaveSlots: IUnknown {
 class Pal3SaveSlots: IPal3SaveSlots {}
 
 // Live PAL3 gameplay data. Invalid indices return zero, an empty string,
-// or -1 for a missing party member. Save/load actions are explicit.
+// or -1 for a missing party member. Mutations require explicit actions.
 [uuid(d153792a-889a-434e-a68a-aac20e8bdba0)]
 interface IPal3MenuState: IUnknown {
     bool available();
@@ -229,6 +229,14 @@ interface IPal3MenuState: IUnknown {
     // Deferred until the application's next pre-update, outside UI drawing.
     bool request_load(int slot);
     bool take_load_failed();
+    // Explicit transfers; id 0 unequips. Slots match equipment_item.
+    bool can_equip_item(int role, int slot, int id);
+    bool equip_item(int role, int slot, int id);
+    // Supported adventure actions only: 0 unavailable, 1 single, 2 party.
+    int item_use_scope(int id);
+    // Party-wide items require role -1. Failed actions never consume an item.
+    bool can_use_item(int role, int id);
+    bool use_item(int role, int id);
 }
 
 [uuid(367cc58a-61c5-447e-bd05-d855e637bfeb)]

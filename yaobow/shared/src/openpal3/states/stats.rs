@@ -1,3 +1,4 @@
+use fileformats::pal3::gdb::ItemDefinition;
 use serde::{Deserialize, Serialize};
 
 use crate::openpal3::loaders::stats::StatsData;
@@ -101,6 +102,8 @@ pub struct CharacterStats {
     base: Attributes,
     current: Resources,
     equipment: [Option<u32>; 6],
+    /// Native poison order: wind, thunder, water, fire, earth.
+    poisons: [u8; 5],
 }
 
 impl CharacterStats {
@@ -131,6 +134,7 @@ impl CharacterStats {
             base,
             current: base.resources(),
             equipment,
+            poisons: [0; 5],
         }
     }
 
@@ -153,6 +157,10 @@ impl CharacterStats {
     /// Native equipment slots; the weapon occupies slot 5.
     pub fn equipment(&self) -> &[Option<u32>; 6] {
         &self.equipment
+    }
+
+    pub fn poisons(&self) -> &[u8; 5] {
+        &self.poisons
     }
 
     fn attributes(&self, data: &StatsData, magic_sword: &MagicSwordStats) -> Attributes {
@@ -220,6 +228,117 @@ impl Default for StatsState {
 }
 
 impl StatsState {
+    pub(crate) fn set_equipment(
+        &mut self,
+        role: i32,
+        slot: usize,
+        id: Option<u32>,
+        data: &StatsData,
+    ) {
+        let character = &mut self.characters[role as usize];
+        character.equipment[slot] = id;
+        character.clamp_resources(data, &self.magic_sword);
+    }
+
+    /// Poison indices use native wind/thunder/water/fire/earth order.
+    pub fn set_poison(&mut self, role: i32, element: usize, value: u8) -> bool {
+        let Some(poison) = self
+            .characters
+            .get_mut(role as usize)
+            .and_then(|character| character.poisons.get_mut(element))
+        else {
+            return false;
+        };
+        *poison = value;
+        true
+    }
+
+    pub(crate) fn item_applies(&self, role: i32, item: &ItemDefinition, data: &StatsData) -> bool {
+        let Some(character) = self.character(role) else {
+            return false;
+        };
+        if item.use_kind == 15 {
+            return true;
+        }
+        let maximum = character.attributes(data, &self.magic_sword).values();
+        let mut current = maximum;
+        current[..3].copy_from_slice(&[
+            character.current.hp,
+            character.current.qi,
+            character.current.mp,
+        ]);
+        // Native 0x49ca70 also admits zero-HP targets and permanent boosts at full pools.
+        let mut score = 0i32;
+        for i in 0..12 {
+            if item.modes[i] == 3 {
+                score = score.wrapping_add(1);
+            }
+            if item.amounts[i] > 0 {
+                score = score.wrapping_add(maximum[i].wrapping_sub(current[i]));
+            }
+        }
+        for i in 0..5 {
+            if item.conditions[i] != 0 {
+                score = score.wrapping_add(character.poisons[i] as i32);
+            }
+        }
+        score > 0
+    }
+
+    pub(crate) fn apply_item(&mut self, role: i32, item: &ItemDefinition, data: &StatsData) {
+        if item.use_kind == 15 {
+            let character = &mut self.characters[role as usize];
+            let old = growth(role as usize, character.level);
+            character.level = character.level.wrapping_add(1).min(99);
+            let new = growth(role as usize, character.level);
+            let mut base = character.base.values();
+            for i in 0..5 {
+                base[i] = base[i].wrapping_sub(old[i]).wrapping_add(new[i]);
+            }
+            character.base = Attributes::from_values(base);
+            character.clamp_resources(data, &self.magic_sword);
+            return;
+        }
+        let character = &mut self.characters[role as usize];
+        let maximum = character.attributes(data, &self.magic_sword).values();
+        let mut base = character.base.values();
+        for i in 0..12 {
+            let amount = item.amounts[i] as i32;
+            if item.modes[i] == 3 {
+                base[i] = base[i].wrapping_add(amount);
+            } else if i < 3 {
+                let delta = if item.modes[i] == 1 {
+                    // Native 0x49e040 stores f32 before rounding; 0x49e2c1
+                    // divides party percentages before multiplying.
+                    let value = if item.use_scope == 2 {
+                        amount.wrapping_div(100).wrapping_mul(maximum[i]) as f32
+                    } else {
+                        (amount as f64 * 0.01f32 as f64 * maximum[i] as f64) as f32
+                    }
+                    .round_ties_even();
+                    if value >= 2147483648.0 || value < -2147483648.0 {
+                        i32::MIN
+                    } else {
+                        value as i32
+                    }
+                } else {
+                    amount
+                };
+                let current = character
+                    .current
+                    .get_mut(Resource::try_from(i as i32).unwrap());
+                *current = current.wrapping_add(delta);
+            }
+        }
+        character.base = Attributes::from_values(base);
+        for i in 0..5 {
+            if item.conditions[i] >= 2 {
+                character.poisons[i] = 0;
+            }
+        }
+        character.clamp_resources(data, &self.magic_sword);
+    }
+
     pub fn character(&self, role_id: i32) -> Option<&CharacterStats> {
         self.characters.get(role_id as usize)
     }

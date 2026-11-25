@@ -44,10 +44,12 @@ pub struct MenuState(
     tab: int, role: int, page: int, party_page: int,
     item: int, equipment_slot: int, held: int,
     category: int, equipment_category: int, from_bag: bool, description_first: int,
+    using_item: int, feedback: string,
     browser: &save_load.Browser,
 ) {
     pub fn on_open(self: &Self, gameplay: &openpal3.IPal3MenuState) {
         self.held = -1;
+        self.using_item = 0; self.feedback = "";
         if self.tab == 7 { self.browser.begin(gameplay.save_slots(), self.browser.saving); }
     }
 
@@ -91,7 +93,10 @@ pub struct MenuState(
             for i in Range(0, count) {
                 if game.member_role(i) == self.role { selected_present = true; }
             }
-            if !selected_present { self.role = game.member_role(0); }
+            if !selected_present {
+                self.role = game.member_role(0);
+                if self.held == 300 { self.held = -1; }
+            }
             for i in Range(0, 4) {
                 let role = game.member_role(self.party_page + i);
                 if role >= 0 {
@@ -103,7 +108,14 @@ pub struct MenuState(
                         paint_capabilities(c, game, role, (i as float) * 148.0 + 8.0, 188.0);
                     }
                     if self.button(30 + i, over, press, release) {
-                        self.role = role; self.from_bag = false; self.page = 0;
+                        if self.tab == 1 && self.using_item != 0 {
+                            let used = game.use_item(role, self.using_item);
+                            self.feedback = if used { "使用成功" } else { "该队员当前无法使用" };
+                            if used { self.using_item = 0; self.role = role; }
+                        } else {
+                            self.role = role; self.from_bag = false; self.page = 0;
+                            self.feedback = "";
+                        }
                     }
                 } else if self.tab == 0 {
                     c.blit(ROOT + "State/NoBodyFrame.tga", (i as float) * 148.0, 0.0, 147.0, 176.0);
@@ -143,6 +155,7 @@ pub struct MenuState(
             if enabled && self.browser.confirmation == 0 && self.button(i, over, press, release) {
                 self.tab = i; self.page = 0; self.item = 0;
                 self.from_bag = false; self.description_first = 0;
+                self.using_item = 0; self.feedback = "";
                 if i == 7 { self.browser.begin(gameplay.save_slots(), true); }
             }
             if over && !enabled { c.text(312.0, 524.0, "此功能尚未实现", true); }
@@ -182,11 +195,12 @@ pub struct MenuState(
             let variant = if self.category == i { "2" } else { if over { "1" } else { "0" } };
             c.blit(ROOT + "Prop/" + names[i] + variant + ".tga", x, 123.0, 42.0, 50.0);
             if self.button(60 + i, over, press, release) {
-                self.category = i; self.page = 0; self.select_item(0);
+                self.category = i; self.page = 0; self.select_item(0); self.feedback = "";
             }
         }
         self.paint_list(c, game, nx, ny, press, release, down);
-        self.paint_item(c, game, names[self.category] + "_word.tga", nx, ny, "物品使用尚未实现");
+        self.paint_item(c, game, names[self.category] + "_word.tga", nx, ny);
+        self.paint_action(c, game, nx, ny, press, release);
     }
 
     fn paint_equipment(self: &Self, c: &Canvas, game: &openpal3.IPal3MenuState,
@@ -202,7 +216,7 @@ pub struct MenuState(
             c.blit(ROOT + "Equip/" + names[i] + variant + ".tga", x, 123.0, 42.0, 50.0);
             if self.button(70 + i, over, press, release) {
                 self.equipment_category = i; self.equipment_slot = category_slots[i];
-                self.page = 0; self.from_bag = false;
+                self.page = 0; self.from_bag = false; self.feedback = "";
             }
         }
         let weapon_over = inside(nx, ny, 368.0, 4.0, 32.0, 108.0);
@@ -211,7 +225,7 @@ pub struct MenuState(
         c.blit(ROOT + "Equip/WeaponIcon.tga", 336.0, 40.0, 20.0, 32.0);
         if self.button(205, weapon_over, press, release) {
             self.equipment_slot = 5; self.equipment_category = 0;
-            self.page = 0; self.from_bag = false;
+            self.page = 0; self.from_bag = false; self.feedback = "";
         }
         let slots: array<int> = [1, 0, 2, 3, 4];
         let icons: array<string> = ["Hat", "Cloth", "Shoes", "Adorn", "Adorn"];
@@ -230,17 +244,21 @@ pub struct MenuState(
             if self.button(200 + slot, over, press, release) {
                 self.equipment_slot = slot;
                 self.equipment_category = if slot == 1 { 2 } else { if slot == 0 { 1 } else { if slot == 2 { 3 } else { 4 } } };
-                self.page = 0; self.from_bag = false;
+                self.page = 0; self.from_bag = false; self.feedback = "";
             }
         }
         if !self.from_bag { self.select_item(game.equipment_item(self.role, self.equipment_slot)); }
         self.paint_list(c, game, nx, ny, press, release, down);
         let words: array<string> = ["wq", "fj", "tb", "jb", "Adorn"];
-        self.paint_item(c, game, words[self.equipment_category] + "_word.tga", nx, ny, "装备更换尚未实现");
+        self.paint_item(c, game, words[self.equipment_category] + "_word.tga", nx, ny);
+        self.paint_action(c, game, nx, ny, press, release);
     }
 
     fn select_item(self: &Self, id: int) {
-        if self.item != id { self.description_first = 0; }
+        if self.item != id {
+            self.description_first = 0; self.using_item = 0;
+            if self.held == 300 { self.held = -1; }
+        }
         self.item = id;
     }
 
@@ -293,24 +311,29 @@ pub struct MenuState(
             let id = game.inventory_item(index);
             let y = 201.0 + (row as float) * 23.0;
             let over = inside(nx, ny, 269.0, y, 256.0, 23.0);
+            let allowed = self.tab != 2 || game.can_equip_item(self.role, self.equipment_slot, id)
+                || game.equipment_item(self.role, self.equipment_slot) == id;
             if id == self.item || over { c.blit(ROOT + "Prop/List_Grid.tga", 269.0, y, 256.0, 24.0); }
             c.ui.clip_rect(c.x + 269.0 * c.scale, c.y + y * c.scale,
                 c.x + 485.0 * c.scale, c.y + (y + 23.0) * c.scale, () => {
-                    c.small_text(269.0, y + 2.0, game.item_name(id));
+                    c.ui.text_at_size(c.x + 269.0 * c.scale, c.y + (y + 2.0) * c.scale,
+                        16.0 * c.scale, if allowed { 0.047 } else { 0.44 },
+                        if allowed { 0.122 } else { 0.44 }, if allowed { 0.0 } else { 0.44 },
+                        1.0, game.item_name(id));
                 });
             c.ui.clip_rect(c.x + 489.0 * c.scale, c.y + y * c.scale,
                 c.x + 535.0 * c.scale, c.y + (y + 23.0) * c.scale, () => {
                     c.small_text(489.0, y + 2.0, int_str(game.inventory_quantity(index)));
                 });
             if self.button(100 + row, over, press, release) {
-                self.select_item(id); self.from_bag = self.tab == 2;
+                self.select_item(id); self.from_bag = self.tab == 2; self.feedback = "";
             }
         }
         if count == 0 { c.small_text(290.0, 230.0, "此类别没有物品"); }
     }
 
     fn paint_item(self: &Self, c: &Canvas, game: &openpal3.IPal3MenuState,
-        word: string, nx: float, ny: float, note: string) {
+        word: string, nx: float, ny: float) {
         c.blit(COMMON + "Info.tga", 10.0, 125.0, 232.0, 414.0);
         c.blit(COMMON + word, 195.0, 142.0, 16.0, 32.0);
         if self.item != 0 {
@@ -334,12 +357,54 @@ pub struct MenuState(
                 });
             c.small_text(22.0, 504.0, "价格 " + int_str(game.item_price(self.item)));
         }
-        c.small_text(269.0, 500.0, note);
+    }
+
+    fn paint_action(self: &Self, c: &Canvas, game: &openpal3.IPal3MenuState,
+        nx: float, ny: float, press: bool, release: bool) {
+        let over = inside(nx, ny, 269.0, 494.0, 256.0, 24.0);
+        let scope = game.item_use_scope(self.item);
+        let candidate = if self.from_bag { self.item } else { 0 };
+        let mut enabled = false;
+        let mut label = if self.item == 0 { "请先选择物品" } else { "此物品当前无法使用" };
+        if self.tab == 2 {
+            enabled = (self.from_bag && self.item != 0 || !self.from_bag)
+                && game.can_equip_item(self.role, self.equipment_slot, candidate);
+            label = if enabled { if self.from_bag { "点击装备" } else { "点击卸下" } } else { "当前无法更换" };
+        } else if self.using_item != 0 {
+            enabled = true; label = "点击队员使用（点击此处取消）";
+        } else {
+            if scope == 2 { enabled = game.can_use_item(-1, self.item); }
+            if scope == 1 {
+                for i in Range(0, game.member_count()) {
+                    if game.can_use_item(game.member_role(i), self.item) { enabled = true; }
+                }
+            }
+            if enabled { label = if scope == 2 { "点击对全队使用" } else { "点击使用" }; }
+        }
+        if enabled && over {
+            c.ui.fill_rect(c.x + 269.0 * c.scale, c.y + 494.0 * c.scale,
+                c.x + 525.0 * c.scale, c.y + 518.0 * c.scale, 0.5, 0.7, 0.3, 0.25);
+        }
+        c.small_text(269.0, 500.0, label);
+        if self.feedback != "" { c.text(269.0, 524.0, self.feedback, true); }
+        if enabled && self.button(300, over, press, release) {
+            if self.tab == 2 {
+                let equipped = game.equip_item(self.role, self.equipment_slot, candidate);
+                if equipped { self.from_bag = false; }
+                self.feedback = if equipped { "装备已更新" } else { "更换失败" };
+            } else if self.using_item != 0 {
+                self.using_item = 0; self.feedback = "";
+            } else if scope == 1 {
+                self.using_item = self.item; self.feedback = "";
+            } else {
+                self.feedback = if game.use_item(-1, self.item) { "使用成功" } else { "使用失败" };
+            }
+        }
     }
 }
 
 pub fn make_menu() -> &MenuState {
-    return &MenuState(0, 0, 0, 0, 0, 5, -1, 0, 0, false, 0, save_load.make_browser());
+    return &MenuState(0, 0, 0, 0, 0, 5, -1, 0, 0, false, 0, 0, "", save_load.make_browser());
 }
 
 fn paint_item_header(c: &Canvas, game: &openpal3.IPal3MenuState, role: int, equipment: bool) {

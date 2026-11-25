@@ -51,6 +51,36 @@ impl Pal3MenuState {
 }
 
 impl IPal3MenuStateImpl for Pal3MenuState {
+    fn can_equip_item(&self, role: i32, slot: i32, id: i32) -> bool {
+        self.data
+            .as_ref()
+            .is_some_and(|data| self.state.borrow().can_equip_item(role, slot, id, data))
+    }
+
+    fn equip_item(&self, role: i32, slot: i32, id: i32) -> bool {
+        self.data
+            .as_ref()
+            .is_some_and(|data| self.state.borrow_mut().equip_item(role, slot, id, data))
+    }
+
+    fn item_use_scope(&self, id: i32) -> i32 {
+        self.data
+            .as_ref()
+            .map_or(0, |data| self.state.borrow().item_use_scope(id, data))
+    }
+
+    fn can_use_item(&self, role: i32, id: i32) -> bool {
+        self.data
+            .as_ref()
+            .is_some_and(|data| self.state.borrow().can_use_item(role, id, data))
+    }
+
+    fn use_item(&self, role: i32, id: i32) -> bool {
+        self.data
+            .as_ref()
+            .is_some_and(|data| self.state.borrow_mut().use_item(role, id, data))
+    }
+
     fn save_slots(&self) -> ComRc<super::comdef::IPal3SaveSlots> {
         super::save_slots::Pal3SaveSlots::snapshot(self.state.borrow().app_name())
     }
@@ -229,6 +259,11 @@ mod tests {
         assert_eq!(ui.role_value(0, 6), 0);
         assert_eq!(ui.item_name(82201), "");
         assert_eq!(ui.item_description(82201), "");
+        assert!(!ui.can_equip_item(0, 5, 82201));
+        assert!(!ui.equip_item(0, 5, 82201));
+        assert_eq!(ui.item_use_scope(6201), 0);
+        assert!(!ui.can_use_item(0, 6201));
+        assert!(!ui.use_item(0, 6201));
     }
 
     #[test]
