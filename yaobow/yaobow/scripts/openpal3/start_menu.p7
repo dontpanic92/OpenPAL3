@@ -321,7 +321,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal3StartMenuDirector(
             let down = ui.mouse_down(0);
             let slot = self.browser.paint(ui, self.atlas!, true,
                 ui.mouse_pos_x(), ui.mouse_pos_y(),
-                down && !self.load_prev_down, !down && self.load_prev_down, down);
+                down && !self.load_prev_down, !down && self.load_prev_down, down, false);
             self.load_prev_down = down;
             if self.host.input().key_pressed(KEY_ESCAPE) || slot == -1 { self.go_main(); }
             if slot > 0 { self.fire_load_slot(slot); }

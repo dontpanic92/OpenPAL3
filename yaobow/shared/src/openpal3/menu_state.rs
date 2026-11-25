@@ -1,11 +1,14 @@
 use std::{
     cell::{Cell, RefCell},
     collections::HashMap,
+    path::PathBuf,
     rc::Rc,
+    sync::Arc,
 };
 
 use crosscom::ComRc;
 
+use super::audio_mix::Pal3AudioMix;
 use super::{
     comdef::{IPal3MenuState, IPal3MenuStateImpl},
     loaders::stats::StatsData,
@@ -17,7 +20,16 @@ pub struct Pal3MenuState {
     data: Option<Rc<StatsData>>,
     descriptions: HashMap<u32, String>,
     pending_load: Cell<Option<i32>>,
+    pending_return_to_menu: Cell<bool>,
     load_failed: Cell<bool>,
+    audio_mix: Arc<Pal3AudioMix>,
+    audio_persistence: AudioPersistence,
+}
+
+enum AudioPersistence {
+    Disabled,
+    UserConfig,
+    Path(PathBuf),
 }
 
 ComObject_Pal3MenuState!(super::Pal3MenuState);
@@ -26,6 +38,45 @@ impl Pal3MenuState {
     pub fn create(
         state: Rc<RefCell<PersistentState>>,
         data: Option<Rc<StatsData>>,
+    ) -> ComRc<IPal3MenuState> {
+        Self::create_internal(
+            state,
+            data,
+            Arc::new(Pal3AudioMix::default()),
+            AudioPersistence::Disabled,
+        )
+    }
+
+    pub fn create_with_audio(
+        state: Rc<RefCell<PersistentState>>,
+        data: Option<Rc<StatsData>>,
+        audio_mix: Arc<Pal3AudioMix>,
+    ) -> ComRc<IPal3MenuState> {
+        Self::create_internal(state, data, audio_mix, AudioPersistence::Disabled)
+    }
+
+    pub fn create_with_audio_config_path(
+        state: Rc<RefCell<PersistentState>>,
+        data: Option<Rc<StatsData>>,
+        audio_mix: Arc<Pal3AudioMix>,
+        config_path: PathBuf,
+    ) -> ComRc<IPal3MenuState> {
+        Self::create_internal(state, data, audio_mix, AudioPersistence::Path(config_path))
+    }
+
+    pub(crate) fn create_with_persisted_audio(
+        state: Rc<RefCell<PersistentState>>,
+        data: Option<Rc<StatsData>>,
+        audio_mix: Arc<Pal3AudioMix>,
+    ) -> ComRc<IPal3MenuState> {
+        Self::create_internal(state, data, audio_mix, AudioPersistence::UserConfig)
+    }
+
+    fn create_internal(
+        state: Rc<RefCell<PersistentState>>,
+        data: Option<Rc<StatsData>>,
+        audio_mix: Arc<Pal3AudioMix>,
+        audio_persistence: AudioPersistence,
     ) -> ComRc<IPal3MenuState> {
         let descriptions = data
             .iter()
@@ -37,7 +88,10 @@ impl Pal3MenuState {
             data,
             descriptions,
             pending_load: Cell::new(None),
+            pending_return_to_menu: Cell::new(false),
             load_failed: Cell::new(false),
+            audio_mix,
+            audio_persistence,
         })
     }
 
@@ -45,12 +99,49 @@ impl Pal3MenuState {
         self.pending_load.take()
     }
 
+    pub fn take_requested_return_to_menu(&self) -> bool {
+        self.pending_return_to_menu.replace(false)
+    }
+
     pub fn report_load_failed(&self) {
         self.load_failed.set(true);
+    }
+
+    fn save_audio_settings(&self) -> bool {
+        let (mut config, path) = match &self.audio_persistence {
+            AudioPersistence::Disabled => return false,
+            AudioPersistence::UserConfig => (crate::config::YaobowConfig::load(), None),
+            AudioPersistence::Path(path) => (
+                crate::config::YaobowConfig::load_from_path(path),
+                Some(path.as_path()),
+            ),
+        };
+        config.audio.music_volume = self.audio_mix.music();
+        config.audio.sound_volume = self.audio_mix.sound();
+        let result = match path {
+            Some(path) => config.save_to_path(path),
+            None => config.save(),
+        };
+        match result {
+            Ok(()) => true,
+            Err(error) => {
+                log::error!("Cannot persist PAL3 audio volume: {error}");
+                false
+            }
+        }
     }
 }
 
 impl IPal3MenuStateImpl for Pal3MenuState {
+    fn request_return_to_menu(&self) -> bool {
+        if !self.available() {
+            return false;
+        }
+        self.pending_load.set(None);
+        self.pending_return_to_menu.set(true);
+        true
+    }
+
     fn can_equip_item(&self, role: i32, slot: i32, id: i32) -> bool {
         self.data
             .as_ref()
@@ -79,6 +170,26 @@ impl IPal3MenuStateImpl for Pal3MenuState {
         self.data
             .as_ref()
             .is_some_and(|data| self.state.borrow_mut().use_item(role, id, data))
+    }
+
+    fn music_volume(&self) -> f32 {
+        self.audio_mix.music()
+    }
+
+    fn sound_volume(&self) -> f32 {
+        self.audio_mix.sound()
+    }
+
+    fn set_music_volume(&self, volume: f32) -> bool {
+        self.audio_mix.set_music(volume)
+    }
+
+    fn set_sound_volume(&self, volume: f32) -> bool {
+        self.audio_mix.set_sound(volume)
+    }
+
+    fn save_audio_settings(&self) -> bool {
+        Pal3MenuState::save_audio_settings(self)
     }
 
     fn save_slots(&self) -> ComRc<super::comdef::IPal3SaveSlots> {
@@ -248,6 +359,17 @@ fn clean_description(text: &str) -> String {
 mod tests {
     use super::*;
     use crate::openpal3::{loaders::stats::test_data, states::stats::Resource};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    static TEST_PATH_ID: AtomicUsize = AtomicUsize::new(0);
+
+    fn isolated_config_path(name: &str) -> PathBuf {
+        let id = TEST_PATH_ID.fetch_add(1, Ordering::Relaxed);
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../target/test-data")
+            .join(format!("pal3-audio-{name}-{}-{id}", std::process::id()))
+            .join("yaobow.toml")
+    }
 
     #[test]
     fn unavailable_service_never_requires_the_pal3_database() {
@@ -264,6 +386,83 @@ mod tests {
         assert_eq!(ui.item_use_scope(6201), 0);
         assert!(!ui.can_use_item(0, 6201));
         assert!(!ui.use_item(0, 6201));
+        assert_eq!(ui.music_volume(), 1.0);
+        assert_eq!(ui.sound_volume(), 1.0);
+        assert!(ui.set_music_volume(0.25));
+        assert!(ui.set_sound_volume(2.0));
+        assert_eq!(ui.music_volume(), 0.25);
+        assert_eq!(ui.sound_volume(), 1.0);
+        assert!(!ui.set_music_volume(f32::NAN));
+        assert_eq!(ui.music_volume(), 0.25);
+        assert!(!ui.save_audio_settings());
+    }
+
+    #[test]
+    fn injected_audio_mix_is_live_and_never_persists_user_config() {
+        let mix = Arc::new(Pal3AudioMix::new(0.2, 0.8));
+        let ui = Pal3MenuState::create_with_audio(
+            Rc::new(RefCell::new(PersistentState::new("test".into()))),
+            None,
+            mix.clone(),
+        );
+        assert_eq!(ui.music_volume(), 0.2);
+        assert_eq!(ui.sound_volume(), 0.8);
+        assert!(ui.set_music_volume(0.4));
+        assert!(ui.set_sound_volume(0.6));
+        assert_eq!(mix.music(), 0.4);
+        assert_eq!(mix.sound(), 0.6);
+        assert!(!ui.save_audio_settings());
+    }
+
+    #[test]
+    fn isolated_audio_config_path_preserves_other_settings_and_both_channels() {
+        let path = isolated_config_path("success");
+        let root = path.parent().unwrap();
+        let _ = std::fs::remove_dir_all(root);
+
+        let mut config = crate::config::YaobowConfig::default();
+        config.audio.master_volume = 0.45;
+        config.set_asset_path(crate::GameType::PAL4, "pal4-assets".into());
+        config.set_theme("yaobow", "yaobow".into());
+        config.save_to_path(&path).unwrap();
+
+        let mix = Arc::new(Pal3AudioMix::new(0.3, 0.7));
+        let ui = Pal3MenuState::create_with_audio_config_path(
+            Rc::new(RefCell::new(PersistentState::new("test".into()))),
+            None,
+            mix,
+            path.clone(),
+        );
+        assert!(ui.save_audio_settings());
+
+        let saved = crate::config::YaobowConfig::load_from_path(&path);
+        assert_eq!(saved.music_volume(), 0.3);
+        assert_eq!(saved.sound_volume(), 0.7);
+        assert_eq!(saved.master_volume(), 0.45);
+        assert_eq!(saved.asset_path_for(crate::GameType::PAL4), "pal4-assets");
+        assert_eq!(saved.theme_for("yaobow"), "yaobow");
+
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn isolated_audio_config_path_reports_write_failure() {
+        let path = isolated_config_path("failure");
+        let root = path.parent().unwrap();
+        let _ = std::fs::remove_dir_all(root);
+        std::fs::create_dir_all(root).unwrap();
+        let blocker = root.join("not-a-directory");
+        std::fs::write(&blocker, b"block config directory creation").unwrap();
+
+        let ui = Pal3MenuState::create_with_audio_config_path(
+            Rc::new(RefCell::new(PersistentState::new("test".into()))),
+            None,
+            Arc::new(Pal3AudioMix::new(0.3, 0.7)),
+            blocker.join("yaobow.toml"),
+        );
+        assert!(!ui.save_audio_settings());
+
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

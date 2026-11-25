@@ -264,6 +264,12 @@ impl SceState {
             .take_requested_load()
     }
 
+    pub fn take_menu_exit(&self) -> bool {
+        self.menu_state
+            .inner::<crate::openpal3::menu_state::Pal3MenuState>()
+            .take_requested_return_to_menu()
+    }
+
     pub fn report_menu_load_failed(&self) {
         self.menu_state
             .inner::<crate::openpal3::menu_state::Pal3MenuState>()

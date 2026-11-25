@@ -57,7 +57,8 @@ pub struct Browser(
     // Returns a selected slot, -1 for Back, or zero. Disk and director
     // operations belong to the caller, never to a sprite's paint callback.
     pub fn paint(self: &Self, ui: &radiance.IUiHost, atlas: &openpal3.IPal3UiAtlas,
-        standalone: bool, mx: float, my: float, press: bool, release: bool, down: bool) -> int {
+        standalone: bool, mx: float, my: float, press: bool, release: bool, down: bool,
+        blocked: bool) -> int {
         if self.slots == null { return 0; }
         let slots = self.slots!;
         let viewport = gui.Rect(0.0, 0.0, ui.display_size_x() as float, ui.display_size_y() as float);
@@ -72,42 +73,43 @@ pub struct Browser(
         let top = if standalone { 62.0 } else { 40.0 };
         let bottom = if standalone { 526.0 } else { 500.0 };
         let modal = self.confirmation > 0;
+        let background_input = !modal && !blocked;
+        if blocked { self.held = -1; }
         self.action = 0;
         ui.clip_rect(rect.x, rect.y, rect.right(), rect.bottom(), () => {
             if standalone {
                 c.blit("ui/Menu/JDHY/background.tga", 0.0, 0.0, 800.0, 600.0);
             } else {
                 c.blit(ROOT + "Frame.tga", 670.0, 38.0, 114.0, 504.0);
-                c.text(690.0, 90.0, "音量设置\n尚未实现", true);
             }
             c.blit(ROOT + "TopBar.tga", 40.0 + dx, if standalone { 46.0 } else { 23.0 }, 584.0, 18.0);
             c.blit(ROOT + "BottomBar.tga", 41.0 + dx, bottom, 583.0, 35.0);
             if !standalone {
-                let save_over = inside(nx, ny, 146.0, 5.0, 119.0, 32.0);
-                let load_over = inside(nx, ny, 398.0, 5.0, 119.0, 32.0);
+                let save_over = background_input && inside(nx, ny, 146.0, 5.0, 119.0, 32.0);
+                let load_over = background_input && inside(nx, ny, 398.0, 5.0, 119.0, 32.0);
                 c.blit(ROOT + if self.saving { "Saveon.tga" } else { if save_over { "Save1.tga" } else { "Save0.tga" } },
                     146.0, 5.0, 119.0, 32.0);
                 c.blit(ROOT + if !self.saving { "Loadon.tga" } else { if load_over { "Load1.tga" } else { "Load0.tga" } },
                     398.0, 5.0, 119.0, 32.0);
-                if !modal && self.button(100, save_over, press, release) {
+                if background_input && self.button(100, save_over, press, release) {
                     self.saving = true; self.feedback = "";
                 }
-                if !modal && self.button(101, load_over, press, release) {
+                if background_input && self.button(101, load_over, press, release) {
                     self.saving = false; self.feedback = "";
                 }
             }
             let max_first = if slots.slot_count() > 5 { slots.slot_count() - 5 } else { 0 };
-            if !modal {
+            if background_input {
                 let wheel = if inside(nx, ny, 12.0 + dx, top, 650.0, bottom - top) { ui.mouse_wheel() } else { 0.0 };
                 if wheel > 0.0 { self.first = self.first - 1; }
                 if wheel < 0.0 { self.first = self.first + 1; }
             }
             let up_y = if standalone { 62.0 } else { 38.0 };
             let down_y = if standalone { 527.0 } else { 503.0 };
-            let up_over = inside(nx, ny, 634.0 + dx, up_y, 25.0, 28.0);
-            let down_over = inside(nx, ny, 634.0 + dx, down_y, 25.0, 28.0);
-            if !modal && self.button(102, up_over, press, release) { self.first = self.first - 5; }
-            if !modal && self.button(103, down_over, press, release) { self.first = self.first + 5; }
+            let up_over = background_input && inside(nx, ny, 634.0 + dx, up_y, 25.0, 28.0);
+            let down_over = background_input && inside(nx, ny, 634.0 + dx, down_y, 25.0, 28.0);
+            if background_input && self.button(102, up_over, press, release) { self.first = self.first - 5; }
+            if background_input && self.button(103, down_over, press, release) { self.first = self.first + 5; }
             if self.first < 0 { self.first = 0; }
             if self.first > max_first { self.first = max_first; }
             let uv = if up_over && down { "2" } else { if up_over { "1" } else { "0" } };
@@ -121,7 +123,7 @@ pub struct Browser(
                     if slot <= slots.slot_count() {
                         let x = 12.0 + dx;
                         let y = top + (row as float) * 92.0;
-                        let over = inside(nx, ny, x, y, 609.0, 92.0) && ny < bottom;
+                        let over = background_input && inside(nx, ny, x, y, 609.0, 92.0) && ny < bottom;
                         let status = slots.status(slot);
                         let enabled = self.saving || status == 1;
                         let variant = if enabled && over && down { "2" } else { if enabled && over { "1" } else { "0" } };
@@ -147,7 +149,7 @@ pub struct Browser(
                         } else {
                             c.text(x + 312.0, y + 29.0, if status == 0 { "空存档" } else { "存档损坏或不完整" }, false);
                         }
-                        if !modal && enabled && self.button(slot, over, press, release) {
+                        if background_input && enabled && self.button(slot, over, press, release) {
                             self.feedback = "";
                             if self.saving && status != 0 { self.confirmation = slot; }
                             else { self.action = slot; }
@@ -160,20 +162,17 @@ pub struct Browser(
                     number(self.first + 1) + " - " + number(self.first + 5) + " / " + number(slots.slot_count())
                 }, false);
             if standalone {
-                let back = inside(nx, ny, 745.0, 537.0, 56.0, 63.0);
+                let back = background_input && inside(nx, ny, 745.0, 537.0, 56.0, 63.0);
                 c.blit("ui/Menu/Sub_Exit" + if back && down { "2.tga" } else { if back { "1.tga" } else { "0.tga" } },
                     745.0, 537.0, 56.0, 64.0);
-                if !modal && self.button(104, back, press, release) { self.action = -1; }
+                if background_input && self.button(104, back, press, release) { self.action = -1; }
             }
             if modal {
-                c.shade(190.0, 210.0, 420.0, 158.0);
-                c.text(240.0, 236.0, "覆盖存档 " + number(self.confirmation) + "？", true);
-                c.text(270.0, 310.0, "确定", true);
-                c.text(470.0, 310.0, "取消", true);
-                if self.button(105, inside(nx, ny, 240.0, 294.0, 100.0, 44.0), press, release) {
+                paint_confirmation(c, nx, ny, down, "覆盖存档 " + number(self.confirmation) + "？");
+                if !blocked && self.button(105, confirmation_yes(nx, ny), press, release) {
                     self.action = self.confirmation; self.confirmation = 0;
                 }
-                if self.button(106, inside(nx, ny, 440.0, 294.0, 100.0, 44.0), press, release) {
+                if !blocked && self.button(106, confirmation_no(nx, ny), press, release) {
                     self.confirmation = 0;
                 }
             }
@@ -181,6 +180,100 @@ pub struct Browser(
         if !down { self.held = -1; }
         return self.action;
     }
+}
+
+pub fn paint_confirmation(c: &Canvas, nx: float, ny: float, down: bool, message: string) {
+    let root = "ui/GameMainUI/MUIDialog/Normal/";
+    // Native type-2 dialog: 0x4a16c0, with 90x26 logical buttons.
+    c.blit(root + "DlgBackground.tga", 250.0, 200.0, 308.0, 109.0);
+    let yes = confirmation_yes(nx, ny);
+    let no = confirmation_no(nx, ny);
+    let yes_variant = if yes && down { "2" } else { if yes { "1" } else { "0" } };
+    let no_variant = if no && down { "2" } else { if no { "1" } else { "0" } };
+    c.blit(root + "Yes" + yes_variant + ".tga", 276.0, 277.0, 90.0, 26.0);
+    c.blit(root + "No" + no_variant + ".tga", 442.0, 277.0, 90.0, 26.0);
+    c.ui.text_at_size(c.x + 256.0 * c.scale, c.y + 206.0 * c.scale,
+        18.0 * c.scale, 219.0 / 255.0, 219.0 / 255.0, 0.0, 1.0, "\n        " + message);
+}
+
+pub fn confirmation_yes(nx: float, ny: float) -> bool {
+    inside(nx, ny, 276.0, 277.0, 90.0, 26.0)
+}
+
+pub fn confirmation_no(nx: float, ny: float) -> bool {
+    inside(nx, ny, 442.0, 277.0, 90.0, 26.0)
+}
+
+pub struct AudioControls(held: int, grab: float, origin: float, changed: bool, pub feedback: string) {
+    pub fn finish(self: &Self, game: &openpal3.IPal3MenuState) {
+        if self.changed {
+            self.feedback = if game.save_audio_settings() { "" } else { "音量设置保存失败" };
+        }
+        self.changed = false;
+        self.held = -1;
+    }
+
+    pub fn paint(self: &Self, ui: &radiance.IUiHost, atlas: &openpal3.IPal3UiAtlas,
+        game: &openpal3.IPal3MenuState, mx: float, my: float,
+        press: bool, release: bool, down: bool, modal: bool) {
+        let viewport = gui.Rect(0.0, 0.0, ui.display_size_x() as float, ui.display_size_y() as float);
+        let native = gui.Size(800.0, 600.0);
+        let rect = viewport.fit(native);
+        let scale = viewport.fit_scale(native);
+        if scale <= 0.0 { return; }
+        let c = &Canvas(ui, atlas, rect.x, rect.y, scale);
+        let nx = (mx - rect.x) / scale;
+        let ny = (my - rect.y) / scale;
+        if modal { self.finish(game); }
+        c.blit(ROOT + "MusicText.tga", 684.0, 368.0, 55.0, 23.0);
+        c.blit(ROOT + "MusicEffectText.tga", 726.0, 105.0, 55.0, 23.0);
+        c.blit(ROOT + "MusicBar.tga", 698.0, 56.0, 18.0, 308.0);
+        c.blit(ROOT + "MusicEffect.tga", 744.0, 136.0, 18.0, 308.0);
+        for i in Range(0, 2) {
+            let value = if i == 0 { game.music_volume() } else { game.sound_volume() };
+            let x = if i == 0 { 695.0 } else { 740.0 };
+            let y = audio_thumb_y(value, i == 0);
+            let over_thumb = inside(nx, ny, x, y, 26.0, 30.0);
+            let over_track = inside(nx, ny, x, if i == 0 { 56.0 } else { 136.0 }, 26.0, 308.0);
+            if !modal && press && (over_thumb || over_track) {
+                self.held = i;
+                self.grab = ny;
+                self.origin = if over_thumb { value } else { audio_volume_at(ny - 15.0, i == 0) };
+                self.changed = false;
+                self.feedback = "";
+            }
+            if self.held == i && !modal {
+                let delta = (ny - self.grab) / 273.0;
+                let next = bound_volume(self.origin + if i == 0 { delta } else { -delta });
+                if next != value {
+                    let accepted = if i == 0 { game.set_music_volume(next) } else { game.set_sound_volume(next) };
+                    if accepted { self.changed = true; }
+                    else { self.feedback = "音量设置不可用"; }
+                }
+                if release || !down { self.finish(game); }
+            }
+            let current = if i == 0 { game.music_volume() } else { game.sound_volume() };
+            let variant = if self.held == i { "2" } else { if over_thumb && !modal { "1" } else { "0" } };
+            c.blit("ui/GameMainUI/Communal/Scroll/scrollbar" + variant + ".tga",
+                x, audio_thumb_y(current, i == 0), 26.0, 30.0);
+        }
+        if self.feedback != "" { c.text(610.0, 510.0, self.feedback, true); }
+    }
+}
+
+pub fn make_audio_controls() -> &AudioControls { &AudioControls(-1, 0.0, 0.0, false, "") }
+
+pub fn audio_thumb_y(volume: float, music: bool) -> float {
+    let value = bound_volume(volume);
+    if music { 61.0 + 273.0 * value } else { 409.0 - 273.0 * value }
+}
+
+pub fn audio_volume_at(thumb_y: float, music: bool) -> float {
+    bound_volume(if music { (thumb_y - 61.0) / 273.0 } else { (409.0 - thumb_y) / 273.0 })
+}
+
+fn bound_volume(value: float) -> float {
+    if value < 0.0 { 0.0 } else { if value > 1.0 { 1.0 } else { value } }
 }
 
 pub fn make_browser() -> &Browser { &Browser(null, false, 0, -1, 0, "", 0) }

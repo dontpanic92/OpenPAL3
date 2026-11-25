@@ -90,10 +90,11 @@ fn save_browser_pages_to_slot_36_rejects_bad_loads_and_confirms_overwrites() {
             browser.begin(slots, true);
         }
         pub fn confirmation(browser: &save_load.Browser) -> int { browser.confirmation }
+        pub fn first(browser: &save_load.Browser) -> int { browser.first }
         pub fn frame(browser: &save_load.Browser, ui: &radiance.IUiHost,
             atlas: &openpal3.IPal3UiAtlas, standalone: bool,
             x: float, y: float, press: bool, release: bool, down: bool) -> int {
-            browser.paint(ui, atlas, standalone, x, y, press, release, down)
+            browser.paint(ui, atlas, standalone, x, y, press, release, down, false)
         }
     "#,
     )
@@ -162,14 +163,38 @@ fn save_browser_pages_to_slot_36_rejects_bad_loads_and_confirms_overwrites() {
             .unwrap(),
         Data::Int(1)
     );
-    assert_eq!(click(false, 470.0, 310.0), Data::Int(0));
+    recorder.set_mouse_wheel(-1.0);
+    assert_eq!(click(false, 487.0, 290.0), Data::Int(0));
+    recorder.set_mouse_wheel(0.0);
+    assert_eq!(
+        host.call_returning_data("first", vec![browser.clone()])
+            .unwrap(),
+        Data::Int(0),
+        "the modal consumes wheel input, including its closing frame"
+    );
     assert_eq!(
         host.call_returning_data("confirmation", vec![browser.clone()])
             .unwrap(),
         Data::Int(0)
     );
+    assert_eq!(
+        frame(false, 487.0, 290.0, false, true, false),
+        Data::Int(0),
+        "the confirmation release must not activate the save row underneath"
+    );
+    recorder.set_mouse_wheel(-1.0);
+    frame(false, 200.0, 244.0, false, false, false);
+    assert_eq!(
+        host.call_returning_data("first", vec![browser.clone()])
+            .unwrap(),
+        Data::Int(1),
+        "normal scrolling resumes after the modal closes"
+    );
+    recorder.set_mouse_wheel(1.0);
+    frame(false, 200.0, 244.0, false, false, false);
+    recorder.set_mouse_wheel(0.0);
     click(false, 200.0, 60.0);
-    assert_eq!(click(false, 270.0, 310.0), Data::Int(1));
+    assert_eq!(click(false, 321.0, 290.0), Data::Int(1));
     assert_eq!(click(false, 200.0, 244.0), Data::Int(3));
     click(false, 200.0, 152.0);
     assert_eq!(
@@ -177,7 +202,7 @@ fn save_browser_pages_to_slot_36_rejects_bad_loads_and_confirms_overwrites() {
             .unwrap(),
         Data::Int(2)
     );
-    click(false, 470.0, 310.0);
+    click(false, 487.0, 290.0);
     click(false, 450.0, 20.0);
     assert_eq!(click(false, 200.0, 152.0), Data::Int(0));
     assert_eq!(click(false, 200.0, 60.0), Data::Int(1));

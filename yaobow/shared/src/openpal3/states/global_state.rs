@@ -2,9 +2,13 @@ use std::{
     cell::{Ref, RefCell, RefMut},
     collections::HashMap,
     rc::Rc,
+    sync::Arc,
 };
 
-use crate::openpal3::asset_manager::AssetManager;
+use crate::openpal3::{
+    asset_manager::AssetManager,
+    audio_mix::{AudioChannel, Pal3AudioMix, mixed_source},
+};
 
 use super::persistent_state::PersistentState;
 use common::store_ext::StoreExt2;
@@ -27,6 +31,7 @@ pub struct GlobalState {
     sound_sources: Vec<Rc<RefCell<Box<dyn AudioMemorySource>>>>,
     default_scene_bgm: HashMap<String, String>,
     video_player: Box<VideoPlayer>,
+    audio_mix: Arc<Pal3AudioMix>,
 
     pass_through_wall: bool,
 }
@@ -37,7 +42,12 @@ impl GlobalState {
         audio_engine: Rc<dyn AudioEngine>,
         persistent_state: Rc<RefCell<PersistentState>>,
     ) -> Self {
-        let bgm_source = audio_engine.create_source();
+        let audio_mix = Arc::new(Pal3AudioMix::load());
+        let bgm_source = mixed_source(
+            audio_engine.create_source(),
+            audio_mix.clone(),
+            AudioChannel::Music,
+        );
         let video_player = asset_mgr.component_factory().create_video_player();
         let sound_sources = vec![];
         let music_path = "/basedata/basedata/datascript/music.txt";
@@ -60,6 +70,7 @@ impl GlobalState {
             sound_sources,
             default_scene_bgm,
             video_player,
+            audio_mix,
             pass_through_wall: false,
         }
     }
@@ -147,9 +158,10 @@ impl GlobalState {
     }
 
     pub fn menu_state(&self) -> crosscom::ComRc<crate::openpal3::comdef::IPal3MenuState> {
-        crate::openpal3::menu_state::Pal3MenuState::create(
+        crate::openpal3::menu_state::Pal3MenuState::create_with_persisted_audio(
             self.persistent_state.clone(),
             (self.asset_mgr.game() == crate::GameType::PAL3).then(|| self.asset_mgr.stats_data()),
+            self.audio_mix.clone(),
         )
     }
 
@@ -159,6 +171,14 @@ impl GlobalState {
 
     pub fn add_sound_source(&mut self, source: Rc<RefCell<Box<dyn AudioMemorySource>>>) {
         self.sound_sources.push(source);
+    }
+
+    pub fn create_sound_source(&self) -> Box<dyn AudioMemorySource> {
+        mixed_source(
+            self.audio_engine.create_source(),
+            self.audio_mix.clone(),
+            AudioChannel::Sound,
+        )
     }
 
     pub fn remove_sound_source(&mut self, source: Rc<RefCell<Box<dyn AudioMemorySource>>>) {

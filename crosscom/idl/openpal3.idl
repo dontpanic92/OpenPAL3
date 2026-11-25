@@ -237,6 +237,15 @@ interface IPal3MenuState: IUnknown {
     // Party-wide items require role -1. Failed actions never consume an item.
     bool can_use_item(int role, int id);
     bool use_item(int role, int id);
+    float music_volume();
+    float sound_volume();
+    // Applies immediately; false rejects a non-finite input.
+    bool set_music_volume(float volume);
+    bool set_sound_volume(float volume);
+    // Explicitly persists both channels after an interaction completes.
+    bool save_audio_settings();
+    // Queued until the host's pre-update hook, outside the UI/engine borrow.
+    bool request_return_to_menu();
 }
 
 [uuid(367cc58a-61c5-447e-bd05-d855e637bfeb)]

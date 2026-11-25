@@ -40,6 +40,7 @@ use shared::agent_common::AgentBridge;
 use shared::loaders::video_handle::VideoHandle;
 use shared::openpal3::agent::{Pal3DispatchCtx, dispatch_pal3_command};
 use shared::openpal3::asset_manager::AssetManager;
+use shared::openpal3::audio_mix::Pal3AudioMix;
 use shared::openpal3::comdef::{
     IAdventureDirector, IPal3DialogRenderer, IPal3ScriptFactory, IPal3Service, IPal3ServiceImpl,
     IPal3StatusRenderer, IPal3UiAtlas,
@@ -278,6 +279,30 @@ impl Pal3Service {
         let Some(current) = self.active_adventure_director_owned() else {
             return;
         };
+        if current
+            .inner::<AdventureDirector>()
+            .sce_vm()
+            .state()
+            .take_menu_exit()
+        {
+            let path = self.last_asset_path.borrow().clone();
+            let factory = self.script_factory.borrow().clone();
+            if let (Some(path), Some(factory)) = (path, factory) {
+                let menu = factory.make_pal3_start_menu(&path);
+                current
+                    .inner::<AdventureDirector>()
+                    .sce_vm_mut()
+                    .global_state_mut()
+                    .bgm_source()
+                    .stop();
+                let scene_manager = self.app.engine().borrow().scene_manager().clone();
+                scene_manager.unload_all_scenes();
+                scene_manager.set_director(menu);
+            } else {
+                log::error!("Cannot return to the PAL3 menu: launch context is unavailable");
+            }
+            return;
+        }
         let slot = current
             .inner::<AdventureDirector>()
             .sce_vm()
@@ -608,6 +633,7 @@ impl IPal3ServiceImpl for Pal3Service {
         .ok()?;
         let mut source = audio_engine.create_source();
         source.set_data(data, AudioCodec::Mp3);
+        source.set_gain(Pal3AudioMix::load().music());
         Some(AudioSource::create(source))
     }
 

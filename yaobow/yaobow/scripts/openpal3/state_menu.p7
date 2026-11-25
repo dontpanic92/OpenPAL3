@@ -46,11 +46,20 @@ pub struct MenuState(
     category: int, equipment_category: int, from_bag: bool, description_first: int,
     using_item: int, feedback: string,
     browser: &save_load.Browser,
+    audio: &save_load.AudioControls,
+    exit_confirmation: bool,
 ) {
     pub fn on_open(self: &Self, gameplay: &openpal3.IPal3MenuState) {
+        self.audio.finish(gameplay);
+        self.exit_confirmation = false;
         self.held = -1;
         self.using_item = 0; self.feedback = "";
         if self.tab == 7 { self.browser.begin(gameplay.save_slots(), self.browser.saving); }
+    }
+
+    pub fn on_close(self: &Self, gameplay: &openpal3.IPal3MenuState) {
+        self.audio.finish(gameplay);
+        self.exit_confirmation = false;
     }
 
     fn button(self: &Self, id: int, over: bool, press: bool, release: bool) -> bool {
@@ -71,6 +80,8 @@ pub struct MenuState(
         let c = &Canvas(ui, atlas, rect.x, rect.y, s);
         let nx = (mx - rect.x) / s;
         let ny = (my - rect.y) / s;
+        let exiting = self.exit_confirmation;
+        let modal = self.browser.confirmation > 0 || exiting;
         ui.fill_rect(0.0, 0.0, viewport.w, viewport.h, 0.0, 0.0, 0.0, 0.8);
 
         let frames: array<string> = ["State", "Prop", "Equip"];
@@ -142,7 +153,7 @@ pub struct MenuState(
         let tabs: array<string> = ["State", "Prop", "Equip", "Magic", "Battle_Array", "Sword", "JusticeBook", "System"];
         for i in Range(0, 8) {
             let x = 38.0 + (i as float) * 88.0;
-            let over = inside(nx, ny, x + 35.0, 551.0, 39.0, 40.0);
+            let over = !modal && inside(nx, ny, x + 35.0, 551.0, 39.0, 40.0);
             let enabled = (i < 3 || i == 7) && gameplay.available();
             let mut name = TOOLBAR + tabs[i] + "0.tga";
             if self.tab == i {
@@ -152,7 +163,7 @@ pub struct MenuState(
                 name = TOOLBAR + tabs[i] + variant + ".tga";
             }
             c.blit(name, x, 546.0, 110.0, 50.0);
-            if enabled && self.browser.confirmation == 0 && self.button(i, over, press, release) {
+            if enabled && !modal && self.button(i, over, press, release) {
                 self.tab = i; self.page = 0; self.item = 0;
                 self.from_bag = false; self.description_first = 0;
                 self.using_item = 0; self.feedback = "";
@@ -160,16 +171,27 @@ pub struct MenuState(
             }
             if over && !enabled { c.text(312.0, 524.0, "此功能尚未实现", true); }
         }
-        let exit_over = inside(nx, ny, 763.0, 547.0, 37.0, 48.0);
+        let exit_over = !modal && inside(nx, ny, 763.0, 547.0, 37.0, 48.0);
         let exit_variant = if exit_over && down { "2" } else { if exit_over { "1" } else { "0" } };
         c.blit(TOOLBAR + "Exit" + exit_variant + ".tga", 763.0, 547.0, 37.0, 48.0);
-        let close = self.browser.confirmation == 0 && self.button(20, exit_over, press, release);
+        let close = !modal && self.button(20, exit_over, press, release);
         if self.tab == 7 {
             if gameplay.take_load_failed() {
                 self.browser.slots = gameplay.save_slots();
                 self.browser.feedback = "读取失败，存档可能已经改变";
             }
-            let slot = self.browser.paint(ui, atlas, false, mx, my, press, release, down);
+            let slot = self.browser.paint(ui, atlas, false, mx, my,
+                press, release, down, exiting);
+            let quit_over = !modal && inside(nx, ny, 696.0, 456.0, 73.0, 75.0);
+            let quit_variant = if quit_over && down && !modal { "2" } else {
+                if quit_over && !modal { "1" } else { "0" }
+            };
+            c.blit(ROOT + "System/ExitGame" + quit_variant + ".tga", 696.0, 456.0, 73.0, 75.0);
+            if !modal && self.browser.confirmation == 0 && self.button(21, quit_over, press, release) {
+                self.exit_confirmation = true;
+            }
+            self.audio.paint(ui, atlas, gameplay, mx, my, press, release, down,
+                modal || self.browser.confirmation > 0 || self.exit_confirmation);
             if slot > 0 {
                 if self.browser.saving {
                     let saved = gameplay.save_slot(slot);
@@ -179,7 +201,25 @@ pub struct MenuState(
                     if !gameplay.request_load(slot) { self.browser.feedback = "读取失败，存档可能已经改变"; }
                 }
             }
+        } else {
+            self.audio.finish(gameplay);
         }
+        if self.exit_confirmation {
+            let prompt = &save_load.Canvas(ui, atlas, rect.x, rect.y, s);
+            save_load.paint_confirmation(prompt, nx, ny, down,
+                "退出游戏并返回主菜单？\n未保存的进度将丢失。");
+            if exiting && self.button(22, save_load.confirmation_yes(nx, ny), press, release) {
+                self.audio.finish(gameplay);
+                if !gameplay.request_return_to_menu() {
+                    self.exit_confirmation = false;
+                    self.browser.feedback = "无法返回主菜单";
+                }
+            }
+            if exiting && self.button(23, save_load.confirmation_no(nx, ny), press, release) {
+                self.exit_confirmation = false;
+            }
+        }
+        if close { self.audio.finish(gameplay); }
         if !down { self.held = -1; }
         return !close;
     }
@@ -404,7 +444,8 @@ pub struct MenuState(
 }
 
 pub fn make_menu() -> &MenuState {
-    return &MenuState(0, 0, 0, 0, 0, 5, -1, 0, 0, false, 0, 0, "", save_load.make_browser());
+    return &MenuState(0, 0, 0, 0, 0, 5, -1, 0, 0, false, 0, 0, "", save_load.make_browser(),
+        save_load.make_audio_controls(), false);
 }
 
 fn paint_item_header(c: &Canvas, game: &openpal3.IPal3MenuState, role: int, equipment: bool) {

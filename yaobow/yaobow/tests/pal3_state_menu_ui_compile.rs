@@ -4,7 +4,7 @@
 //! against the production script VFS (so `import radiance_scripting.ui;`
 //! and `import yaobow.openpal3.state_menu;` resolve).
 
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, rc::Rc, sync::Arc};
 
 use crosscom::ComRc;
 use p7::interpreter::context::Data;
@@ -14,6 +14,7 @@ use radiance_scripting::{
     services::ui_host_recording::{RecordingUiHost, UiCall},
 };
 use shared::openpal3::{
+    audio_mix::Pal3AudioMix,
     comdef::{IPal3UiAtlas, IPal3UiAtlasImpl},
     loaders::stats::StatsData,
     menu_state::Pal3MenuState,
@@ -27,6 +28,395 @@ fn pal3_status_ui_and_state_menu_compile() {
     host.set_script_assets(install_script_assets());
     host.load_source_from_path("/yaobow/openpal3/status_ui.p7")
         .expect("openpal3/status_ui.p7 (+ state_menu.p7) must compile");
+}
+
+#[test]
+fn system_audio_uses_native_geometry_and_captured_independent_sliders() {
+    let host = ScriptHost::new();
+    host.set_script_assets(install_script_assets());
+    host.load_source(
+        r#"
+        import radiance;
+        import shared.openpal3;
+        import yaobow.openpal3.save_load;
+        pub fn make() -> &save_load.AudioControls { save_load.make_audio_controls() }
+        pub fn frame(audio: &save_load.AudioControls, ui: &radiance.IUiHost,
+            atlas: &openpal3.IPal3UiAtlas, game: &openpal3.IPal3MenuState,
+            x: float, y: float, press: bool, release: bool, down: bool, modal: bool) -> bool {
+            audio.paint(ui, atlas, game, x, y, press, release, down, modal);
+            true
+        }
+        "#,
+    )
+    .unwrap();
+    let (recorder, ui) = RecordingUiHost::create();
+    let service = Pal3MenuState::create_with_audio(
+        Rc::new(RefCell::new(PersistentState::new("audio-ui-test".into()))),
+        Some(Rc::new(menu_data())),
+        Arc::new(Pal3AudioMix::new(0.25, 0.75)),
+    );
+    assert!(!service.save_audio_settings());
+    let ui_id = host.intern(ui);
+    let atlas_id = host.intern(ComRc::<IPal3UiAtlas>::from_object(TestAtlas));
+    let game_id = host.intern(service.clone());
+    let ui = host.foreign_box("radiance.comdef.IUiHost", ui_id).unwrap();
+    let atlas = host
+        .foreign_box("shared.openpal3.comdef.IPal3UiAtlas", atlas_id)
+        .unwrap();
+    let game = host
+        .foreign_box("shared.openpal3.comdef.IPal3MenuState", game_id)
+        .unwrap();
+    let audio = host.call_returning_data("make", vec![]).unwrap();
+    let frame = |x: f64, y: f64, press: bool, release: bool, down: bool, modal: bool| {
+        recorder.calls.borrow_mut().clear();
+        host.call_returning_data(
+            "frame",
+            vec![
+                audio.clone(),
+                ui.clone(),
+                atlas.clone(),
+                game.clone(),
+                Data::Float(x),
+                Data::Float(y),
+                Data::Int(press as i64),
+                Data::Int(release as i64),
+                Data::Int(down as i64),
+                Data::Int(modal as i64),
+            ],
+        )
+        .unwrap();
+    };
+    for (width, height, ox, scale) in [
+        (800, 600, 0.0, 1.0),
+        (1600, 600, 400.0, 1.0),
+        (1600, 1200, 0.0, 2.0),
+    ] {
+        recorder.set_display_size(width, height);
+        frame(0.0, 0.0, false, false, false, false);
+        for (name, x, y, w, h) in [
+            (
+                "ui/GameMainUI/System/MusicBar.tga",
+                698.0,
+                56.0,
+                18.0,
+                308.0,
+            ),
+            (
+                "ui/GameMainUI/System/MusicEffect.tga",
+                744.0,
+                136.0,
+                18.0,
+                308.0,
+            ),
+            (
+                "ui/GameMainUI/System/MusicText.tga",
+                684.0,
+                368.0,
+                55.0,
+                23.0,
+            ),
+            (
+                "ui/GameMainUI/System/MusicEffectText.tga",
+                726.0,
+                105.0,
+                55.0,
+                23.0,
+            ),
+            (
+                "ui/GameMainUI/Communal/Scroll/scrollbar0.tga",
+                695.0,
+                129.25,
+                26.0,
+                30.0,
+            ),
+            (
+                "ui/GameMainUI/Communal/Scroll/scrollbar0.tga",
+                740.0,
+                204.25,
+                26.0,
+                30.0,
+            ),
+        ] {
+            assert!(
+                recorder.calls.borrow().iter().any(|call| matches!(call,
+                UiCall::ImageRect { texture_com_id, x0, y0, x1, y1, .. }
+                    if *texture_com_id == sprite_id(name)
+                    && (*x0, *y0, *x1, *y1) == ((ox + x * scale) as f32, (y * scale) as f32,
+                        (ox + (x + w) * scale) as f32, ((y + h) * scale) as f32))),
+                "{name}"
+            );
+        }
+    }
+    recorder.set_display_size(1600, 600);
+    frame(1108.0, 134.25, true, false, true, false);
+    assert_eq!(
+        service.music_volume(),
+        0.25,
+        "grabbing the thumb must not jump"
+    );
+    frame(1108.0, 134.25, false, true, false, false);
+    assert_eq!(
+        service.music_volume(),
+        0.25,
+        "stationary clicks must not change the gain"
+    );
+    frame(1108.0, 134.25, true, false, true, false);
+    frame(1108.0, 270.75, false, false, true, false);
+    assert_eq!(service.music_volume(), 0.75);
+    assert_eq!(
+        service.sound_volume(),
+        0.75,
+        "music must not change effects"
+    );
+    frame(-100.0, 1000.0, false, false, true, false);
+    assert_eq!(
+        service.music_volume(),
+        1.0,
+        "capture continues outside the viewport"
+    );
+    frame(-100.0, 1000.0, false, true, false, false);
+    assert!(
+        recorder.calls.borrow().iter().any(|call| matches!(call,
+        UiCall::TextAt { s, .. } if s == "音量设置保存失败")),
+        "{:?}",
+        recorder.calls.borrow()
+    );
+
+    frame(1150.0, 209.25, true, false, true, false);
+    assert_eq!(service.sound_volume(), 0.75);
+    frame(1150.0, 1000.0, false, false, true, false);
+    assert_eq!(
+        service.sound_volume(),
+        0.0,
+        "effects increase upward, unlike music"
+    );
+    frame(1150.0, 1000.0, false, true, false, false);
+    assert_eq!(service.music_volume(), 1.0);
+    frame(1150.0, 151.0, true, false, true, true);
+    assert_eq!(
+        service.sound_volume(),
+        0.0,
+        "confirmation dialogs disable sliders"
+    );
+    frame(400.0, 10.0, true, false, true, false);
+    frame(1150.0, 151.0, false, false, true, false);
+    assert_eq!(
+        service.sound_volume(),
+        0.0,
+        "a drag cannot begin outside the control"
+    );
+}
+
+#[test]
+fn system_audio_persists_on_release_not_during_drag() {
+    let host = ScriptHost::new();
+    host.set_script_assets(install_script_assets());
+    host.load_source(
+        r#"
+        import radiance;
+        import shared.openpal3;
+        import yaobow.openpal3.save_load;
+        pub fn make() -> &save_load.AudioControls { save_load.make_audio_controls() }
+        pub fn frame(audio: &save_load.AudioControls, ui: &radiance.IUiHost,
+            atlas: &openpal3.IPal3UiAtlas, game: &openpal3.IPal3MenuState, finish: bool) -> bool {
+            audio.paint(ui, atlas, game, 708.0, 200.0, !finish, finish, !finish, false);
+            true
+        }
+        "#,
+    )
+    .unwrap();
+    let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../target/test-data")
+        .join(format!("pal3-audio-ui-{}.toml", std::process::id()));
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    assert!(!path.exists());
+    let service = Pal3MenuState::create_with_audio_config_path(
+        Rc::new(RefCell::new(PersistentState::new("audio-ui-test".into()))),
+        Some(Rc::new(menu_data())),
+        Arc::new(Pal3AudioMix::new(0.25, 0.75)),
+        path.clone(),
+    );
+    let (recorder, ui) = RecordingUiHost::create();
+    recorder.set_display_size(800, 600);
+    let ui_id = host.intern(ui);
+    let atlas_id = host.intern(ComRc::<IPal3UiAtlas>::from_object(TestAtlas));
+    let game_id = host.intern(service.clone());
+    let inputs = vec![
+        host.call_returning_data("make", vec![]).unwrap(),
+        host.foreign_box("radiance.comdef.IUiHost", ui_id).unwrap(),
+        host.foreign_box("shared.openpal3.comdef.IPal3UiAtlas", atlas_id)
+            .unwrap(),
+        host.foreign_box("shared.openpal3.comdef.IPal3MenuState", game_id)
+            .unwrap(),
+    ];
+    let mut drag = inputs.clone();
+    drag.push(Data::Int(0));
+    host.call_returning_data("frame", drag).unwrap();
+    assert_ne!(service.music_volume(), 0.25);
+    assert_eq!(service.sound_volume(), 0.75);
+    assert!(!path.exists(), "drag frames must not write configuration");
+    let mut release = inputs;
+    release.push(Data::Int(1));
+    host.call_returning_data("frame", release).unwrap();
+    assert!(path.exists(), "releasing the slider persists the live mix");
+    std::fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn system_menu_keeps_slider_capture_and_requires_confirmation_to_return_to_menu() {
+    let host = ScriptHost::new();
+    host.set_script_assets(install_script_assets());
+    host.load_source(
+        r#"
+        import radiance;
+        import shared.openpal3;
+        import yaobow.openpal3.state_menu;
+        pub fn make() -> &state_menu.MenuState { state_menu.make_menu() }
+        pub fn frame(menu: &state_menu.MenuState, ui: &radiance.IUiHost,
+            atlas: &openpal3.IPal3UiAtlas, game: &openpal3.IPal3MenuState,
+            x: float, y: float, press: bool, release: bool, down: bool) -> bool {
+            menu.paint(ui, atlas, game, x, y, press, release, down)
+        }
+        "#,
+    )
+    .unwrap();
+    let (recorder, ui) = RecordingUiHost::create();
+    recorder.set_display_size(1600, 600);
+    let service = Pal3MenuState::create_with_audio(
+        Rc::new(RefCell::new(PersistentState::new(
+            "system-menu-test".into(),
+        ))),
+        Some(Rc::new(menu_data())),
+        Arc::new(Pal3AudioMix::new(0.25, 0.75)),
+    );
+    let ui_id = host.intern(ui);
+    let atlas_id = host.intern(ComRc::<IPal3UiAtlas>::from_object(TestAtlas));
+    let game_id = host.intern(service.clone());
+    let inputs = vec![
+        host.call_returning_data("make", vec![]).unwrap(),
+        host.foreign_box("radiance.comdef.IUiHost", ui_id).unwrap(),
+        host.foreign_box("shared.openpal3.comdef.IPal3UiAtlas", atlas_id)
+            .unwrap(),
+        host.foreign_box("shared.openpal3.comdef.IPal3MenuState", game_id)
+            .unwrap(),
+    ];
+    let frame = |x, y, press: bool, release: bool, down: bool| {
+        recorder.calls.borrow_mut().clear();
+        let mut args = inputs.clone();
+        args.extend([
+            Data::Float(x),
+            Data::Float(y),
+            Data::Int(press as i64),
+            Data::Int(release as i64),
+            Data::Int(down as i64),
+        ]);
+        host.call_returning_data("frame", args).unwrap()
+    };
+    let click = |x, y| {
+        frame(x, y, true, false, true);
+        frame(x, y, false, true, false);
+    };
+    let requested_exit = || {
+        service
+            .inner::<Pal3MenuState>()
+            .take_requested_return_to_menu()
+    };
+    click(1100.0, 570.0);
+    frame(1108.0, 134.25, true, false, true);
+    frame(1108.0, 270.75, false, false, true);
+    assert_eq!(
+        service.music_volume(),
+        0.75,
+        "the full menu must retain capture between frames"
+    );
+    frame(-100.0, 1000.0, false, true, false);
+    assert_eq!(service.music_volume(), 1.0);
+    frame(1150.0, 209.25, true, false, true);
+    frame(1150.0, 345.75, false, false, true);
+    assert_eq!(service.sound_volume(), 0.25);
+    frame(1150.0, 345.75, false, true, false);
+    assert_eq!(service.music_volume(), 1.0);
+    frame(0.0, 0.0, false, false, false);
+    assert!(recorder.calls.borrow().iter().any(|call| matches!(call,
+        UiCall::ImageRect { texture_com_id, x0, y0, x1, y1, .. }
+            if *texture_com_id == sprite_id("ui/GameMainUI/System/ExitGame0.tga")
+            && (*x0, *y0, *x1, *y1) == (1096.0, 456.0, 1169.0, 531.0))));
+    click(1130.0, 490.0);
+    assert!(
+        !requested_exit(),
+        "the exit button must only open a confirmation"
+    );
+    assert!(recorder.calls.borrow().iter().any(|call| matches!(call,
+        UiCall::TextAt { s, .. } if s.contains("未保存的进度将丢失"))));
+    for (name, expected) in [
+        ("DlgBackground.tga", (650.0, 200.0, 958.0, 309.0)),
+        ("Yes0.tga", (676.0, 277.0, 766.0, 303.0)),
+        ("No0.tga", (842.0, 277.0, 932.0, 303.0)),
+    ] {
+        assert!(
+            recorder.calls.borrow().iter().any(|call| matches!(call,
+            UiCall::ImageRect { texture_com_id, x0, y0, x1, y1, .. }
+                if *texture_com_id == sprite_id(&format!("ui/GameMainUI/MUIDialog/Normal/{name}"))
+                && (*x0, *y0, *x1, *y1) == expected)),
+            "{name}"
+        );
+    }
+    assert!(
+        !recorder.calls.borrow().iter().any(|call| matches!(call,
+        UiCall::TextAt { s, .. } if s == "确定" || s == "取消")),
+        "the original button sprites already contain their labels"
+    );
+    frame(721.0, 290.0, false, false, false);
+    assert!(recorder.calls.borrow().iter().any(|call| matches!(call,
+        UiCall::ImageRect { texture_com_id, .. }
+            if *texture_com_id == sprite_id("ui/GameMainUI/MUIDialog/Normal/Yes1.tga"))));
+    assert!(
+        !recorder.calls.borrow().iter().any(|call| matches!(call,
+        UiCall::ImageRect { texture_com_id, .. }
+            if *texture_com_id == sprite_id("ui/GameMainUI/System/Note1.tga")
+                || *texture_com_id == sprite_id("ui/GameMainUI/System/Note2.tga"))),
+        "a modal must not hover or press the save row underneath"
+    );
+    recorder.set_mouse_wheel(-1.0);
+    frame(721.0, 290.0, false, false, false);
+    recorder.set_mouse_wheel(0.0);
+    assert!(
+        recorder.calls.borrow().iter().any(|call| matches!(call,
+        UiCall::TextAt { s, .. } if s == "1 - 5 / 36")),
+        "scrolling over the confirmation must not page the underlying browser"
+    );
+    frame(580.0, 570.0, true, false, true);
+    assert!(
+        !recorder.calls.borrow().iter().any(|call| matches!(call,
+        UiCall::ImageRect { texture_com_id, .. }
+            if *texture_com_id == sprite_id("ui/GameMainUI/Communal/StpCtl/Prop1.tga")
+                || *texture_com_id == sprite_id("ui/GameMainUI/Communal/StpCtl/Prop2.tga"))),
+        "the confirmation blocks toolbar hover and press feedback"
+    );
+    frame(580.0, 570.0, false, true, false);
+    click(1150.0, 151.0);
+    assert_eq!(
+        service.sound_volume(),
+        0.25,
+        "the confirmation blocks audio input"
+    );
+    frame(721.0, 290.0, true, false, true);
+    assert!(recorder.calls.borrow().iter().any(|call| matches!(call,
+        UiCall::ImageRect { texture_com_id, .. }
+            if *texture_com_id == sprite_id("ui/GameMainUI/MUIDialog/Normal/Yes2.tga"))));
+    frame(800.0, 400.0, false, true, false);
+    assert!(!requested_exit(), "dragging away cancels the confirm click");
+    click(887.0, 290.0);
+    assert!(!requested_exit(), "cancel must keep the adventure running");
+    click(1130.0, 490.0);
+    frame(721.0, 290.0, true, false, true);
+    assert!(!requested_exit(), "press alone must not return to the menu");
+    assert_eq!(frame(721.0, 290.0, false, true, false), Data::Int(1));
+    assert!(
+        requested_exit(),
+        "confirmed exit queues a host-side menu transition"
+    );
+    assert!(!requested_exit(), "the transition is drained once");
 }
 
 mod openpal3 {
@@ -400,6 +790,9 @@ fn menu_renders_live_party_and_release_latched_inventory_equipment_navigation() 
         !has_text("217/217"),
         "System must not draw the party resource panel"
     );
+    assert!(recorder.calls.borrow().iter().any(|call| matches!(call,
+        UiCall::ImageRect { texture_com_id, .. }
+            if *texture_com_id == sprite_id("ui/GameMainUI/System/MusicBar.tga"))));
     frame(1180.0, 570.0, true, false, true);
     assert_eq!(frame(1180.0, 570.0, false, true, false), Data::Int(0));
 }

@@ -1,5 +1,6 @@
 pub mod agent;
 pub mod asset_manager;
+pub mod audio_mix;
 #[macro_use]
 pub mod comdef {
     include!(concat!(env!("OUT_DIR"), "/shared_openpal3_comdef.rs"));

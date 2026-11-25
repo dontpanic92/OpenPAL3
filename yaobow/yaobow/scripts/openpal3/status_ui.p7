@@ -57,6 +57,7 @@ pub struct[openpal3.IPal3StatusRenderer] Pal3StatusRendererImpl(
         let lw = ui.display_size_x() as float;
         let lh = ui.display_size_y() as float;
         if lw <= 0.0 || lh <= 0.0 { return 0; }
+        if !self.menu_open { self.menu.on_close(gameplay); }
 
         let panel = lh * ST_PANEL_HEIGHT_FACTOR;
         let s = panel / ST_BK_SIZE;

@@ -83,6 +83,10 @@ fn default_master_volume() -> f32 {
     0.7
 }
 
+fn default_channel_volume() -> f32 {
+    1.0
+}
+
 /// Audio preferences shared by the game runtime and editor. Stored
 /// under `[audio]` in `yaobow.toml`.
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -92,12 +96,23 @@ pub struct AudioConfig {
     /// uniformly. Defaults to [`default_master_volume`].
     #[serde(default = "default_master_volume")]
     pub master_volume: f32,
+
+    /// PAL3 BGM mix gain. Kept separate from `master_volume` so the
+    /// original System-menu controls do not affect other games.
+    #[serde(default = "default_channel_volume")]
+    pub music_volume: f32,
+
+    /// PAL3 sound-effect mix gain.
+    #[serde(default = "default_channel_volume")]
+    pub sound_volume: f32,
 }
 
 impl Default for AudioConfig {
     fn default() -> Self {
         Self {
             master_volume: default_master_volume(),
+            music_volume: default_channel_volume(),
+            sound_volume: default_channel_volume(),
         }
     }
 }
@@ -180,12 +195,19 @@ impl YaobowConfig {
 
     /// Persists the config to `config_path()`, creating parent dirs.
     pub fn save(&self) -> anyhow::Result<()> {
-        let path = Self::config_path();
+        self.save_to_path(&Self::config_path())
+    }
+
+    pub(crate) fn load_from_path(path: &std::path::Path) -> Self {
+        Self::try_load_from(path).unwrap_or_default()
+    }
+
+    pub(crate) fn save_to_path(&self, path: &std::path::Path) -> anyhow::Result<()> {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
         let text = toml::to_string_pretty(self)?;
-        std::fs::write(&path, text)?;
+        std::fs::write(path, text)?;
         Ok(())
     }
 
@@ -241,12 +263,28 @@ impl YaobowConfig {
         }
     }
 
+    pub fn music_volume(&self) -> f32 {
+        Self::sanitize_channel_volume(self.audio.music_volume)
+    }
+
+    pub fn sound_volume(&self) -> f32 {
+        Self::sanitize_channel_volume(self.audio.sound_volume)
+    }
+
     /// Persist a new scene-render scale mode. Callers are responsible
     /// for triggering any engine-side recreate (typically through
     /// `IConfigService::save` + a `restart-required` UX, or a future
     /// engine hot-reload hook).
     pub fn set_scene_scale_mode(&mut self, mode: SceneScaleMode) {
         self.render.scene_scale_mode = mode;
+    }
+
+    fn sanitize_channel_volume(volume: f32) -> f32 {
+        if volume.is_finite() {
+            volume.clamp(0.0, 1.0)
+        } else {
+            default_channel_volume()
+        }
     }
 }
 
@@ -429,5 +467,38 @@ mod tests {
         assert_eq!(cfg.master_volume(), 0.0);
         cfg.audio.master_volume = f32::NAN;
         assert_eq!(cfg.master_volume(), 0.7);
+    }
+
+    #[test]
+    fn pal3_channel_volumes_default_and_sanitize_independently() {
+        let mut cfg = YaobowConfig::default();
+        assert_eq!(cfg.music_volume(), 1.0);
+        assert_eq!(cfg.sound_volume(), 1.0);
+        assert_eq!(cfg.master_volume(), 0.7);
+
+        cfg.audio.music_volume = 0.25;
+        cfg.audio.sound_volume = 2.0;
+        assert_eq!(cfg.music_volume(), 0.25);
+        assert_eq!(cfg.sound_volume(), 1.0);
+        assert_eq!(cfg.master_volume(), 0.7);
+
+        cfg.audio.music_volume = f32::NAN;
+        cfg.audio.sound_volume = -1.0;
+        assert_eq!(cfg.music_volume(), 1.0);
+        assert_eq!(cfg.sound_volume(), 0.0);
+    }
+
+    #[test]
+    fn pal3_channel_volumes_serde_default_and_roundtrip() {
+        let old: YaobowConfig = toml::from_str("[audio]\nmaster_volume = 0.4\n").unwrap();
+        assert_eq!(old.music_volume(), 1.0);
+        assert_eq!(old.sound_volume(), 1.0);
+
+        let mut cfg = YaobowConfig::default();
+        cfg.audio.music_volume = 0.3;
+        cfg.audio.sound_volume = 0.8;
+        let loaded: YaobowConfig = toml::from_str(&toml::to_string(&cfg).unwrap()).unwrap();
+        assert_eq!(loaded.music_volume(), 0.3);
+        assert_eq!(loaded.sound_volume(), 0.8);
     }
 }

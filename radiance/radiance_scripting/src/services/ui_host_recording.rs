@@ -248,6 +248,7 @@ pub struct RecordingUiHost {
     /// Seeded result of `mouse_down(_)` (defaults to `false`). Toggle
     /// across paint passes to simulate a press (down) then release (up).
     pub mouse_is_down: RefCell<bool>,
+    pub mouse_wheel_delta: Cell<f32>,
     /// Optional scripted `mouse_down(_)` results, consumed front-to-back
     /// (one per call). When non-empty it takes precedence over
     /// `mouse_is_down`; when exhausted it falls back to `mouse_is_down`.
@@ -295,6 +296,10 @@ impl RecordingUiHost {
     /// Seed the `mouse_down(_)` result reported to scripts.
     pub fn set_mouse_down(&self, down: bool) {
         *self.mouse_is_down.borrow_mut() = down;
+    }
+
+    pub fn set_mouse_wheel(&self, delta: f32) {
+        self.mouse_wheel_delta.set(delta);
     }
 
     /// Seed a scripted sequence of `mouse_down(_)` results, consumed one
@@ -660,7 +665,7 @@ impl IUiHostImpl for HostFacade {
     }
     fn reset_mouse_drag_delta(&self, _button: i32) {}
     fn mouse_wheel(&self) -> f32 {
-        0.0
+        self.inner.mouse_wheel_delta.get()
     }
     fn mouse_pos_x(&self) -> f32 {
         0.0
