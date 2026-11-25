@@ -258,16 +258,12 @@ impl CvdModelComponent {
         ));
         if let Some(keys) = &self.rotation_keyframes {
             if let Some((a, b, t)) = sample_pair(&keys.frames, time, |k| k.timestamp) {
-                transform.rotate_quaternion_local(&Quaternion::slerp(
-                    &a.quaternion,
-                    &b.quaternion,
-                    t,
-                ));
+                transform.rotate_quaternion_local(&cvd_slerp(&a.quaternion, &b.quaternion, t));
             }
         }
         if let Some(keys) = &self.scale_keyframes {
             if let Some((a, b, t)) = sample_pair(&keys.frames, time, |k| k.timestamp) {
-                let q = Quaternion::slerp(&a.quaternion, &b.quaternion, t);
+                let q = cvd_slerp(&a.quaternion, &b.quaternion, t);
                 let mut inverse = q;
                 inverse.inverse();
                 transform
@@ -281,6 +277,36 @@ impl CvdModelComponent {
             .borrow_mut()
             .set_matrix(*transform.matrix());
     }
+}
+
+fn cvd_slerp(a: &Quaternion, b: &Quaternion, t: f32) -> Quaternion {
+    // gbQuaternion::Slerp (gbengine.dll 0x10026c40) uses a tighter linear
+    // fallback than radiance's general-purpose slerp and does not normalize
+    // that fallback. CVD rotation and scale tracks call it directly.
+    let mut dot = a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w;
+    let mut b = *b;
+    if dot < 0. {
+        dot = -dot;
+        b = Quaternion::new(-b.x, -b.y, -b.z, -b.w);
+    }
+
+    let (a_weight, b_weight) = if 1. - dot > 1e-5 {
+        let angle = dot.acos();
+        let inverse_sin = 1. / angle.sin();
+        (
+            ((1. - t) * angle).sin() * inverse_sin,
+            (t * angle).sin() * inverse_sin,
+        )
+    } else {
+        (1. - t, t)
+    };
+
+    Quaternion::new(
+        a.x * a_weight + b.x * b_weight,
+        a.y * a_weight + b.y * b_weight,
+        a.z * a_weight + b.z * b_weight,
+        a.w * a_weight + b.w * b_weight,
+    )
 }
 
 fn sample_pair<T>(keys: &[T], time: f32, timestamp: impl Fn(&T) -> f32) -> Option<(&T, &T, f32)> {
@@ -373,6 +399,41 @@ mod animation_tests {
         assert_eq!(sample_pair(&keys, 2., |t| *t), Some((&6., &8., 0.5)));
         assert_eq!(sample_pair(&keys, 10., |t| *t), Some((&8., &8., 0.)));
         assert!(sample_pair::<f32>(&[], 0., |t| *t).is_none());
+    }
+
+    fn assert_quaternion_close(actual: Quaternion, expected: [f32; 4]) {
+        let actual = [actual.x, actual.y, actual.z, actual.w];
+        for (actual, expected) in actual.into_iter().zip(expected) {
+            assert!((actual - expected).abs() < 2e-6, "{actual} != {expected}");
+        }
+    }
+
+    #[test]
+    fn cvd_slerp_matches_native_trigonometric_path() {
+        let a = Quaternion::new(0.10259784, -0.20519568, 0.30779353, 0.9233805);
+        let b = Quaternion::new(-0.27216554, 0.4082483, 0.5443311, 0.68041384);
+        assert_quaternion_close(
+            cvd_slerp(&a, &b, 0.37),
+            [-0.04186401, 0.028156843, 0.43011978, 0.901361],
+        );
+    }
+
+    #[test]
+    fn cvd_slerp_preserves_native_linear_fallback() {
+        let a = Quaternion::new(0., 0., 0., 1.);
+        let b = Quaternion::new(0.004, 0., 0., 0.999992);
+        let result = cvd_slerp(&a, &b, 0.25);
+        assert_quaternion_close(result, [0.001, 0., 0., 0.999998]);
+        assert!(result.x * result.x + result.w * result.w < 1.);
+
+        // Native midpoint result for shipped M17/_A1.CVD scale track 2,
+        // segment 5. This segment takes the linear fallback.
+        let a = Quaternion::new(6.8251054e-9, -6.539721e-9, -0.0040366095, 0.99999183);
+        let b = Quaternion::new(2.9920837e-8, -2.2871445e-8, -0.008368583, 0.9999649);
+        assert_quaternion_close(
+            cvd_slerp(&a, &b, 0.5),
+            [1.8372988e-8, -1.4705595e-8, -0.0062025995, 0.99997836],
+        );
     }
 }
 

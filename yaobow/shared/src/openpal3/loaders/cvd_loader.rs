@@ -10,10 +10,11 @@ use std::path::{Path, PathBuf};
 // Byte-level parsing (counts, endianness, string decoding, ...) lives in
 // `fileformats::pal3::cvd`, which stores fields exactly as encoded on disk.
 // This module owns *only* the engine-facing interpretation of that raw
-// data: coordinate axis swaps, quaternion handedness fixes, and which of
-// the many ambiguous per-keyframe floats represent which quantity for a
-// given keyframe "version". All of that interpretation logic below is
-// unchanged from the pre-refactor implementation.
+// data: coordinate axis swaps, quaternion handedness fixes, and which raw
+// per-keyframe floats represent each quantity. The version-dependent offsets
+// below match gbengine.dll's position/rotation/scale evaluators at 0x1000f390,
+// 0x1000f570, and 0x1000f7c0; the remaining payload floats are not consulted
+// by those routines.
 
 #[derive(Debug, Serialize)]
 pub struct CvdVertex {

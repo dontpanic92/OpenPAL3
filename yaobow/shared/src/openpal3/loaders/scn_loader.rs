@@ -34,6 +34,7 @@ pub struct ScnNode {
     pub sce_proc_id: u32,
     pub d84: u32,
     pub b88: Vec<u8>,
+    pub path_waypoints: Vec<Vec3>,
     pub w148: u16,
     pub b14a: Vec<u8>,
     pub aabb_trigger_coord1: Vec3,
@@ -243,6 +244,7 @@ fn read_scn_node(reader: &mut dyn Read, game: GameType) -> ScnNode {
     let sce_proc_id = reader.read_u32::<LittleEndian>().unwrap();
     let d84 = reader.read_u32::<LittleEndian>().unwrap();
     let b88 = reader.read_u8_vec(192).unwrap();
+    let path_waypoints = decode_node_path(d84, &b88);
     let w148 = reader.read_u16::<LittleEndian>().unwrap();
     let b14a = reader.read_u8_vec(34).unwrap();
     let vec1_x = reader.read_f32::<LittleEndian>().unwrap();
@@ -283,6 +285,7 @@ fn read_scn_node(reader: &mut dyn Read, game: GameType) -> ScnNode {
         sce_proc_id,
         d84,
         b88,
+        path_waypoints,
         w148,
         b14a,
         aabb_trigger_coord1: Vec3::new(vec1_x, vec1_y, vec1_z),
@@ -290,6 +293,20 @@ fn read_scn_node(reader: &mut dyn Read, game: GameType) -> ScnNode {
         dw184,
         b,
     }
+}
+
+fn decode_node_path(count: u32, bytes: &[u8]) -> Vec<Vec3> {
+    let mut points = vec![];
+    for chunk in bytes.chunks_exact(12).take((count as usize).min(16)) {
+        let x = f32::from_le_bytes(chunk[0..4].try_into().unwrap());
+        let y = f32::from_le_bytes(chunk[4..8].try_into().unwrap());
+        let z = f32::from_le_bytes(chunk[8..12].try_into().unwrap());
+        if !x.is_finite() || !y.is_finite() || !z.is_finite() {
+            return vec![];
+        }
+        points.push(Vec3::new(x, y, z));
+    }
+    (points.len() >= 2).then_some(points).unwrap_or_default()
 }
 
 #[cfg(test)]
@@ -314,5 +331,20 @@ mod tests {
             assert_eq!(node.w148, 3);
             assert_eq!(reader.position(), size as u64);
         }
+    }
+
+    #[test]
+    fn node_path_decodes_bounded_finite_waypoints() {
+        let mut bytes = vec![0; 192];
+        for (index, value) in [1., 2., 3., 4., 5., 6.].into_iter().enumerate() {
+            bytes[index * 4..index * 4 + 4].copy_from_slice(&f32::to_le_bytes(value));
+        }
+        let points = decode_node_path(2, &bytes);
+        assert_eq!(points.len(), 2);
+        assert_eq!((points[0].x, points[0].y, points[0].z), (1., 2., 3.));
+        assert_eq!((points[1].x, points[1].y, points[1].z), (4., 5., 6.));
+        bytes[4..8].copy_from_slice(&f32::NAN.to_le_bytes());
+        assert!(decode_node_path(2, &bytes).is_empty());
+        assert!(decode_node_path(1, &bytes).is_empty());
     }
 }

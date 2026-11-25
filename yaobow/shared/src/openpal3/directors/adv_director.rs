@@ -430,9 +430,23 @@ impl AdventureDirectorProps {
             scene.set_mechanism_player(player.clone());
             let procs = scene.update_mechanisms(delta_sec);
             let native_pal3 = self.sce_vm.state().asset_mgr().game() == crate::GameType::PAL3;
+            let rewards = scene.take_pickup_rewards();
+            let stats_data =
+                (!rewards.is_empty()).then(|| self.sce_vm.state().asset_mgr().stats_data());
             {
                 let state = self.sce_vm.global_state_mut();
                 let mut persistent = state.persistent_state_mut();
+                for (item_id, money) in rewards {
+                    if item_id != 0 {
+                        let granted =
+                            persistent.grant_world_item(item_id, stats_data.as_ref().unwrap());
+                        log::info!("PAL3 world pickup item {item_id}: granted={granted}");
+                    }
+                    if money != 0 {
+                        persistent.add_money(money);
+                        log::info!("PAL3 world pickup money: {money}");
+                    }
+                }
                 scene.snapshot_mechanisms(&mut persistent);
                 if let Some((entity, _)) = player.filter(|_| native_pal3) {
                     persistent.set_position(entity.transform().borrow().position());

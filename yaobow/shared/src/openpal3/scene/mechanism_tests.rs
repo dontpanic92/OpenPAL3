@@ -83,6 +83,7 @@ fn node(id: u16, kind: u16, target: u16) -> ScnNode {
         sce_proc_id: 0,
         d84: 0,
         b88: vec![],
+        path_waypoints: vec![],
         w148: target,
         b14a: vec![0; 34],
         aabb_trigger_coord1: Vec3::new(0., 0., 0.),
@@ -727,4 +728,397 @@ fn mechanism_manual_switch_restores_action_without_retoggling_and_missing_clip_c
     assert!(!restored.mechanism_input_locked());
     assert_eq!(restored.switch_state(9), 1);
     assert!(restored.update_mechanisms(1.).is_empty());
+}
+
+fn path_node(mode: i32) -> ScnNode {
+    let mut path = node(5, 5, u16::MAX);
+    path.switch_state = 1;
+    path.ladder_nav_coord1.0 = mode;
+    path.path_waypoints = vec![
+        Vec3::new(0., 10., 0.),
+        Vec3::new(100., 10., 0.),
+        Vec3::new(100., 10., 100.),
+    ];
+    path.d84 = path.path_waypoints.len() as u32;
+    path
+}
+
+fn transport_scene(path: ScnNode, passable: bool) -> ScnScene {
+    let point = NavMapPoint {
+        height: 10.,
+        distance_to_border: if passable { 2 } else { 0 },
+    };
+    scene_with_nav(
+        vec![path],
+        "m17",
+        NavFile {
+            version: 1,
+            maps: vec![NavMap {
+                layer_triggers: None,
+                min_coord: Vec3::new(-200., 0., -200.),
+                max_coord: Vec3::new(400., 0., 400.),
+                width: 29,
+                height: 29,
+                map: vec![vec![point; 29]; 29],
+            }],
+            unknown2: vec![],
+        },
+        crate::GameType::PAL3,
+    )
+}
+
+fn cache_player(scene: &ScnScene, position: Vec3) {
+    let player = scene.get_role_entity(0).unwrap();
+    player.transform().borrow_mut().set_position(&position);
+    scene.set_mechanism_player(Some((player, 0)));
+}
+
+#[test]
+fn ground_pickup_queues_reward_once_hides_and_persists_claim() {
+    let mut pickup = node(41, 41, u16::MAX);
+    pickup.ladder_nav_coord1.0 = 6601;
+    pickup.ladder_nav_coord2.0 = 25;
+    let scene = scene(vec![pickup.clone()]);
+    cache_player(&scene, Vec3::new(0., 10., 0.));
+    assert_eq!(
+        scene.interact_mechanism(0, &Vec3::new(0., 10., 0.)),
+        Some(None)
+    );
+    scene.update_mechanisms(0.);
+    assert_eq!(scene.take_pickup_rewards(), vec![(6601, 25)]);
+    assert!(scene.take_pickup_rewards().is_empty());
+    assert!(!scene.get_root_object(41).unwrap().visible());
+
+    let mut saved = PersistentState::new("OpenPAL3".into());
+    scene.snapshot_mechanisms(&mut saved);
+    let restored = self::scene(vec![pickup]);
+    restored.restore_mechanisms(&saved);
+    cache_player(&restored, Vec3::new(0., 10., 0.));
+    assert!(!restored.get_root_object(41).unwrap().visible());
+    assert_eq!(
+        restored.interact_mechanism(0, &Vec3::new(0., 10., 0.)),
+        None
+    );
+    restored.update_mechanisms(1.);
+    assert!(restored.take_pickup_rewards().is_empty());
+}
+
+#[test]
+fn pickup_cancels_cleanly_when_player_disappears() {
+    let scene = scene(vec![node(41, 41, u16::MAX)]);
+    cache_player(&scene, Vec3::new(150., 10., 0.));
+    assert_eq!(
+        scene.interact_mechanism(0, &Vec3::new(150., 10., 0.)),
+        Some(None)
+    );
+    scene.set_mechanism_player(None);
+    scene.update_mechanisms(0.);
+    assert!(scene.take_pickup_rewards().is_empty());
+    assert!(!scene.mechanism_input_locked());
+}
+
+#[test]
+fn scripted_item_trigger_uses_live_visible_position_proc_and_layer() {
+    let mut item = node(12, 11, u16::MAX);
+    item.sce_proc_id = 500;
+    let item_scene = scene(vec![item]);
+    item_scene.load_objects_for_test();
+    cache_player(&item_scene, Vec3::new(0., 10., 0.));
+    let entity = item_scene.get_root_object(12).unwrap();
+    entity
+        .transform()
+        .borrow_mut()
+        .set_position(&Vec3::new(75., 10., 0.));
+    assert_eq!(
+        item_scene.test_item_trigger(&Vec3::new(75., 10., 0.)),
+        Some(500)
+    );
+    entity.set_visible(false);
+    assert_eq!(item_scene.test_item_trigger(&Vec3::new(75., 10., 0.)), None);
+    entity.set_visible(true);
+    item_scene.set_mechanism_player(Some((item_scene.get_role_entity(0).unwrap(), 1)));
+    assert_eq!(item_scene.test_item_trigger(&Vec3::new(75., 10., 0.)), None);
+
+    let mut zero = node(13, 16, u16::MAX);
+    zero.sce_proc_id = 0;
+    let zero_scene = scene(vec![zero]);
+    zero_scene.load_objects_for_test();
+    cache_player(&zero_scene, Vec3::new(0., 10., 0.));
+    assert_eq!(zero_scene.test_item_trigger(&Vec3::new(0., 10., 0.)), None);
+}
+
+#[test]
+fn scripted_teapot_becomes_interactable_when_the_plot_activates_it() {
+    let mut teapot = node(6, 16, u16::MAX);
+    teapot.active = 0;
+    teapot.sce_proc_id = 1901;
+    teapot.position = Vec3::new(24.837112, 44.123825, -117.490524);
+    let position = teapot.position;
+    let item_scene = scene(vec![teapot]);
+    item_scene.load_objects_for_test();
+    cache_player(&item_scene, position);
+    let entity = item_scene.get_root_object(6).unwrap();
+
+    entity.set_visible(false);
+    assert_eq!(item_scene.test_item_trigger(&position), None);
+    entity.set_visible(true);
+    assert_eq!(item_scene.test_item_trigger(&position), Some(1901));
+    entity.set_visible(false);
+    assert_eq!(item_scene.test_item_trigger(&position), None);
+}
+
+#[test]
+fn scripted_teapot_visibility_survives_save_and_scene_reload() {
+    let mut teapot = node(6, 16, u16::MAX);
+    teapot.active = 0;
+    teapot.sce_proc_id = 1901;
+    let position = teapot.position;
+    let item_scene = scene(vec![teapot.clone()]);
+    item_scene.load_objects_for_test();
+    let mut saved = PersistentState::new("OpenPAL3".into());
+
+    for visible in [true, false] {
+        item_scene.get_root_object(6).unwrap().set_visible(visible);
+        item_scene.snapshot_mechanisms(&mut saved);
+        let saved: PersistentState =
+            serde_json::from_str(&serde_json::to_string(&saved).unwrap()).unwrap();
+        let restored = scene(vec![teapot.clone()]);
+        restored.load_objects_for_test();
+        restored.get_root_object(6).unwrap().set_visible(!visible);
+        restored.restore_mechanisms(&saved);
+        cache_player(&restored, position);
+        assert_eq!(restored.get_root_object(6).unwrap().visible(), visible);
+        assert_eq!(
+            restored.test_item_trigger(&position),
+            visible.then_some(1901)
+        );
+    }
+}
+
+#[test]
+fn ground_pickup_aborts_without_reward_when_navigation_approach_is_blocked() {
+    let mut pickup = node(41, 41, u16::MAX);
+    pickup.position = Vec3::new(100., 10., 0.);
+    pickup.ladder_nav_coord1.0 = 6601;
+    let blocked = NavMapPoint {
+        height: 10.,
+        distance_to_border: 0,
+    };
+    let scene = scene_with_nav(
+        vec![pickup],
+        "m17",
+        NavFile {
+            version: 1,
+            maps: vec![NavMap {
+                layer_triggers: None,
+                min_coord: Vec3::new(-200., 0., -200.),
+                max_coord: Vec3::new(400., 0., 400.),
+                width: 29,
+                height: 29,
+                map: vec![vec![blocked; 29]; 29],
+            }],
+            unknown2: vec![],
+        },
+        crate::GameType::PAL3,
+    );
+    cache_player(&scene, Vec3::new(0., 10., 0.));
+    assert_eq!(
+        scene.interact_mechanism(0, &Vec3::new(0., 10., 0.)),
+        Some(None)
+    );
+    scene.update_mechanisms(2.);
+    assert!(scene.take_pickup_rewards().is_empty());
+    assert!(!scene.mechanism_input_locked());
+    assert_eq!(
+        scene
+            .get_role_entity(0)
+            .unwrap()
+            .transform()
+            .borrow()
+            .position()
+            .x,
+        0.
+    );
+    assert!(scene.get_root_object(41).unwrap().visible());
+}
+
+#[test]
+fn ordinary_path_uses_native_linear_knot_tangent_carries_and_disembarks() {
+    let scene = transport_scene(path_node(0), true);
+    cache_player(&scene, Vec3::new(0., 10., 0.));
+    assert_eq!(
+        scene.interact_mechanism(0, &Vec3::new(0., 10., 0.)),
+        Some(None)
+    );
+    scene.update_mechanisms(0.);
+    scene.update_mechanisms(1.);
+    let platform = scene.get_root_object(5).unwrap();
+    let position = platform.transform().borrow().position();
+    assert_eq!((position.x, position.z), (100., 0.));
+    let player = scene.get_role_entity(0).unwrap();
+    {
+        let transform = player.transform();
+        let transform = transform.borrow();
+        let matrix = transform.matrix();
+        assert!(matrix[0][2].abs() > matrix[2][2].abs());
+    }
+    assert!(scene.mechanism_input_locked());
+    scene.update_mechanisms(1.01);
+    scene.update_mechanisms(1.);
+    assert!(!scene.mechanism_input_locked());
+    assert_eq!(
+        {
+            let p = platform.transform().borrow().position();
+            (p.x, p.z)
+        },
+        (100., 100.)
+    );
+}
+
+#[test]
+fn ordinary_path_blocked_at_both_ends_reverses_again_at_start() {
+    let scene = transport_scene(path_node(0), false);
+    cache_player(&scene, Vec3::new(0., 10., 0.));
+    scene.interact_mechanism(0, &Vec3::new(0., 10., 0.));
+    scene.update_mechanisms(0.);
+    scene.update_mechanisms(2.01);
+    assert!(scene.mechanism_input_locked());
+    scene.update_mechanisms(2.01);
+    assert!(scene.mechanism_input_locked());
+    let position = scene
+        .get_root_object(5)
+        .unwrap()
+        .transform()
+        .borrow()
+        .position();
+    assert_eq!((position.x, position.z), (0., 0.));
+    scene.update_mechanisms(0.5);
+    let position = scene
+        .get_root_object(5)
+        .unwrap()
+        .transform()
+        .borrow()
+        .position();
+    assert_eq!((position.x, position.z), (50., 0.));
+}
+
+#[test]
+fn path_transport_releases_input_if_controlled_player_disappears_mid_motion() {
+    let scene = transport_scene(path_node(0), true);
+    cache_player(&scene, Vec3::new(0., 10., 0.));
+    scene.interact_mechanism(0, &Vec3::new(0., 10., 0.));
+    scene.update_mechanisms(0.);
+    scene.update_mechanisms(0.5);
+    assert!(scene.mechanism_input_locked());
+    scene.set_mechanism_player(None);
+    scene.update_mechanisms(0.);
+    assert!(!scene.mechanism_input_locked());
+}
+
+#[test]
+fn ordinary_path_restores_inflight_without_reboarding_or_spending_again() {
+    let mut path = path_node(0);
+    path.remaining_triggers = 2;
+    let scene = transport_scene(path.clone(), true);
+    cache_player(&scene, Vec3::new(0., 10., 0.));
+    scene.interact_mechanism(0, &Vec3::new(0., 10., 0.));
+    scene.update_mechanisms(0.);
+    scene.update_mechanisms(0.5);
+    let mut saved = PersistentState::new("OpenPAL3".into());
+    scene.snapshot_mechanisms(&mut saved);
+    let restored = transport_scene(path, true);
+    cache_player(&restored, Vec3::new(50., 10., 0.));
+    restored.restore_mechanisms(&saved);
+    assert!(restored.mechanism_input_locked());
+    restored.update_mechanisms(1.51);
+    restored.update_mechanisms(1.);
+    assert!(!restored.mechanism_input_locked());
+    let mut final_state = PersistentState::new("OpenPAL3".into());
+    restored.snapshot_mechanisms(&mut final_state);
+    assert_eq!(
+        final_state.mechanism_states("m17", "7").unwrap()[&5].remaining,
+        1
+    );
+}
+
+#[test]
+fn switch_link_moves_empty_path_transport_without_generic_trigger() {
+    let mut switch = node(9, 23, 5);
+    switch.ladder_nav_coord1 = (1, 1);
+    let scene = transport_scene_with_nodes(vec![switch, {
+        let mut path = path_node(0);
+        path.switch_state = 0;
+        path
+    }]);
+    scene.trigger_mechanism(9);
+    scene.update_mechanisms(0.);
+    scene.update_mechanisms(0.5);
+    let position = scene
+        .get_root_object(5)
+        .unwrap()
+        .transform()
+        .borrow()
+        .position();
+    assert_eq!((position.x, position.z), (50., 0.));
+    assert!(!scene.mechanism_input_locked());
+}
+
+fn transport_scene_with_nodes(nodes: Vec<ScnNode>) -> ScnScene {
+    let point = NavMapPoint {
+        height: 10.,
+        distance_to_border: 2,
+    };
+    scene_with_nav(
+        nodes,
+        "m17",
+        NavFile {
+            version: 1,
+            maps: vec![NavMap {
+                layer_triggers: None,
+                min_coord: Vec3::new(-200., 0., -200.),
+                max_coord: Vec3::new(400., 0., 400.),
+                width: 29,
+                height: 29,
+                map: vec![vec![point; 29]; 29],
+            }],
+            unknown2: vec![],
+        },
+        crate::GameType::PAL3,
+    )
+}
+
+#[test]
+fn free_path_mode_selects_segment_and_uses_ninety_units_per_second() {
+    let scene = transport_scene(path_node(1), true);
+    cache_player(&scene, Vec3::new(0., 10., 0.));
+    scene.interact_mechanism(0, &Vec3::new(0., 10., 0.));
+    scene.update_mechanisms(0.);
+    scene.update_mechanisms(0.);
+    scene.update_mechanisms(0.5);
+    let position = scene
+        .get_root_object(5)
+        .unwrap()
+        .transform()
+        .borrow()
+        .position();
+    assert!((position.x - 45.).abs() < 0.001);
+    assert_eq!(position.z, 0.);
+    scene.update_mechanisms(1.);
+    scene.update_mechanisms(1.);
+    let mut saved = PersistentState::new("OpenPAL3".into());
+    scene.snapshot_mechanisms(&mut saved);
+    let transport = saved.mechanism_states("m17", "7").unwrap()[&5]
+        .platform
+        .as_ref()
+        .unwrap()
+        .transport
+        .as_ref()
+        .unwrap();
+    assert!(
+        !scene.mechanism_input_locked(),
+        "phase={:?} rider={:?} exit={:?}",
+        transport.phase,
+        transport.rider,
+        transport.exit
+    );
 }

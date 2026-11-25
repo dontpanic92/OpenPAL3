@@ -31,6 +31,8 @@ pub struct PersistentState {
     sub_scene: Option<String>,
     #[serde(default)]
     scene_mechanisms: HashMap<String, HashMap<u16, MechanismState>>,
+    #[serde(default)]
+    scene_object_visibility: HashMap<String, HashMap<u16, bool>>,
 }
 
 impl PersistentState {
@@ -49,6 +51,7 @@ impl PersistentState {
             scene: None,
             sub_scene: None,
             scene_mechanisms: HashMap::new(),
+            scene_object_visibility: HashMap::new(),
         }
     }
 
@@ -268,6 +271,16 @@ impl PersistentState {
         true
     }
 
+    pub fn grant_world_item(&mut self, item_id: i32, data: &StatsData) -> bool {
+        // Native pickup 0x42bef0 adds directly to the bag, without SCE grant side effects.
+        let id = item_id as u32;
+        if data.item(id).is_none() {
+            return false;
+        }
+        self.inventory.add_stack(id, 1);
+        true
+    }
+
     pub fn add_item(&mut self, item_id: i32, count: i32, data: &StatsData) -> bool {
         let id = item_id as u32;
         let Some(item) = data.item(id) else {
@@ -373,6 +386,23 @@ impl PersistentState {
     ) {
         self.scene_mechanisms
             .insert(format!("{}/{}", scene, sub_scene).to_lowercase(), states);
+    }
+
+    pub fn object_visibility(&self, scene: &str, sub_scene: &str) -> Option<&HashMap<u16, bool>> {
+        self.scene_object_visibility
+            .get(&format!("{}/{}", scene, sub_scene).to_lowercase())
+    }
+
+    pub fn set_object_visibility(
+        &mut self,
+        scene: &str,
+        sub_scene: &str,
+        visibility: HashMap<u16, bool>,
+    ) {
+        self.scene_object_visibility.insert(
+            format!("{}/{}", scene, sub_scene).to_lowercase(),
+            visibility,
+        );
     }
 }
 
@@ -684,6 +714,40 @@ mod gameplay_tests {
         }
         assert!(!state.inventory().contains(6119));
         assert!(!state.inventory().contains(8146));
+    }
+
+    #[test]
+    fn world_pickups_add_one_without_script_equipment_or_linked_item_effects() {
+        let data = test_data();
+        let mut state = PersistentState::new(PAL3_APP_NAME.into());
+        state.stats_mut().set_resource(0, Resource::Hp, 12, &data);
+        let stats = state.stats().clone();
+        for id in [6601, 6602, 6603, 6119, 6123] {
+            assert!(state.grant_world_item(id, &data));
+            assert_eq!(state.inventory().quantity(id as u32), 1);
+        }
+        assert_eq!(state.stats(), &stats);
+        assert!(!state.inventory().contains(8146));
+        assert!(!state.inventory().contains(8150));
+        let before = serde_json::to_string(&state).unwrap();
+        assert!(!state.grant_world_item(-1, &data));
+        assert!(!state.grant_world_item(123456, &data));
+        assert_eq!(serde_json::to_string(&state).unwrap(), before);
+    }
+
+    #[test]
+    fn world_pickups_preserve_native_signed_stacks_and_upper_cap() {
+        let data = test_data();
+        let mut state = PersistentState::new(PAL3_APP_NAME.into());
+        state.inventory.add_stack(42, -2);
+        assert!(state.grant_world_item(42, &data));
+        assert_eq!(state.inventory().quantity(42), -1);
+        state.inventory.add_stack(42, 100);
+        assert!(state.grant_world_item(42, &data));
+        assert_eq!(state.inventory().quantity(42), 99);
+        let restored: PersistentState =
+            serde_json::from_str(&serde_json::to_string(&state).unwrap()).unwrap();
+        assert_eq!(restored.inventory(), state.inventory());
     }
 
     #[test]

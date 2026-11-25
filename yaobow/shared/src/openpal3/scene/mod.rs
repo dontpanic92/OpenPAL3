@@ -4,6 +4,7 @@ mod error;
 mod mechanism;
 #[cfg(test)]
 mod mechanism_tests;
+mod path;
 mod role_controller;
 mod scene;
 mod shadow;

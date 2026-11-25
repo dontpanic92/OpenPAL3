@@ -3,7 +3,8 @@
 //! Type 23: 0x425b25..0x425c86, completion/link: 0x429396..0x42953d.
 //! Type 22: 0x4259d9..0x425a88, motion: 0x428a66..0x428ba7 (30 units/s).
 //! Types 7/8: 0x4251a4, 0x427edd; type 31: 0x4263c6, 0x42971c.
-//! Other native object types are deliberately not approximated here.
+//! Type 5 path motion: 0x41f120/0x427444..0x427cda; type 41: 0x426b7e/0x429917.
+//! Type 26 colored chests and other native object types are deliberately not approximated here.
 //! Boarding: 0x42b450/0x42b510; manual switch action: 0x425c89/0x42924b.
 //! The switch's special water/effect parameters are not implemented yet.
 //! Native mechanism camera cues and sound actions are not reproduced here.
@@ -11,6 +12,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::openpal3::loaders::scn_loader::ScnNode;
+use crate::openpal3::scene::path::Polyline;
 use radiance::math::Vec3;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -32,9 +34,52 @@ pub struct MechanismState {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PickupState {
+    pub claimed: bool,
+    pub interaction: Option<ApproachInteraction>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApproachInteraction {
+    pub player: String,
+    pub target: Vec3,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TransportState {
+    pub phase: TransportPhase,
+    pub distance: f32,
+    pub rider: Option<String>,
+    pub approach: Option<ApproachInteraction>,
+    pub exit: Option<Vec3>,
+    pub waypoint: usize,
+    pub direction: i8,
+    pub elapsed: f32,
+    pub duration: f32,
+    pub incoming: Vec3,
+    pub position: Vec3,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub enum TransportPhase {
+    Start,
+    End,
+    Boarding,
+    Outbound,
+    Return,
+    Disembarking,
+    Select,
+    Segment,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlatformState {
     pub rider: Option<String>,
     pub boarding_pending: bool,
+    #[serde(default)]
+    pub pickup: Option<PickupState>,
+    #[serde(default)]
+    pub transport: Option<TransportState>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -109,6 +154,7 @@ pub struct Mechanism {
     mode: i32,
     persistent_switch: bool,
     target_height: f32,
+    path: Option<Polyline>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -121,7 +167,14 @@ pub enum Activation {
 
 impl Mechanism {
     pub fn from_node(node: &ScnNode) -> Option<Self> {
-        if !matches!(node.node_type, 7 | 8 | 22 | 23 | 31) {
+        if !matches!(node.node_type, 5 | 7 | 8 | 22 | 23 | 31 | 41) {
+            return None;
+        }
+        let path = (node.node_type == 5)
+            .then(|| Polyline::new(&node.path_waypoints))
+            .flatten();
+        if node.node_type == 5 && path.is_none() {
+            log::warn!("PAL3 path transport {} has no valid path", node.index);
             return None;
         }
         if node.node_type == 23 && node.ladder_nav_coord2.0 != 0 {
@@ -151,17 +204,43 @@ impl Mechanism {
                     completed: false,
                 }),
                 layer: Some(node.nav_layer),
-                platform: (node.node_type == 22).then_some(PlatformState {
+                platform: matches!(node.node_type, 5 | 22 | 41).then_some(PlatformState {
                     rider: None,
                     boarding_pending: false,
+                    pickup: (node.node_type == 41).then_some(PickupState {
+                        claimed: false,
+                        interaction: None,
+                    }),
+                    transport: (node.node_type == 5).then_some(TransportState {
+                        phase: TransportPhase::Start,
+                        distance: 0.,
+                        rider: None,
+                        approach: None,
+                        exit: None,
+                        waypoint: 0,
+                        direction: 1,
+                        elapsed: 0.,
+                        duration: 0.,
+                        incoming: Vec3::new(0., 0., 1.),
+                        position: node
+                            .path_waypoints
+                            .first()
+                            .copied()
+                            .unwrap_or(node.position),
+                    }),
                 }),
                 interaction: None,
             },
             target: node.w148,
             proc_id: node.sce_proc_id,
-            mode: node.ladder_nav_coord1.1,
+            mode: if node.node_type == 5 {
+                node.ladder_nav_coord1.0
+            } else {
+                node.ladder_nav_coord1.1
+            },
             persistent_switch: node.ladder_nav_coord1.0 != 0,
             target_height: node.ladder_nav_coord1.0 as f32,
+            path,
         })
     }
 
@@ -177,6 +256,56 @@ impl Mechanism {
         }
         if self.state.platform.is_none() {
             self.state.platform = initial_platform;
+        }
+        if self.kind == 41
+            && self
+                .state
+                .platform
+                .as_ref()
+                .is_none_or(|state| state.pickup.is_none())
+        {
+            self.state.platform = Some(PlatformState {
+                rider: None,
+                boarding_pending: false,
+                pickup: Some(PickupState {
+                    claimed: false,
+                    interaction: None,
+                }),
+                transport: None,
+            });
+        }
+        if self.kind == 5
+            && self
+                .state
+                .platform
+                .as_ref()
+                .is_none_or(|state| state.transport.is_none())
+        {
+            self.state.platform = Some(PlatformState {
+                rider: None,
+                boarding_pending: false,
+                pickup: None,
+                transport: Some(TransportState {
+                    phase: TransportPhase::Start,
+                    distance: 0.,
+                    rider: None,
+                    approach: None,
+                    exit: None,
+                    waypoint: 0,
+                    direction: 1,
+                    elapsed: 0.,
+                    duration: 0.,
+                    incoming: Vec3::new(0., 0., 1.),
+                    position: self
+                        .path
+                        .as_ref()
+                        .map(Polyline::first)
+                        .unwrap_or(self.position),
+                }),
+            });
+        }
+        if self.pickup_claimed() {
+            self.active = false;
         }
         self.layer = self.state.layer.unwrap_or_else(|| {
             if self.kind == 22 && self.mode != 0 {
@@ -207,6 +336,9 @@ impl Mechanism {
     pub fn activate(&mut self, scripted: bool) -> Activation {
         // Explicit Trigger ignores visibility/active, but not the use counter.
         if self.state.remaining == 0 || (!scripted && !self.active) {
+            return Activation::Ignored;
+        }
+        if matches!(self.kind, 5 | 41) {
             return Activation::Ignored;
         }
         if self.kind == 23 {
@@ -363,7 +495,11 @@ impl Mechanism {
 
     pub fn provides_floor(&self) -> bool {
         self.active
-            && (self.kind == 22
+            && (self.kind == 5
+                && self.transport().is_some_and(|s| {
+                    matches!(s.phase, TransportPhase::Start | TransportPhase::End)
+                })
+                || self.kind == 22
                 || self.kind == 7
                     && self
                         .state
@@ -374,6 +510,93 @@ impl Mechanism {
 
     pub fn saved_state(&self) -> MechanismState {
         self.state.clone()
+    }
+
+    pub fn path(&self) -> Option<&Polyline> {
+        self.path.as_ref()
+    }
+
+    pub fn mode(&self) -> i32 {
+        self.mode
+    }
+
+    pub fn claim_pickup(&mut self) -> bool {
+        let Some(pickup) = self
+            .state
+            .platform
+            .as_mut()
+            .and_then(|state| state.pickup.as_mut())
+        else {
+            return false;
+        };
+        if pickup.claimed {
+            return false;
+        }
+        pickup.claimed = true;
+        pickup.interaction = None;
+        self.active = false;
+        true
+    }
+
+    pub fn pickup_claimed(&self) -> bool {
+        self.state
+            .platform
+            .as_ref()
+            .and_then(|state| state.pickup.as_ref())
+            .is_some_and(|p| p.claimed)
+    }
+
+    pub fn set_transport_switch(&mut self, switched: u8) {
+        self.state.switched = switched;
+        if switched == 0 {
+            return;
+        }
+        let Some(path) = &self.path else {
+            return;
+        };
+        let Some(state) = self
+            .state
+            .platform
+            .as_mut()
+            .and_then(|state| state.transport.as_mut())
+        else {
+            return;
+        };
+        state.rider = None;
+        state.approach = None;
+        state.exit = None;
+        match state.phase {
+            TransportPhase::Start => {
+                state.distance = 0.;
+                state.phase = TransportPhase::Outbound;
+            }
+            _ => {
+                state.distance = path.total();
+                state.phase = TransportPhase::Return;
+            }
+        }
+    }
+
+    pub fn pickup(&self) -> Option<&PickupState> {
+        self.state.platform.as_ref()?.pickup.as_ref()
+    }
+
+    pub fn pickup_mut(&mut self) -> Option<&mut PickupState> {
+        self.state.platform.as_mut()?.pickup.as_mut()
+    }
+
+    pub fn transport(&self) -> Option<&TransportState> {
+        self.state.platform.as_ref()?.transport.as_ref()
+    }
+
+    pub fn take_transport(&mut self) -> Option<TransportState> {
+        self.state.platform.as_mut()?.transport.take()
+    }
+
+    pub fn put_transport(&mut self, state: TransportState) {
+        if let Some(platform) = &mut self.state.platform {
+            platform.transport = Some(state);
+        }
     }
 }
 
@@ -405,6 +628,7 @@ mod tests {
             mode: 1,
             persistent_switch: true,
             target_height: 40.,
+            path: None,
         }
     }
 

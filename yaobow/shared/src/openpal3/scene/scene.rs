@@ -1,6 +1,8 @@
 use super::{
     cvd_entity,
-    mechanism::{Activation, Mechanism, SwitchInteraction, SwitchPhase},
+    mechanism::{
+        Activation, ApproachInteraction, Mechanism, SwitchInteraction, SwitchPhase, TransportPhase,
+    },
 };
 use crate::openpal3::asset_manager::AssetManager;
 use crate::openpal3::comdef::IRoleController;
@@ -31,7 +33,14 @@ pub struct ScnScene {
     ladder_triggers: RefCell<Vec<LadderTrigger>>,
     mechanisms: RefCell<Vec<Mechanism>>,
     mechanism_procs: RefCell<Vec<u32>>,
+    pickup_rewards: RefCell<Vec<(i32, i32)>>,
     mechanism_player: RefCell<Option<(ComRc<IEntity>, usize)>>,
+}
+
+enum PickupWalk {
+    Moving,
+    Arrived,
+    Blocked,
 }
 
 ComObject_ScnSceneComponent!(super::ScnScene);
@@ -78,6 +87,7 @@ impl ScnScene {
             ladder_triggers: RefCell::new(vec![]),
             mechanisms: RefCell::new(mechanisms),
             mechanism_procs: RefCell::new(vec![]),
+            pickup_rewards: RefCell::new(vec![]),
             mechanism_player: RefCell::new(None),
         }
     }
@@ -92,10 +102,23 @@ impl ScnScene {
                 .map(|m| (m.id, m.saved_state()))
                 .collect(),
         );
+        state.set_object_visibility(
+            self.name(),
+            self.sub_name(),
+            self.scn_file
+                .nodes
+                .iter()
+                .filter_map(|node| {
+                    self.get_root_object(node.index as i32)
+                        .map(|entity| (node.index, entity.visible()))
+                })
+                .collect(),
+        );
     }
 
     pub fn restore_mechanisms(&self, state: &PersistentState) {
         self.mechanism_procs.borrow_mut().clear();
+        self.pickup_rewards.borrow_mut().clear();
         self.nav.enabled_groups.borrow_mut().clear();
         self.nav.floors.borrow_mut().clear();
         let saved = state.mechanism_states(self.name(), self.sub_name());
@@ -124,6 +147,14 @@ impl ScnScene {
             }
             self.apply_mechanism_pose(mechanism, mechanism.pose_at_end());
         }
+        if let Some(visibility) = state.object_visibility(self.name(), self.sub_name()) {
+            for (&id, &visible) in visibility {
+                self.set_mechanism_active(id, visible);
+                if let Some(entity) = self.get_root_object(id as i32) {
+                    entity.set_visible(visible);
+                }
+            }
+        }
         self.sync_platform_objects();
     }
 
@@ -135,7 +166,26 @@ impl ScnScene {
             self.nav.enabled_groups.borrow_mut().insert(2);
         }
         if let Some(entity) = self.get_root_object(mechanism.id as i32) {
-            if let Some(native) = &mechanism.state.native {
+            if mechanism.kind == 41 {
+                entity.set_visible(mechanism.active && !mechanism.pickup_claimed());
+            } else if mechanism.kind == 5 {
+                if let (Some(path), Some(state)) = (mechanism.path(), mechanism.transport()) {
+                    let position = if mechanism.mode() == 1 {
+                        state.position
+                    } else {
+                        path.point(state.distance).0
+                    };
+                    entity.transform().borrow_mut().set_position(&position);
+                    let rotation = self
+                        .scn_file
+                        .nodes
+                        .iter()
+                        .find(|n| n.index == mechanism.id)
+                        .map(|n| n.rotation)
+                        .unwrap_or(0.);
+                    self.update_mechanism_floor(mechanism, &entity, rotation);
+                }
+            } else if let Some(native) = &mechanism.state.native {
                 let transform = entity.transform();
                 let mut transform = transform.borrow_mut();
                 let mut position = mechanism.position;
@@ -299,10 +349,15 @@ impl ScnScene {
     }
 
     pub fn mechanism_input_locked(&self) -> bool {
-        self.mechanisms
-            .borrow()
-            .iter()
-            .any(|m| m.state.interaction.is_some())
+        self.mechanisms.borrow().iter().any(|m| {
+            m.state.interaction.is_some()
+                || m.pickup().is_some_and(|p| p.interaction.is_some())
+                || m.transport().is_some_and(|p| {
+                    !matches!(p.phase, TransportPhase::Start | TransportPhase::End)
+                        && p.rider.is_some()
+                        || p.approach.is_some()
+                })
+        })
     }
 
     fn capture_platform_rider(&self, mechanism: &mut Mechanism) {
@@ -334,6 +389,10 @@ impl ScnScene {
         std::mem::take(&mut *self.mechanism_procs.borrow_mut())
     }
 
+    pub fn take_pickup_rewards(&self) -> Vec<(i32, i32)> {
+        std::mem::take(&mut *self.pickup_rewards.borrow_mut())
+    }
+
     pub fn switch_state(&self, id: u16) -> u8 {
         self.mechanisms
             .borrow()
@@ -360,7 +419,7 @@ impl ScnScene {
                 .get_root_object(mechanism.id as i32)
                 .map(|e| e.visible())
                 .unwrap_or(mechanism.active);
-            if mechanism.kind != 23
+            if !matches!(mechanism.kind, 5 | 23 | 41)
                 || !visible
                 || mechanism.layer as usize != layer
                 || Vec3::sub(
@@ -376,6 +435,65 @@ impl ScnScene {
                 continue;
             }
             mechanism.active = visible;
+            if mechanism.kind == 41 {
+                if mechanism.pickup_claimed() {
+                    continue;
+                }
+                let Some((player, _)) = self.mechanism_player.borrow().as_ref().cloned() else {
+                    continue;
+                };
+                let target = self.mechanism_approach_target(mechanism, position);
+                mechanism.pickup_mut().unwrap().interaction = Some(ApproachInteraction {
+                    player: player.name(),
+                    target,
+                });
+                return Some(None);
+            }
+            if mechanism.kind == 5 {
+                let Some(state) = mechanism.transport() else {
+                    continue;
+                };
+                if mechanism.state.remaining == 0
+                    || mechanism.state.switched == 0
+                    || !matches!(state.phase, TransportPhase::Start | TransportPhase::End)
+                {
+                    continue;
+                }
+                let Some((player, _)) = self.mechanism_player.borrow().as_ref().cloned() else {
+                    continue;
+                };
+                let target = self
+                    .get_root_object(mechanism.id as i32)
+                    .map(|e| e.transform().borrow().position())
+                    .unwrap_or(mechanism.position);
+                if target.y - position.y > 40. {
+                    continue;
+                }
+                let mut incoming = Vec3::sub(position, &target);
+                incoming.y = 0.;
+                let length = incoming.norm();
+                if length > 0. {
+                    incoming = Vec3::scalar_mul(1. / length, &incoming);
+                }
+                let state = mechanism
+                    .state
+                    .platform
+                    .as_mut()
+                    .unwrap()
+                    .transport
+                    .as_mut()
+                    .unwrap();
+                state.incoming = incoming;
+                state.approach = Some(ApproachInteraction {
+                    player: player.name(),
+                    target,
+                });
+                state.phase = TransportPhase::Boarding;
+                if mechanism.state.remaining != u8::MAX {
+                    mechanism.state.remaining -= 1;
+                }
+                return Some(None);
+            }
             match mechanism.activate(false) {
                 Activation::Ignored => continue,
                 Activation::Script(proc_id) => return Some(Some(proc_id)),
@@ -428,10 +546,49 @@ impl ScnScene {
         None
     }
 
+    fn mechanism_approach_target(&self, mechanism: &Mechanism, position: &Vec3) -> Vec3 {
+        let Some(entity) = self.get_root_object(mechanism.id as i32) else {
+            return mechanism.position;
+        };
+        let to = entity.transform().borrow().position();
+        let radius = cvd_entity::model_bounds(&entity)
+            .or_else(|| Self::mechanism_bounds(&entity))
+            .map(|(min, max)| {
+                let (min, max) = radiance::math::transform_aabb(
+                    [min.x, min.y, min.z],
+                    [max.x, max.y, max.z],
+                    entity.transform().borrow().matrix(),
+                );
+                (max[0] - min[0]).max(max[2] - min[2]) * 0.5
+            })
+            .unwrap_or(0.);
+        let direction = Vec3::sub(&to, position);
+        let distance = direction.norm();
+        if distance > 0. {
+            let target = Vec3::add(
+                position,
+                &Vec3::scalar_mul((distance - radius).max(0.) / distance, &direction),
+            );
+            Vec3::new(target.x, position.y, target.z)
+        } else {
+            *position
+        }
+    }
+
     pub fn update_mechanisms(&self, delta_sec: f32) -> Vec<u32> {
         let mut procs = self.take_mechanism_procs();
         let mut links = vec![];
         for mechanism in self.mechanisms.borrow_mut().iter_mut() {
+            if mechanism.kind == 41 {
+                self.update_pickup(mechanism, delta_sec.max(0.));
+                self.apply_mechanism_pose(mechanism, false);
+                continue;
+            }
+            if mechanism.kind == 5 {
+                self.update_transport(mechanism, delta_sec.max(0.));
+                self.apply_mechanism_pose(mechanism, false);
+                continue;
+            }
             if mechanism.kind == 22 || mechanism.state.native.is_some() {
                 self.apply_mechanism_pose(mechanism, mechanism.pose_at_end());
             }
@@ -466,7 +623,7 @@ impl ScnScene {
                     procs.push(proc_id);
                 }
                 if mechanism.target != u16::MAX {
-                    links.push(mechanism.target);
+                    links.push((mechanism.target, mechanism.kind, mechanism.state.switched));
                 }
             }
             if let Some(name) = mechanism
@@ -482,17 +639,424 @@ impl ScnScene {
         }
         self.sync_platform_objects();
         // Start links after releasing the state borrow; cycles advance at most once per tick.
-        for target in links {
+        for (target, source_kind, switched) in links {
+            if source_kind == 23 {
+                let mut mechanisms = self.mechanisms.borrow_mut();
+                if let Some(target) = mechanisms
+                    .iter_mut()
+                    .find(|m| m.id == target && m.kind == 5)
+                {
+                    target.set_transport_switch(switched);
+                    self.apply_mechanism_pose(target, false);
+                    continue;
+                }
+            }
             self.trigger_mechanism(target);
         }
         procs.extend(self.take_mechanism_procs());
         procs
     }
 
-    fn carry_role(player: &ComRc<IEntity>, height: f32, layer: u16) {
+    fn update_pickup(&self, mechanism: &mut Mechanism, delta_sec: f32) {
+        let interaction = mechanism.pickup().and_then(|p| p.interaction.clone());
+        let Some(interaction) = interaction else {
+            return;
+        };
+        if self
+            .mechanism_player
+            .borrow()
+            .as_ref()
+            .is_none_or(|(player, _)| player.name() != interaction.player)
+        {
+            mechanism.pickup_mut().unwrap().interaction = None;
+            return;
+        }
+        let Some(player) = self.mechanism_role(&interaction.player) else {
+            mechanism.pickup_mut().unwrap().interaction = None;
+            return;
+        };
+        match self.walk_pickup_to(
+            &player,
+            mechanism.layer as usize,
+            &interaction.target,
+            delta_sec,
+        ) {
+            PickupWalk::Moving => {}
+            PickupWalk::Blocked => {
+                mechanism.pickup_mut().unwrap().interaction = None;
+                if let Some(controller) = RoleController::get_role_controller(player) {
+                    controller.inner::<RoleController>().idle();
+                }
+            }
+            PickupWalk::Arrived => {
+                if mechanism.claim_pickup() {
+                    if let Some(node) = self.scn_file.nodes.iter().find(|n| n.index == mechanism.id)
+                    {
+                        self.pickup_rewards
+                            .borrow_mut()
+                            .push((node.ladder_nav_coord1.0, node.ladder_nav_coord2.0));
+                    }
+                }
+                if let Some(controller) = RoleController::get_role_controller(player) {
+                    controller.inner::<RoleController>().idle();
+                }
+            }
+        }
+    }
+
+    fn update_transport(&self, mechanism: &mut Mechanism, delta_sec: f32) {
+        let Some(path) = mechanism.path().cloned() else {
+            return;
+        };
+        let Some(mut state) = mechanism.take_transport() else {
+            return;
+        };
+        if let Some(name) = state.rider.as_ref() {
+            let controlled = self
+                .mechanism_player
+                .borrow()
+                .as_ref()
+                .is_some_and(|(player, _)| player.name() == *name);
+            if !controlled || self.mechanism_role(name).is_none() {
+                state.rider = None;
+                if state.phase == TransportPhase::Disembarking {
+                    state.exit = None;
+                    state.phase = if state.distance >= path.total() {
+                        TransportPhase::End
+                    } else {
+                        TransportPhase::Start
+                    };
+                }
+            }
+        }
+        match state.phase {
+            TransportPhase::Start | TransportPhase::End => {}
+            TransportPhase::Boarding => {
+                let Some(approach) = state.approach.clone() else {
+                    state.phase = TransportPhase::Start;
+                    mechanism.put_transport(state);
+                    return;
+                };
+                if self
+                    .mechanism_player
+                    .borrow()
+                    .as_ref()
+                    .is_none_or(|(player, _)| player.name() != approach.player)
+                {
+                    state.approach = None;
+                    state.rider = None;
+                    state.phase = if state.distance >= path.total() {
+                        TransportPhase::End
+                    } else {
+                        TransportPhase::Start
+                    };
+                    mechanism.put_transport(state);
+                    return;
+                }
+                let Some(player) = self.mechanism_role(&approach.player) else {
+                    state.approach = None;
+                    state.rider = None;
+                    state.phase = if state.distance >= path.total() {
+                        TransportPhase::End
+                    } else {
+                        TransportPhase::Start
+                    };
+                    mechanism.put_transport(state);
+                    return;
+                };
+                if self.walk_role_to(
+                    &player,
+                    mechanism.layer as usize,
+                    &approach.target,
+                    delta_sec,
+                ) {
+                    state.rider = Some(approach.player);
+                    state.approach = None;
+                    if mechanism.mode() == 1 {
+                        state.phase = TransportPhase::Select;
+                    } else if state.distance >= path.total() {
+                        state.phase = TransportPhase::Return;
+                    } else {
+                        state.phase = TransportPhase::Outbound;
+                    }
+                }
+            }
+            TransportPhase::Outbound | TransportPhase::Return => {
+                let outbound = state.phase == TransportPhase::Outbound;
+                let step = 100. * delta_sec;
+                state.distance += if outbound { step } else { -step };
+                let arrived = if outbound {
+                    state.distance > path.total()
+                } else {
+                    state.distance < 0.
+                };
+                state.distance = state.distance.clamp(0., path.total());
+                let (position, tangent) = path.point(state.distance);
+                state.position = position;
+                self.carry_transport_rider(&state, mechanism.layer, &position, &tangent, outbound);
+                if arrived {
+                    let travel = if outbound {
+                        tangent
+                    } else {
+                        Vec3::scalar_mul(-1., &tangent)
+                    };
+                    let exit = Vec3::add(&position, &Vec3::scalar_mul(96., &travel));
+                    if self.valid_transport_exit(mechanism.layer as usize, &exit) {
+                        state.exit = Some(exit);
+                        state.phase = TransportPhase::Disembarking;
+                    } else if outbound {
+                        state.phase = TransportPhase::Return;
+                        state.distance = path.total();
+                    } else {
+                        state.phase = TransportPhase::Outbound;
+                        state.distance = 0.;
+                    }
+                }
+            }
+            TransportPhase::Disembarking => {
+                let Some(name) = state.rider.clone() else {
+                    state.phase = if state.distance >= path.total() {
+                        TransportPhase::End
+                    } else {
+                        TransportPhase::Start
+                    };
+                    mechanism.put_transport(state);
+                    return;
+                };
+                let Some(player) = self.mechanism_role(&name) else {
+                    state.rider = None;
+                    state.exit = None;
+                    state.phase = if state.distance >= path.total() {
+                        TransportPhase::End
+                    } else {
+                        TransportPhase::Start
+                    };
+                    mechanism.put_transport(state);
+                    return;
+                };
+                if self.walk_role_to(
+                    &player,
+                    mechanism.layer as usize,
+                    &state.exit.unwrap(),
+                    delta_sec,
+                ) {
+                    state.rider = None;
+                    state.exit = None;
+                    state.phase = if state.distance >= path.total() {
+                        TransportPhase::End
+                    } else {
+                        TransportPhase::Start
+                    };
+                    if let Some(controller) = RoleController::get_role_controller(player) {
+                        controller.inner::<RoleController>().idle();
+                    }
+                }
+            }
+            TransportPhase::Select => {
+                let points = path.points();
+                let index = state.waypoint.min(points.len() - 1);
+                let direction = if index == 0 {
+                    1
+                } else if index + 1 == points.len() {
+                    -1
+                } else {
+                    let toward = |next: usize| {
+                        let mut value = Vec3::sub(&points[next], &points[index]);
+                        value.y = 0.;
+                        let length = value.norm();
+                        if length > 0. {
+                            Vec3::scalar_mul(1. / length, &value)
+                        } else {
+                            value
+                        }
+                    };
+                    let previous = toward(index - 1);
+                    let next = toward(index + 1);
+                    let previous_dot =
+                        previous.x * state.incoming.x + previous.z * state.incoming.z;
+                    let next_dot = next.x * state.incoming.x + next.z * state.incoming.z;
+                    if previous_dot > next_dot { -1 } else { 1 }
+                };
+                let next = (index as isize + direction as isize) as usize;
+                let length = Vec3::sub(&points[next], &points[index]).norm();
+                if length == 0. {
+                    state.waypoint = next;
+                } else {
+                    state.direction = direction;
+                    state.elapsed = 0.;
+                    state.duration = length / 90.;
+                    state.phase = TransportPhase::Segment;
+                }
+            }
+            TransportPhase::Segment => {
+                let points = path.points();
+                let from = state.waypoint;
+                let to = (from as isize + state.direction as isize) as usize;
+                state.elapsed = (state.elapsed + delta_sec).min(state.duration);
+                let fraction = if state.duration > 0. {
+                    state.elapsed / state.duration
+                } else {
+                    1.
+                };
+                let position = Vec3::add(
+                    &points[from],
+                    &Vec3::scalar_mul(fraction, &Vec3::sub(&points[to], &points[from])),
+                );
+                state.position = position;
+                let tangent = Vec3::sub(&points[to], &points[from]);
+                self.carry_transport_rider(&state, mechanism.layer, &position, &tangent, true);
+                if state.elapsed >= state.duration {
+                    state.waypoint = to;
+                    let length = tangent.norm();
+                    let direction = if length > 0. {
+                        Vec3::scalar_mul(1. / length, &tangent)
+                    } else {
+                        Vec3::new(0., 0., 1.)
+                    };
+                    let exit = Vec3::add(&position, &Vec3::scalar_mul(12., &direction));
+                    if self.valid_transport_exit(mechanism.layer as usize, &exit) {
+                        state.exit = Some(exit);
+                        state.phase = TransportPhase::Disembarking;
+                    } else {
+                        state.phase = TransportPhase::Select;
+                    }
+                }
+            }
+        }
+        mechanism.put_transport(state);
+    }
+
+    fn carry_transport_rider(
+        &self,
+        state: &super::mechanism::TransportState,
+        layer: u16,
+        position: &Vec3,
+        tangent: &Vec3,
+        forward: bool,
+    ) {
+        let Some(name) = &state.rider else {
+            return;
+        };
+        let Some(player) = self.mechanism_role(name) else {
+            return;
+        };
+        Self::carry_role(&player, position.y, layer);
+        player.transform().borrow_mut().set_position(position);
+        let facing = if forward {
+            *tangent
+        } else {
+            Vec3::scalar_mul(-1., tangent)
+        };
+        if facing.x != 0. || facing.z != 0. {
+            player
+                .transform()
+                .borrow_mut()
+                .look_at(&Vec3::add(position, &facing));
+        }
+    }
+
+    fn valid_transport_exit(&self, layer: usize, position: &Vec3) -> bool {
+        self.nav
+            .point_at(layer, position)
+            .is_some_and(|point| point.distance_to_border != 0)
+    }
+
+    fn walk_role_to(
+        &self,
+        player: &ComRc<IEntity>,
+        layer: usize,
+        target: &Vec3,
+        delta_sec: f32,
+    ) -> bool {
         let mut position = player.transform().borrow().position();
+        let remain = Vec3::sub(target, &position);
+        let distance = remain.x.hypot(remain.z);
+        let step = 100. * delta_sec;
+        if distance > 0. {
+            let amount = step.min(distance);
+            position.x += remain.x * amount / distance;
+            position.z += remain.z * amount / distance;
+            if let Some(point) = self.nav.point_at(layer, &position) {
+                position.y = point.height;
+            }
+            let transform = player.transform();
+            transform
+                .borrow_mut()
+                .look_at(target)
+                .set_position(&position);
+            if let Some(controller) = RoleController::get_role_controller(player.clone()) {
+                controller.inner::<RoleController>().walk();
+            }
+        }
+        distance <= step
+    }
+
+    fn walk_pickup_to(
+        &self,
+        player: &ComRc<IEntity>,
+        layer: usize,
+        target: &Vec3,
+        delta_sec: f32,
+    ) -> PickupWalk {
+        if self.nav.nav_file.maps.get(layer).is_none() {
+            return if self.walk_role_to(player, layer, target, delta_sec) {
+                PickupWalk::Arrived
+            } else {
+                PickupWalk::Moving
+            };
+        }
+        let mut position = player.transform().borrow().position();
+        let remain = Vec3::sub(target, &position);
+        let distance = remain.x.hypot(remain.z);
+        if distance == 0. {
+            return PickupWalk::Arrived;
+        }
+        let amount = (100. * delta_sec).min(distance);
+        let sample_step = self
+            .nav
+            .block_sizes
+            .get(layer)
+            .map(|block| block.0.min(block.1).abs() * 0.5)
+            .unwrap_or(1.)
+            .max(1.);
+        let samples = (amount / sample_step).ceil().max(1.) as usize;
+        let mut next = position;
+        for sample in 1..=samples {
+            let fraction = sample as f32 / samples as f32;
+            next.x = position.x + remain.x * amount * fraction / distance;
+            next.z = position.z + remain.z * amount * fraction / distance;
+            let Some(point) = self.nav.point_at(layer, &next) else {
+                return PickupWalk::Blocked;
+            };
+            if point.distance_to_border == 0 {
+                return PickupWalk::Blocked;
+            }
+            next.y = point.height;
+        }
+        position = next;
+        let transform = player.transform();
+        transform
+            .borrow_mut()
+            .look_at(target)
+            .set_position(&position);
+        if let Some(controller) = RoleController::get_role_controller(player.clone()) {
+            controller.inner::<RoleController>().walk();
+        }
+        if distance <= amount {
+            PickupWalk::Arrived
+        } else {
+            PickupWalk::Moving
+        }
+    }
+
+    fn carry_role(player: &ComRc<IEntity>, height: f32, layer: u16) {
+        let transform = player.transform();
+        let mut position = {
+            let transform = transform.borrow();
+            transform.position()
+        };
         position.y = height;
-        player.transform().borrow_mut().set_position(&position);
+        transform.borrow_mut().set_position(&position);
         if let Some(controller) = RoleController::get_role_controller(player.clone()) {
             controller
                 .inner::<RoleController>()
@@ -703,14 +1267,30 @@ impl ScnScene {
 
     pub fn test_item_trigger(&self, coord: &Vec3) -> Option<u32> {
         const D: f32 = 100.;
+        let player_layer = self
+            .mechanism_player
+            .borrow()
+            .as_ref()
+            .map(|(_, layer)| *layer);
         for trigger in &*self.item_triggers.borrow() {
+            if trigger.sce_proc_id == 0 || player_layer.is_some_and(|layer| layer != trigger.layer)
+            {
+                continue;
+            }
+            let Some(entity) = self.get_root_object(trigger.id as i32) else {
+                continue;
+            };
+            if !entity.visible() {
+                continue;
+            }
+            let position = entity.transform().borrow().position();
             log::debug!(
                 "Testing item trigger {:?} {:?} {}",
-                &trigger.coord,
+                &position,
                 &coord,
-                Vec3::sub(coord, &trigger.coord).norm2(),
+                Vec3::sub(coord, &position).norm2(),
             );
-            if Vec3::sub(coord, &trigger.coord).norm2() < D * D {
+            if Vec3::sub(coord, &position).norm2() < D * D {
                 return Some(trigger.sce_proc_id);
             }
         }
@@ -938,6 +1518,11 @@ impl ScnScene {
         dist < r * r
     }
 
+    #[cfg(test)]
+    pub(crate) fn load_objects_for_test(&self) {
+        self.load_objects();
+    }
+
     fn load_objects(&self) {
         let ground_pol_name = self.scn_file.scn_base_name.clone() + ".pol";
         let mut entities: Vec<ComRc<IEntity>> = vec![];
@@ -1039,13 +1624,15 @@ impl ScnScene {
                 | ScnNodeTypes::ITEM_TRIGGER2
                 | ScnNodeTypes::ITEM_TRIGGER3 => {
                     self.item_triggers.borrow_mut().push(SceItemTrigger {
-                        coord: obj.position,
+                        id: obj.index,
+                        layer: obj.nav_layer as usize,
                         sce_proc_id: obj.sce_proc_id,
                     });
                 }
                 ScnNodeTypes::TRIGGER_SOURCE if self.asset_mgr.game() != crate::GameType::PAL3 => {
                     self.item_triggers.borrow_mut().push(SceItemTrigger {
-                        coord: obj.position,
+                        id: obj.index,
+                        layer: obj.nav_layer as usize,
                         sce_proc_id: obj.sce_proc_id,
                     });
                 }
@@ -1063,7 +1650,7 @@ impl ScnScene {
             if let Some(p) = entity {
                 Self::apply_position_rotation(p.clone(), &obj.position, obj.rotation.to_radians());
                 if self.asset_mgr.game() == crate::GameType::PAL3
-                    && matches!(obj.node_type, 7 | 8 | 22 | 23 | 31)
+                    && matches!(obj.node_type, 5 | 7 | 8 | 11 | 16 | 22 | 23 | 31 | 33 | 41)
                 {
                     p.set_visible(obj.active != 0);
                 }
@@ -1471,7 +2058,8 @@ pub struct SceAabbTrigger {
 }
 
 pub struct SceItemTrigger {
-    coord: Vec3,
+    id: u16,
+    layer: usize,
     sce_proc_id: u32,
 }
 
