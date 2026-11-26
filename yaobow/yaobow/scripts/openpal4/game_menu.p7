@@ -3,6 +3,7 @@ import scripting_services;
 import shared.openpal4;
 import radiance_scripting.ui as gui;
 import yaobow.openpal4.native_layout as native;
+import yaobow.openpal4.system_menu;
 
 struct Canvas(ui: &radiance.IUiHost, x: float, y: float, scale: float) {
     fn text(self: &Self, rect: gui.Rect, text: string, size: float) {
@@ -22,12 +23,17 @@ pub struct[openpal4.IPal4GameMenu] GameMenu(
     pub equipment: &native.NativeLayout, pub portrait: &native.NativeLayout,
     pub toolbar: &native.NativeLayout, pub frame: &native.NativeLayout,
     pub info: &native.NativeLayout,
+    pub system: &system_menu.SystemMenu,
     pub role: int, pub category: int, pub selected: int,
     previous_tab: int, held: int, mouse_held: bool, guard_click: bool,
     hud_role: int, clock: float, last_click: float, last_item: int,
     preview_item: int, preview_yaw: float, preview_start: float, dragging_preview: bool,
     pub feedback: string,
 ) {
+    pub fn install_system(self: &Self, layout: ?&scripting_services.IUiLayoutHandle,
+        dialog: ?&scripting_services.IUiLayoutHandle) {
+        self.system.install(layout, dialog);
+    }
     fn reset_selection(self: &Self) {
         self.category = -1; self.selected = 0; self.held = -1;
         self.feedback = ""; self.guard_click = true; self.last_item = 0;
@@ -37,13 +43,18 @@ pub struct[openpal4.IPal4GameMenu] GameMenu(
     pub fn tick(self: &Self) -> int {
         let before = self.game.active_tab();
         if self.input.key_pressed(38) || self.input.key_pressed(43) {
+            if before == 6 { if self.system.cancel() { return 0; } }
             if before >= 0 { self.game.close(); } else { self.game.open(0); }
             self.reset_selection();
             return 0;
         }
         let tab = self.game.active_tab();
         if tab < 0 { self.previous_tab = -1; return 0; }
-        if tab != self.previous_tab { self.reset_selection(); self.previous_tab = tab; }
+        if tab != self.previous_tab {
+            self.reset_selection(); self.previous_tab = tab;
+            if tab == 6 { self.system.reset(); }
+        }
+        if tab == 6 { self.system.tick(); return 0; }
         self.ensure_selection();
         for i in Range(0, 3) {
             if self.input.key_pressed(27 + i) {
@@ -222,22 +233,28 @@ pub struct[openpal4.IPal4GameMenu] GameMenu(
             self.ensure_selection();
             ui.fill_rect(0.0, 0.0, viewport.w, viewport.h, 0.0, 0.0, 0.0, 0.55);
             let layout = if tab == 0 { self.status } else { if tab == 1 { self.properties } else { self.equipment } };
-            self.draw(c, self.info, 6, x, y, down);
+            if tab != 6 { self.draw(c, self.info, 6, x, y, down); }
             self.draw(c, self.frame, 5, x, y, down);
-            self.draw(c, layout, tab, x, y, down);
-            self.draw(c, self.toolbar, 4, x, y, down);
-            c.text(self.info.rect("staticMoney"), number(self.game.money()), 13.0);
-            c.text(self.info.rect("staticTimeInfo"), play_time(self.game.play_seconds(false)), 13.0);
-            c.text(self.info.rect("staticGameTimeInfo"), play_time(self.game.play_seconds(true)), 13.0);
-            if self.hit(2001, self.frame.rect("btnClose"), true, x, y, press, release) { self.game.close(); }
-            let tabs: array<string> = ["Role", "Property", "Equipment"];
-            for t in Range(0, 3) {
+            let blocked = tab == 6 && (self.system.captures_input() || self.game.system_busy());
+            if tab != 6 { self.draw(c, layout, tab, x, y, down); }
+            self.draw(c, self.toolbar, 4, if blocked { -1.0 } else { x }, y, down);
+            if tab != 6 {
+                c.text(self.info.rect("staticMoney"), number(self.game.money()), 13.0);
+                c.text(self.info.rect("staticTimeInfo"), play_time(self.game.play_seconds(false)), 13.0);
+                c.text(self.info.rect("staticGameTimeInfo"), play_time(self.game.play_seconds(true)), 13.0);
+            }
+            if self.hit(2001, self.frame.rect("btnClose"), !blocked, x, y, press, release) { self.game.close(); }
+            let tabs: array<string> = ["Role", "Property", "Equipment", "Magic", "Forging", "Task", "System"];
+            for t in Range(0, 7) {
+                if blocked { continue; }
                 if self.hit(2100 + t, self.toolbar.rect(tabs[t]), self.game.tab_enabled(t), x, y, press, release) {
                     if self.game.open(t) { self.reset_selection(); }
                 }
             }
-            if tab == 0 { self.paint_status(c); }
+            if tab == 6 { self.system.paint(ui,c.x,c.y,c.scale,x,y,down,press,release); }
+            else { if tab == 0 { self.paint_status(c); }
             else { self.paint_items(c, layout, tab, x, y, press, release, down); }
+            }
         }
         self.mouse_held = down;
         if !down { self.held = -1; }
@@ -389,6 +406,7 @@ pub fn make(game: &openpal4.IPal4MenuState, input: &scripting_services.IInputSer
     for i in Range(0, 4) { status_art.image("RolePanel" + number(i + 1), 0, "kuang0", roles[i]); }
     return &GameMenu(game, input, status_art, native.make(properties), native.make(equipment),
         native.make(portrait), native.make(toolbar), native.make(frame), native.make(info),
+        system_menu.make(game, input),
         0, -1, 0, -1, -1, false, true, -1, 0.0, -1.0, 0, 0, 0.0, 0.0, false, "");
 }
 

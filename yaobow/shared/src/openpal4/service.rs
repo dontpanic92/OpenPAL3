@@ -322,6 +322,7 @@ impl Pal4Service {
     /// non-story modes (which have no such post-update hook) still
     /// observe taps injected during the drain below.
     pub fn pump_agent(&self, delta_sec: f32) {
+        self.pump_system_menu();
         let bridge = match self.agent_bridge.borrow().as_ref() {
             Some(b) => b.clone(),
             None => return,
@@ -412,6 +413,66 @@ impl Pal4Service {
         // Per-frame agent telemetry (frame counter + dt/fps) is generic
         // and published here once per frame for **every** mode.
         bridge.publish_frame_telemetry(delta_sec);
+    }
+
+    fn pump_system_menu(&self) {
+        use super::session::SystemAction;
+        let action = self.session.borrow().take_system_action();
+        let Some(action) = action else { return };
+        let scene_manager = self.app.engine().borrow().scene_manager().clone();
+        let Some(story) = Self::active_story_director(&scene_manager) else {
+            self.session
+                .borrow_mut()
+                .finish_system_action("当前无法操作。".into());
+            return;
+        };
+        let director = story.inner::<OpenPAL4Director>();
+        if !director.system_available() {
+            self.session
+                .borrow_mut()
+                .finish_system_action("剧情进行中，当前无法操作。".into());
+            return;
+        }
+        match action {
+            SystemAction::Save(slot) => {
+                let message = match director.try_save_state(slot) {
+                    Ok(()) => format!("已保存至存档 {slot}。"),
+                    Err(error) => {
+                        log::error!("Cannot save PAL4 slot {slot}: {error:#}");
+                        "保存失败，请检查存档目录权限\n和磁盘空间。".into()
+                    }
+                };
+                self.session.borrow_mut().finish_system_action(message);
+            }
+            SystemAction::Load(slot) => match Pal4PersistentState::load(PAL4_APP_NAME, slot) {
+                Ok(state) if !state.scene_name().is_empty() => {
+                    let next = story.query_interface::<IDirector>().unwrap();
+                    if let Some(transition) = director.restore_menu_save(state, slot, next) {
+                        scene_manager.set_director(transition);
+                    }
+                }
+                result => {
+                    log::error!("Cannot load PAL4 slot {slot}: {:?}", result.err());
+                    self.session
+                        .borrow_mut()
+                        .finish_system_action("读取失败，存档不存在或已损坏。".into());
+                }
+            },
+            SystemAction::Title => {
+                let asset_path = self.launch_asset_path.borrow().clone();
+                if let Some(asset_path) = asset_path {
+                    let menu = self.build_start_menu(&asset_path);
+                    self.reset_session();
+                    scene_manager.pop_scene();
+                    scene_manager.set_director(menu);
+                } else {
+                    self.session
+                        .borrow_mut()
+                        .finish_system_action("无法返回标题画面。".into());
+                }
+            }
+            SystemAction::Exit => self.app.request_exit(),
+        }
     }
 
     /// Resolve the currently-installed director and downcast to the
@@ -794,7 +855,11 @@ impl IPal4ServiceImpl for Pal4Service {
         let audio_engine = engine_rc.borrow().audio_engine();
         drop(engine_rc);
 
-        let mut source = audio_engine.create_source();
+        let mut source = crate::audio_mix::mixed_source(
+            audio_engine.create_source(),
+            loader.audio_mix(),
+            crate::audio_mix::AudioChannel::Music,
+        );
         source.set_data(decrypted, Codec::Mp3);
         Some(ScriptAudioSource::create(source))
     }

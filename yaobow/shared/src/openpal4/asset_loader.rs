@@ -52,6 +52,7 @@ const ZJM_TRANS_DFF: &str = "/gamedata/ui/uiWorld/zjm/ZJM_trans.dff";
 const ZJM_TRANS_UVA: &str = "/gamedata/ui/uiWorld/zjm/ZJM_trans.uva";
 
 pub struct AssetLoader {
+    audio_mix: std::sync::Arc<crate::audio_mix::AudioMix>,
     vfs: Rc<MiniFs>,
     component_factory: Rc<dyn ComponentFactory>,
     /// Engine audio backend, used to mint sources for entity-attached
@@ -67,6 +68,25 @@ pub struct AssetLoader {
     dialog_artwork: OnceCell<Option<Rc<super::native_dialog::DialogArtwork>>>,
 }
 
+struct SoundEngine {
+    engine: Rc<dyn AudioEngine>,
+    mix: std::sync::Arc<crate::audio_mix::AudioMix>,
+}
+
+impl AudioEngine for SoundEngine {
+    fn create_source(&self) -> Box<dyn radiance::audio::AudioMemorySource> {
+        crate::audio_mix::mixed_source(
+            self.engine.create_source(),
+            self.mix.clone(),
+            crate::audio_mix::AudioChannel::Sound,
+        )
+    }
+
+    fn create_custom_decoder_source(&self) -> Box<dyn radiance::audio::AudioCustomDecoderSource> {
+        self.engine.create_custom_decoder_source()
+    }
+}
+
 impl AssetLoader {
     pub fn new(
         component_factory: Rc<dyn ComponentFactory>,
@@ -77,6 +97,7 @@ impl AssetLoader {
         let portraits = load_portraits(&component_factory, &vfs);
         let vfs = Rc::new(vfs);
         Rc::new(Self {
+            audio_mix: std::sync::Arc::new(crate::audio_mix::AudioMix::load()),
             component_factory,
             audio_engine,
             input,
@@ -93,7 +114,14 @@ impl AssetLoader {
     }
 
     pub fn audio_engine(&self) -> Rc<dyn AudioEngine> {
-        self.audio_engine.clone()
+        Rc::new(SoundEngine {
+            engine: self.audio_engine.clone(),
+            mix: self.audio_mix.clone(),
+        })
+    }
+
+    pub fn audio_mix(&self) -> std::sync::Arc<crate::audio_mix::AudioMix> {
+        self.audio_mix.clone()
     }
 
     pub fn vfs(&self) -> &MiniFs {

@@ -66,11 +66,20 @@ appropriate HTTP status:
 | `GET`  | `/v1/script/trace/drain?after_seq=N&n=M` | Drain buffered VM execution-trace events with `seq > after_seq`. Capped at `n` per call (default 1024). Response is `{next_seq, dropped, capturing, events}`; see the **Trace** section below for the event reference. Streamed via repeated drains using the returned `next_seq` cursor. |
 
 PAL4 also exposes `menu_tab`: `null` when the gameplay menu is closed,
-`0` for status, `1` for inventory, and `2` for equipment. Open/close with an
+`0` for status, `1` for inventory, `2` for equipment, and `6` for System. Open/close with an
 `Escape` key tap, then use `Num1`/`Num2`/`Num3` to select a tab. While open,
 movement and world-trigger dispatch are blocked; close the menu before
 interacting with scene objects. `script_running` can remain false while a
 player-opened menu is active.
+
+The native System toolbar entry opens save/load, music/sound settings, and
+return-to-title/quit controls. Save/load browsers have 100 slots on ten pages;
+the title load screen uses the same slot range. Overwrite, load, title, and
+quit confirmations require an explicit mouse click on the native checkmark;
+Space/Enter never accepts a destructive default. Escape dismisses a modal
+before closing the menu. Empty/corrupt loads and filesystem/scene-loading
+errors produce visible feedback. These UI confirmations do not change the
+existing direct automation save/load routes.
 
 ### Control
 

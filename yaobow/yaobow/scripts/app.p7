@@ -49,7 +49,7 @@ pub struct[yaobow_services.IYaobowScriptApp, openpal3.IPal3ScriptFactory, openpa
 
     pub fn make_pal4_game_menu(self: &Self, game: &openpal4.IPal4MenuState,
         input: &scripting_services.IInputService) -> &openpal4.IPal4GameMenu {
-        return game_menu.make(game, input,
+        let menu = game_menu.make(game, input,
             self.ctx.pal4().open_layout("/gamedata/ui/layouts/RoleStateWindow.xml"),
             self.ctx.pal4().open_layout("/gamedata/ui/layouts/PropertyWindow.xml"),
             self.ctx.pal4().open_layout("/gamedata/ui/layouts/EquipmentWindow.xml"),
@@ -57,6 +57,10 @@ pub struct[yaobow_services.IYaobowScriptApp, openpal3.IPal3ScriptFactory, openpa
             self.ctx.pal4().open_layout("/gamedata/ui/layouts/sysToolBar.xml"),
             self.ctx.pal4().open_layout("/gamedata/ui/layouts/frameToolbar.xml"),
             self.ctx.pal4().open_layout("/gamedata/ui/layouts/gameInfo.xml"));
+        menu.install_system(
+            self.ctx.pal4().open_layout("/gamedata/ui/layouts/SystemSetting.xml"),
+            self.ctx.pal4().open_layout("/gamedata/ui/layouts/CommonDialog.xml"));
+        return menu;
     }
 
     pub fn make_actor_controller(

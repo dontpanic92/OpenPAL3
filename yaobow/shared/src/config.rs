@@ -97,12 +97,11 @@ pub struct AudioConfig {
     #[serde(default = "default_master_volume")]
     pub master_volume: f32,
 
-    /// PAL3 BGM mix gain. Kept separate from `master_volume` so the
-    /// original System-menu controls do not affect other games.
+    /// PAL3/PAL4 BGM mix gain, separate from the global master gain.
     #[serde(default = "default_channel_volume")]
     pub music_volume: f32,
 
-    /// PAL3 sound-effect mix gain.
+    /// PAL3/PAL4 sound-effect mix gain.
     #[serde(default = "default_channel_volume")]
     pub sound_volume: f32,
 }

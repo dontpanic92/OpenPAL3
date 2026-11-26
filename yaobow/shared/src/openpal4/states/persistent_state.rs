@@ -153,9 +153,8 @@ fn default_menu_grants() -> [bool; 8] {
 }
 
 impl Pal4PersistentState {
-    /// Number of save slots surfaced by the start-menu load screen.
-    /// Mirrors the in-game Num1-Num4 / Num5-Num8 save/load hotkeys.
-    pub const SLOT_COUNT: i32 = 4;
+    /// Ten native pages of ten slots. Debug hotkeys still address slots 1–4.
+    pub const SLOT_COUNT: i32 = 100;
 
     pub fn new(app_name: String) -> Self {
         let mut players = HashMap::new();
@@ -198,12 +197,17 @@ impl Pal4PersistentState {
     /// Returns an error if the slot file is missing or malformed; the
     /// caller decides whether to fall back to a fresh state.
     pub fn load(app_name: &str, slot: i32) -> anyhow::Result<Self> {
-        let path = Self::get_data_dir(app_name)
-            .join("Save")
-            .join(format!("{}.json", slot));
+        let path = Self::slot_path(app_name, slot);
         let content = std::fs::read_to_string(path)?;
-        let state = serde_json::from_str(&content)?;
+        let mut state: Self = serde_json::from_str(&content)?;
+        state.app_name = app_name.to_owned();
         Ok(state)
+    }
+
+    pub(crate) fn slot_path(app_name: &str, slot: i32) -> PathBuf {
+        Self::get_data_dir(app_name)
+            .join("Save")
+            .join(format!("{slot}.json"))
     }
 
     /// Read a save slot for display purposes only. Returns `None` when
@@ -236,23 +240,37 @@ impl Pal4PersistentState {
         if slot < 0 {
             return;
         }
-
-        let path = Self::get_data_dir(&self.app_name).join("Save");
-        if let Err(e) = std::fs::create_dir_all(&path) {
-            log::error!("Cannot create save dir: {}", e);
-            return;
+        match self.try_save(slot) {
+            Ok(()) => log::info!("Game saved to slot {slot}"),
+            Err(error) => log::error!("Cannot save slot {slot}: {error}"),
         }
+    }
 
-        match serde_json::to_string_pretty(self) {
-            Ok(content) => {
-                if let Err(e) = std::fs::write(path.join(format!("{}.json", slot)), content) {
-                    log::error!("Cannot save: {}", e);
-                } else {
-                    log::info!("Game saved to slot {}", slot);
-                }
-            }
-            Err(e) => log::error!("Cannot serialize persistent state: {}", e),
+    pub fn try_save(&self, slot: i32) -> anyhow::Result<()> {
+        anyhow::ensure!(slot >= 0, "Invalid save slot");
+        self.save_to_path(&Self::slot_path(&self.app_name, slot))
+    }
+
+    pub(crate) fn save_to_path(&self, path: &std::path::Path) -> anyhow::Result<()> {
+        use std::io::Write;
+        let content = serde_json::to_vec_pretty(self)?;
+        std::fs::create_dir_all(
+            path.parent()
+                .ok_or_else(|| anyhow::anyhow!("No save directory"))?,
+        )?;
+        let temporary = path.with_extension(format!("json.{}.tmp", std::process::id()));
+        let result = (|| -> anyhow::Result<()> {
+            let mut file = std::fs::File::create(&temporary)?;
+            file.write_all(&content)?;
+            file.sync_all()?;
+            drop(file);
+            std::fs::rename(&temporary, path)?;
+            Ok(())
+        })();
+        if result.is_err() {
+            let _ = std::fs::remove_file(&temporary);
         }
+        result
     }
 
     pub fn app_name(&self) -> &str {
@@ -1204,5 +1222,33 @@ mod tests {
         let json = r#"{"app_name":"OpenPAL4","scene_name":"m01","block_name":"1"}"#;
         let state: Pal4PersistentState = serde_json::from_str(json).unwrap();
         assert!(!state.player_locked());
+    }
+    #[test]
+    fn save_publication_overwrites_atomically_and_preserves_previous_file_on_failure() {
+        let dir = std::env::temp_dir().join(format!(
+            "yaobow-pal4-save-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let path = dir.join("1.json");
+        let mut state = Pal4PersistentState::new(PAL4_APP_NAME.into());
+        state.set_scene("M02".into(), "1".into());
+        state.save_to_path(&path).unwrap();
+        state.add_money(123);
+        state.save_to_path(&path).unwrap();
+        let content = std::fs::read(&path).unwrap();
+        let restored: Pal4PersistentState = serde_json::from_slice(&content).unwrap();
+        assert_eq!(restored.money(), 123);
+        let temporary = path.with_extension(format!("json.{}.tmp", std::process::id()));
+        std::fs::create_dir(&temporary).unwrap();
+        state.add_money(333);
+        assert!(state.save_to_path(&path).is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), content);
+        std::fs::remove_dir(&temporary).unwrap();
+        std::fs::remove_file(&path).unwrap();
+        std::fs::remove_dir(&dir).unwrap();
     }
 }

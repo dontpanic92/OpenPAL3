@@ -25,6 +25,14 @@ use radiance::math::{Transform, Vec3};
 use super::gameplay::GameplayCatalog;
 use super::states::persistent_state::{PAL4_APP_NAME, Pal4PersistentState};
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum SystemAction {
+    Save(i32),
+    Load(i32),
+    Title,
+    Exit,
+}
+
 /// Plain-data snapshot of the live runtime world captured at save time
 /// (and produced at load time for the director to re-apply).
 ///
@@ -65,6 +73,9 @@ pub struct RuntimeSnapshot {
 /// leaks into the loaded one.
 #[derive(Default)]
 pub struct Pal4SessionTransient {
+    system_action: Cell<Option<SystemAction>>,
+    system_busy: Cell<bool>,
+    system_message: String,
     dialog_open: Cell<bool>,
     completed_dialog_choice: Cell<Option<i32>>,
     default_dialog_choice: Cell<i32>,
@@ -182,7 +193,7 @@ impl Pal4Session {
     }
 
     pub fn request_menu(&self, tab: i32, forced: bool) -> bool {
-        if !(0..=2).contains(&tab)
+        if !matches!(tab, 0..=2 | 6)
             || !self.state.menu_enabled(tab)
             || !self.transient.menu_host_available.get()
         {
@@ -191,6 +202,32 @@ impl Pal4Session {
         self.transient.menu_tab.set(Some(tab));
         self.transient.menu_forced.set(forced);
         true
+    }
+
+    pub(crate) fn request_system_action(&self, action: SystemAction) -> bool {
+        if self.menu_tab() != Some(6) || self.system_busy() || self.menu_forced() {
+            return false;
+        }
+        self.transient.system_action.set(Some(action));
+        self.transient.system_busy.set(true);
+        true
+    }
+
+    pub(crate) fn take_system_action(&self) -> Option<SystemAction> {
+        self.transient.system_action.take()
+    }
+
+    pub fn system_busy(&self) -> bool {
+        self.transient.system_busy.get()
+    }
+
+    pub fn system_message(&self) -> &str {
+        &self.transient.system_message
+    }
+
+    pub(crate) fn finish_system_action(&mut self, message: String) {
+        self.transient.system_busy.set(false);
+        self.transient.system_message = message;
     }
 
     pub fn close_menu(&self) {
@@ -509,6 +546,21 @@ impl Pal4Session {
         self.state.save(slot);
     }
 
+    pub(crate) fn try_save_runtime(
+        &mut self,
+        slot: i32,
+        position: Option<Vec3>,
+        direction: Option<f32>,
+        camera: Option<Transform>,
+        script_globals: Vec<u32>,
+    ) -> anyhow::Result<()> {
+        self.state.set_position(position);
+        self.state.set_direction(direction);
+        self.state.set_camera(camera);
+        self.state.set_script_globals(script_globals);
+        self.state.try_save(slot)
+    }
+
     /// Load `slot` from disk into this session, returning the
     /// [`RuntimeSnapshot`] the director applies to the running context.
     /// Errors (propagated) when the slot file is missing or malformed —
@@ -518,6 +570,10 @@ impl Pal4Session {
     /// [`reset_transient`](Self::reset_transient)).
     pub fn load_slot(&mut self, slot: i32) -> anyhow::Result<RuntimeSnapshot> {
         let state = Pal4PersistentState::load(self.app_name(), slot)?;
+        Ok(self.restore_saved_state(state))
+    }
+
+    pub(crate) fn restore_saved_state(&mut self, state: Pal4PersistentState) -> RuntimeSnapshot {
         let snapshot = RuntimeSnapshot {
             scene_name: state.scene_name().to_string(),
             block_name: state.block_name().to_string(),
@@ -531,7 +587,7 @@ impl Pal4Session {
         };
         self.state = state;
         self.reset_transient();
-        Ok(snapshot)
+        snapshot
     }
 }
 
@@ -575,6 +631,29 @@ mod tests {
         let mut session = session;
         session.state_mut().grant_menu(1, false);
         assert!(!session.request_menu(1, true));
+    }
+
+    #[test]
+    fn system_requests_are_single_flight_and_never_accepted_by_forced_script_menus() {
+        let mut session = Pal4Session::new();
+        session.set_menu_host_available(true);
+        assert!(!session.request_system_action(SystemAction::Save(1)));
+        assert!(session.request_menu(6, true));
+        assert!(!session.request_system_action(SystemAction::Save(1)));
+        assert!(session.request_menu(6, false));
+        assert!(session.request_system_action(SystemAction::Save(1)));
+        assert!(!session.request_system_action(SystemAction::Exit));
+        assert_eq!(session.take_system_action(), Some(SystemAction::Save(1)));
+        assert!(session.system_busy());
+        session.finish_system_action("saved".into());
+        assert!(!session.system_busy());
+        assert!(session.request_system_action(SystemAction::Load(100)));
+        let state = session.state().clone();
+        session.restore_saved_state(state);
+        assert!(!session.system_busy());
+        assert_eq!(session.take_system_action(), None);
+        assert_eq!(session.menu_tab(), None);
+        assert_eq!(session.system_message(), "");
     }
 
     #[test]

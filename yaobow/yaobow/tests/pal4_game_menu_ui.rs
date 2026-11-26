@@ -158,6 +158,10 @@ struct Harness {
 
 impl Harness {
     fn new() -> Self {
+        Self::in_namespace("OpenPAL4")
+    }
+
+    fn in_namespace(namespace: &str) -> Self {
         let host = ScriptHost::new();
         host.set_script_assets(install_script_assets());
         host.load_source(r#"
@@ -183,6 +187,7 @@ impl Harness {
                 anchor(menu.toolbar, "Role",16.0,524.0,97.0,76.0);
                 anchor(menu.toolbar, "Property",118.0,524.0,97.0,76.0);
                 anchor(menu.toolbar, "Equipment",219.0,524.0,97.0,76.0);
+                anchor(menu.toolbar, "System",620.0,524.0,97.0,76.0);
                 anchor(menu.frame, "btnClose",754.0,554.0,40.0,40.0);
                 anchor(menu.info, "staticTimeInfo",12.0,81.0,89.0,14.0);
                 anchor(menu.info, "staticGameTimeInfo",12.0,124.0,89.0,14.0);
@@ -197,6 +202,21 @@ impl Harness {
                 anchor(menu.equipment, "PropertyClassImage",0.0,0.0,51.0,236.0);
                 anchor(menu.equipment, "PanelList",338.0,0.0,379.0,199.0);
                 anchor(menu.equipment, "touxiang",12.0,333.0,169.0,185.0);
+                anchor(menu.system.layout, "List",43.0,38.0,636.0,393.0);
+                anchor(menu.system.layout, "BtnSaveData",743.0,187.0,52.0,52.0);
+                anchor(menu.system.layout, "BtnLoadData",729.0,278.0,52.0,52.0);
+                anchor(menu.system.layout, "BtnSystemSetting",744.0,360.0,52.0,52.0);
+                anchor(menu.system.layout, "BtnExit",732.0,437.0,60.0,60.0);
+                anchor(menu.system.layout, "ScroolAudio1",254.0,38.0,323.0,38.0);
+                anchor(menu.system.layout, "ScroolAudio2",255.0,76.0,323.0,38.0);
+                for i in Range(0,10) {
+                    anchor(menu.system.layout, "BtnData"+if i==0 { "0" } else {
+                        let digits: array<string> = ["0","1","2","3","4","5","6","7","8","9"]; digits[i]
+                    },43.0+(i as float)*63.0,456.0,63.0,51.0);
+                }
+                anchor(menu.system.dialog, "BtYes",43.0,77.0,60.0,26.0);
+                anchor(menu.system.dialog, "BtNo",172.0,77.0,60.0,26.0);
+                anchor(menu.system.dialog, "BtOk",107.0,77.0,60.0,26.0);
                 menu
             }
             pub fn tick(menu: &game_menu.GameMenu) -> int { menu.tick(); menu.selected }
@@ -205,7 +225,9 @@ impl Harness {
             }
         "#).expect("PAL4 menu must compile");
         let catalog = catalog();
-        let mut session = Pal4Session::new();
+        let mut session = Pal4Session::from_state(
+            shared::openpal4::states::persistent_state::Pal4PersistentState::new(namespace.into()),
+        );
         session.install_catalog(catalog.clone()).unwrap();
         session.set_menu_host_available(true);
         session.state_mut().set_player_locked(false);
@@ -261,6 +283,183 @@ impl Harness {
             )
             .unwrap();
     }
+
+    fn click(&self, ui: &Data, x: f64, y: f64) {
+        self.frame(ui.clone(), x, y, true);
+        self.frame(ui.clone(), x, y, false);
+    }
+}
+
+struct SystemSaves(std::path::PathBuf);
+impl SystemSaves {
+    fn new() -> Self {
+        Self(std::env::temp_dir().join(format!(
+            "yaobow-pal4-system-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+        )))
+    }
+    fn namespace(&self) -> &str {
+        self.0.to_str().unwrap()
+    }
+}
+impl Drop for SystemSaves {
+    fn drop(&mut self) {
+        if self.0.exists() {
+            std::fs::remove_dir_all(&self.0).unwrap();
+        }
+    }
+}
+
+#[test]
+fn system_pages_distinguish_empty_corrupt_and_valid_saves_and_gate_overwrites() {
+    let saves = SystemSaves::new();
+    let h = Harness::in_namespace(saves.namespace());
+    h.state
+        .borrow_mut()
+        .state_mut()
+        .set_scene("M02".into(), "1".into());
+    h.state.borrow().state().try_save(1).unwrap();
+    h.state.borrow().state().try_save(100).unwrap();
+    std::fs::write(saves.0.join("Save").join("2.json"), b"broken save").unwrap();
+    assert!(h.bridge.open(6));
+    h.key(-1);
+    assert_eq!(
+        (
+            h.bridge.slot_state(1),
+            h.bridge.slot_state(2),
+            h.bridge.slot_state(3)
+        ),
+        (1, 2, 0)
+    );
+    assert!(h.bridge.slot_summary(100).contains("M02"));
+    let (recorder, ui) = RecordingUiHost::create();
+    recorder.set_display_size(1600, 600);
+    let id = h.host.intern(ui);
+    let ui = h.host.foreign_box("radiance.comdef.IUiHost", id).unwrap();
+    h.frame(ui.clone(), 0., 0., false);
+    h.click(&ui, 500., 55.);
+    assert!(
+        !h.bridge.system_busy(),
+        "occupied slots must not save before confirmation"
+    );
+    h.click(&ui, 1060., 560.);
+    h.click(&ui, 1174., 574.);
+    assert_eq!(
+        h.bridge.active_tab(),
+        6,
+        "confirmation must block tabs and close"
+    );
+    h.key(38);
+    assert_eq!(
+        h.bridge.active_tab(),
+        6,
+        "Escape cancels the confirmation, not the menu"
+    );
+    h.key(41);
+    recorder.calls.borrow_mut().clear();
+    h.frame(ui.clone(), 0., 0., false);
+    assert!(
+        recorder
+            .calls
+            .borrow()
+            .iter()
+            .any(|c| matches!(c, UiCall::TextAt { s, .. } if s.starts_with("11")))
+    );
+    for _ in 0..8 {
+        h.key(41);
+    }
+    for _ in 0..9 {
+        h.key(42);
+    }
+    h.key(0);
+    assert!(!h.bridge.system_busy());
+    h.click(&ui, 400. + 263.5 + 65., 230. + 90.);
+    assert!(
+        h.bridge.system_busy(),
+        "explicit checkmark submits the occupied slot"
+    );
+}
+
+#[test]
+fn system_load_rejects_bad_slots_and_exit_choices_require_confirmation() {
+    let saves = SystemSaves::new();
+    let h = Harness::in_namespace(saves.namespace());
+    assert!(h.bridge.open(6));
+    h.key(-1);
+    let (recorder, ui) = RecordingUiHost::create();
+    recorder.set_display_size(800, 600);
+    let id = h.host.intern(ui);
+    let ui = h.host.foreign_box("radiance.comdef.IUiHost", id).unwrap();
+    h.frame(ui.clone(), 0., 0., false);
+    h.click(&ui, 750., 300.);
+    h.key(0);
+    assert!(!h.bridge.system_busy());
+    h.key(38);
+    h.click(&ui, 750., 460.);
+    h.click(&ui, 300., 215.);
+    assert!(!h.bridge.system_busy());
+    h.click(&ui, 263.5 + 200., 230. + 90.);
+    assert!(!h.bridge.system_busy(), "cross cancels return-to-title");
+    h.click(&ui, 300., 285.);
+    h.key(0);
+    assert!(
+        !h.bridge.system_busy(),
+        "Space must not accept a destructive default"
+    );
+    h.click(&ui, 263.5 + 65., 230. + 90.);
+    assert!(h.bridge.system_busy());
+}
+
+#[test]
+fn system_audio_sliders_clamp_independently_and_surface_persistence_failure() {
+    let saves = SystemSaves::new();
+    let h = Harness::in_namespace(saves.namespace());
+    assert!(h.bridge.open(6));
+    h.key(-1);
+    let (recorder, ui) = RecordingUiHost::create();
+    recorder.set_display_size(800, 600);
+    let id = h.host.intern(ui);
+    let ui = h.host.foreign_box("radiance.comdef.IUiHost", id).unwrap();
+    h.frame(ui.clone(), 0., 0., false);
+    h.click(&ui, 760., 380.);
+    h.frame(ui.clone(), 400., 52., true);
+    h.frame(ui.clone(), 200., 52., true);
+    h.frame(ui.clone(), 200., 52., false);
+    assert_eq!(h.bridge.audio_volume(true), 0.);
+    assert_eq!(h.bridge.audio_volume(false), 1.);
+    assert!(
+        recorder
+            .calls
+            .borrow()
+            .iter()
+            .any(|c| matches!(c, UiCall::TextAt { s,.. } if s.contains("保存失败")))
+    );
+    assert!(!h.bridge.set_audio_volume(false, f32::NAN));
+    h.key(38);
+    assert_eq!(h.bridge.active_tab(), 6);
+    h.frame(ui.clone(), 400., 95., true);
+    h.frame(ui.clone(), 60., 560., true);
+    assert_eq!(
+        h.bridge.active_tab(),
+        6,
+        "slider capture blocks toolbar changes"
+    );
+    h.key(38);
+    assert_eq!(
+        h.bridge.active_tab(),
+        6,
+        "Escape ends a captured drag before closing"
+    );
+    assert_eq!(
+        h.bridge.audio_volume(false),
+        1.,
+        "cancelling restores the captured gain"
+    );
+    h.frame(ui.clone(), 0., 0., false);
+    h.key(38);
+    assert_eq!(h.bridge.active_tab(), -1);
+    assert!(!h.bridge.set_audio_volume(false, 0.));
 }
 
 #[test]

@@ -5,7 +5,7 @@
 //
 // "Load Game" swaps the rendered layout to the original
 // `/gamedata/ui/layouts/loadWindow.xml` and lists the existing JSON
-// save slots (1-4). Picking a populated slot boots the story director
+// save slots (1-100, ten per page). Picking a populated slot boots the story director
 // with that save pre-loaded via
 // `host.pal4().enter_load_game(asset_path, slot)`; a
 // Back/Cancel control returns to the main menu. Other buttons
@@ -91,9 +91,8 @@ let LOAD_LIST_INSET: float = 24.0;
 // buttons are *page* selectors (labelled "1~10".."91~100") for the
 // original game's 100-slot list, and the actual saves live in a
 // dynamic `List` (MultiColumnList) widget our flat image renderer
-// can't populate. So on the load screen we treat every layout button
-// except the back control as inert and present our own clickable slot
-// list overlaid on the central save panel (see `append_slot_rows`).
+// can't populate. Page buttons select the ten visible rows, rendered
+// over the central save panel (see `append_slot_rows`).
 fn is_back_name(name: string) -> bool {
     return name.contains("Back") || name.contains("back")
         || name.contains("Return") || name.contains("Cancel")
@@ -119,6 +118,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal4StartMenuDirector(
     pub mode: int,
     // Save slot carried by a pending Intent.Load, or NO_SLOT.
     pub load_slot: int,
+    pub load_page: int,
     // Cross-frame press latch for the declarative widget tree (the
     // pressed widget's key, or NO_PRESS). Replaces the old
     // `pressed_window_id` / `pressed_slot` int fields — the latch now
@@ -179,7 +179,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal4StartMenuDirector(
         // rendered below it shows through. The menu is DECLARED by
         // `build()` (a `Stack` of host-layout + list widgets) and painted
         // via `gui.paint_root`, which advances the shared press latch in
-        // `self.ctx`. No layout math or loops live here.
+        // `self.ctx`.
         ui.window_fullscreen("##pal4_start_menu", IMGUI_NO_BACKGROUND, () => {
             let root = self.build();
             gui.paint_root(root, ui, self.ctx);
@@ -190,18 +190,29 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal4StartMenuDirector(
     // Declare the menu UI as a widget tree. `UiLayout` hosts the original
     // CEGUI layout (atlas images + name-based click dispatch) and owns the
     // letterbox fit; on the load screen a `ListView` of save rows is
-    // anchored over the central panel via `LayoutAnchor`. No `for`/`push`
-    // or scaling arithmetic — the whole screen is a single expression.
+    // anchored over the central panel via `LayoutAnchor`.
     pub fn build(self: &Self) -> box<gui.Element> {
         if self.mode == MODE_LOAD {
             if self.load_layout != null {
-                let items: array<box<gui.Element>> = [
+                let mut items: array<box<gui.Element>> = [
                     gui.UiLayout(self.load_layout!, (name: string) => { self.on_load_click(name); }),
                     gui.LayoutAnchor(self.load_layout!, LOAD_PANEL_WINDOW,
                         gui.Padding(
                             gui.ListView(self.slot_count(), (i: int) => self.slot_row(i), 0.0),
                             LOAD_LIST_INSET, LOAD_LIST_INSET, LOAD_LIST_INSET, LOAD_LIST_INSET)),
                 ];
+                let names: array<string> = ["BtnLoad0","BtnLoad1","BtnLoad2","BtnLoad3","BtnLoad4",
+                    "BtnLoad5","BtnLoad6","BtnLoad7","BtnLoad8","BtnLoad9"];
+                let labels: array<string> = ["1~10","11~20","21~30","31~40","41~50",
+                    "51~60","61~70","71~80","81~90","91~100"];
+                for page in Range(0, 10) {
+                    let color = if page == self.load_page {
+                        gui.Color(0.0, 0.3, 0.6, 1.0)
+                    } else { gui.Color.gray(0.1) };
+                    items.push(gui.LayoutAnchor(self.load_layout!, names[page],
+                        gui.Center(gui.TextButton(SLOT_KEY_BASE + 101 + page, labels[page],
+                            false, () => {}, color))));
+                }
                 return gui.Stack(items);
             }
             return self.missing_widget("PAL4 load menu: layout loadWindow.xml not found.");
@@ -220,7 +231,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal4StartMenuDirector(
     }
 
     pub fn slot_count(self: &Self) -> int {
-        return self.host.pal4().save_slot_count();
+        return min(10, max(0, self.host.pal4().save_slot_count() - self.load_page * 10));
     }
 
     // Build one save-slot row widget (declarative `ListView` item builder).
@@ -228,7 +239,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal4StartMenuDirector(
     // rows render greyed + inert. The press latch key is namespaced by
     // `SLOT_KEY_BASE` so it never collides with a layout `window_id`.
     pub fn slot_row(self: &Self, idx: int) -> box<gui.Element> {
-        let slot = idx + 1;
+        let slot = self.load_page * 10 + idx + 1;
         let exists = self.host.pal4().save_slot_exists(slot);
         let label = self.host.pal4().save_slot_summary(slot);
         let key = SLOT_KEY_BASE + slot;
@@ -266,9 +277,11 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal4StartMenuDirector(
         if is_back_name(name) {
             self.mode = MODE_MAIN;
         }
-        // BtnLoad0..9 are page selectors for the original 100-slot list;
-        // we don't paginate (only the JSON slots), so they're inert. Save
-        // selection is handled by the slot rows.
+        let names: array<string> = ["BtnLoad0","BtnLoad1","BtnLoad2","BtnLoad3","BtnLoad4",
+            "BtnLoad5","BtnLoad6","BtnLoad7","BtnLoad8","BtnLoad9"];
+        for i in Range(0,10) {
+            if name == names[i] { self.load_page = i; }
+        }
     }
 
     pub fn fire_load_slot(self: &Self, slot: int) {
@@ -320,6 +333,6 @@ pub fn make_pal4_start_menu(
     let bgm = host.pal4().load_music(MENU_BGM_NAME);
     return &Pal4StartMenuDirector(
         host, asset_path, layout, load_layout, bgm,
-        Intent.None, false, MODE_MAIN, NO_SLOT, gui.make_ctx(),
+        Intent.None, false, MODE_MAIN, NO_SLOT, 0, gui.make_ctx(),
     ) as &radiance.IDirector;
 }

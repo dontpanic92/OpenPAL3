@@ -3,6 +3,7 @@ use loaders::{Pal4TextureResolver, dff::DffLoaderConfig};
 use crate::loaders::{Pal5TextureResolver, Swd5TextureResolver};
 
 pub mod agent_common;
+pub mod audio_mix;
 pub mod config;
 #[macro_use]
 pub mod comdef {

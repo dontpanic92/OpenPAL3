@@ -19,12 +19,28 @@ pub struct Pal4MenuState {
     descriptions: HashMap<i32, String>,
     effects: HashMap<i32, String>,
     preview: RefCell<Option<super::menu_preview::Pal4MenuPreview>>,
+    slots: RefCell<Vec<(i32, String)>>,
+    scratch: RefCell<String>,
+    audio_mix: std::sync::Arc<crate::audio_mix::AudioMix>,
+    persist_audio: Cell<bool>,
 }
 
 ComObject_Pal4MenuState!(super::Pal4MenuState);
 
 impl Pal4MenuState {
     pub fn create(session: Rc<RefCell<Pal4Session>>) -> ComRc<IPal4MenuState> {
+        Self::create_internal(
+            session,
+            std::sync::Arc::new(crate::audio_mix::AudioMix::default()),
+            false,
+        )
+    }
+
+    fn create_internal(
+        session: Rc<RefCell<Pal4Session>>,
+        audio_mix: std::sync::Arc<crate::audio_mix::AudioMix>,
+        persist_audio: bool,
+    ) -> ComRc<IPal4MenuState> {
         let catalog = session.borrow().catalog();
         let descriptions = catalog
             .properties
@@ -49,7 +65,18 @@ impl Pal4MenuState {
             effects,
             preview: RefCell::new(None),
             available: Cell::new(false),
+            slots: RefCell::new(Vec::new()),
+            scratch: RefCell::new(String::new()),
+            audio_mix,
+            persist_audio: Cell::new(persist_audio),
         })
+    }
+
+    pub(crate) fn create_with_audio(
+        session: Rc<RefCell<Pal4Session>>,
+        audio_mix: std::sync::Arc<crate::audio_mix::AudioMix>,
+    ) -> ComRc<IPal4MenuState> {
+        Self::create_internal(session, audio_mix, true)
     }
 
     pub fn set_available(&self, available: bool) {
@@ -121,6 +148,113 @@ impl Pal4MenuState {
 }
 
 impl IPal4MenuStateImpl for Pal4MenuState {
+    fn refresh_slots(&self) {
+        use super::states::persistent_state::Pal4PersistentState;
+        let app_name = self.session.borrow().app_name().to_owned();
+        let slots = (1..=Pal4PersistentState::SLOT_COUNT)
+            .map(|slot| {
+                let path = Pal4PersistentState::slot_path(&app_name, slot);
+                match Pal4PersistentState::load(&app_name, slot) {
+                    Ok(state) if !state.scene_name().is_empty() => {
+                        let level = state.player(state.leader()).map_or(0, |p| p.level);
+                        let time = state.play_seconds() as i32;
+                        (
+                            1,
+                            format!(
+                                "{slot:02}   {} / {}   Lv.{level}   {:02}:{:02}:{:02}",
+                                state.scene_name(),
+                                state.block_name(),
+                                time / 3600,
+                                time / 60 % 60,
+                                time % 60
+                            ),
+                        )
+                    }
+                    Err(_) if !path.exists() => (0, format!("{slot:02}   空白存档")),
+                    _ => (2, format!("{slot:02}   存档损坏或无法读取")),
+                }
+            })
+            .collect();
+        *self.slots.borrow_mut() = slots;
+    }
+
+    fn slot_state(&self, slot: i32) -> i32 {
+        self.slots
+            .borrow()
+            .get(slot.wrapping_sub(1) as usize)
+            .map_or(0, |s| s.0)
+    }
+
+    fn slot_summary(&self, slot: i32) -> &str {
+        *self.scratch.borrow_mut() = self
+            .slots
+            .borrow()
+            .get(slot.wrapping_sub(1) as usize)
+            .map_or_else(String::new, |s| s.1.clone());
+        // The COM adapter copies this string before the next accessor call.
+        unsafe { (*self.scratch.as_ptr()).as_str() }
+    }
+
+    fn system_action(&self, action: i32, slot: i32) -> bool {
+        use super::{session::SystemAction, states::persistent_state::Pal4PersistentState};
+        if !self.available.get() || !self.action_allowed(6) {
+            return false;
+        }
+        let valid_slot = (1..=Pal4PersistentState::SLOT_COUNT).contains(&slot);
+        let action = match action {
+            0 if valid_slot => SystemAction::Save(slot),
+            1 if valid_slot && self.slot_state(slot) == 1 => SystemAction::Load(slot),
+            2 => SystemAction::Title,
+            3 => SystemAction::Exit,
+            _ => return false,
+        };
+        self.session.borrow().request_system_action(action)
+    }
+
+    fn system_busy(&self) -> bool {
+        self.session.borrow().system_busy()
+    }
+
+    fn system_message(&self) -> &str {
+        *self.scratch.borrow_mut() = self.session.borrow().system_message().to_owned();
+        unsafe { (*self.scratch.as_ptr()).as_str() }
+    }
+
+    fn audio_volume(&self, music: bool) -> f32 {
+        if music {
+            self.audio_mix.music()
+        } else {
+            self.audio_mix.sound()
+        }
+    }
+
+    fn set_audio_volume(&self, music: bool, volume: f32) -> bool {
+        if !self.action_allowed(6) {
+            return false;
+        }
+        if music {
+            self.audio_mix.set_music(volume)
+        } else {
+            self.audio_mix.set_sound(volume)
+        }
+    }
+
+    fn save_audio_settings(&self) -> bool {
+        if !self.persist_audio.get() || !self.action_allowed(6) {
+            return false;
+        }
+        let mut config = crate::config::YaobowConfig::load();
+        config.audio.music_volume = self.audio_mix.music();
+        config.audio.sound_volume = self.audio_mix.sound();
+        match config.save() {
+            Ok(()) => true,
+            Err(error) => {
+                log::error!("Cannot save PAL4 audio settings: {error}");
+                false
+            }
+        }
+    }
+
     fn preview_texture(&self, id: i32, width: f32, height: f32, yaw: f32) -> i32 {
         let tab = self.active_tab();
         if !(1..=2).contains(&tab) || !self.action_allowed(tab) {
@@ -141,7 +275,7 @@ impl IPal4MenuStateImpl for Pal4MenuState {
         self.session.borrow().menu_tab().unwrap_or(-1)
     }
     fn tab_enabled(&self, tab: i32) -> bool {
-        (0..=2).contains(&tab) && self.session.borrow().state().menu_enabled(tab)
+        matches!(tab, 0..=2 | 6) && self.session.borrow().state().menu_enabled(tab)
     }
     fn open(&self, tab: i32) -> bool {
         let session = self.session.borrow();

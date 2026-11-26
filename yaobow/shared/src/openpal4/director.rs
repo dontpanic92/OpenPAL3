@@ -424,11 +424,15 @@ impl OpenPAL4Director {
     /// scenes attach the same scripted controller. Idempotent; the
     /// last call wins.
     pub fn set_actor_controller_factory(&self, factory: ComRc<super::comdef::IPal4ScriptFactory>) {
-        let (session, input) = {
+        let (session, input, audio_mix) = {
             let vm = self.vm.borrow();
-            (vm.vm_context.session_handle(), vm.vm_context.input.clone())
+            (
+                vm.vm_context.session_handle(),
+                vm.vm_context.input.clone(),
+                vm.vm_context.loader.audio_mix(),
+            )
         };
-        let state = super::menu_state::Pal4MenuState::create(session.clone());
+        let state = super::menu_state::Pal4MenuState::create_with_audio(session.clone(), audio_mix);
         let input = radiance_scripting::services::input::InputService::create(input);
         let menu = factory.make_pal4_game_menu(state.clone(), input);
         session.borrow().set_menu_host_available(true);
@@ -529,6 +533,12 @@ impl OpenPAL4Director {
     /// `Pal4VmContext`), so they are persisted automatically. Negative
     /// slots are ignored by `Pal4PersistentState::save`.
     pub fn save_state(&self, slot: i32) {
+        if let Err(error) = self.try_save_state(slot) {
+            log::error!("Cannot save slot {slot}: {error}");
+        }
+    }
+
+    pub(crate) fn try_save_state(&self, slot: i32) -> anyhow::Result<()> {
         let mut vm = self.vm.borrow_mut();
         let globals = vm.g.borrow().globals_snapshot();
 
@@ -538,7 +548,48 @@ impl OpenPAL4Director {
         let camera = app.camera_transform();
 
         app.session_mut()
-            .save_runtime(slot, position, direction, camera, globals);
+            .try_save_runtime(slot, position, direction, camera, globals)
+    }
+
+    pub(crate) fn system_available(&self) -> bool {
+        let vm = self.vm.borrow();
+        vm.is_idle()
+            && !vm.vm_context.is_player_locked()
+            && !vm.vm_context.movie_playing()
+            && vm.vm_context.session().menu_tab() == Some(6)
+            && vm.vm_context.session().state().menu_enabled(6)
+    }
+
+    pub(crate) fn restore_menu_save(
+        &self,
+        state: super::states::persistent_state::Pal4PersistentState,
+        slot: i32,
+        next: ComRc<radiance::comdef::IDirector>,
+    ) -> Option<ComRc<radiance::comdef::IDirector>> {
+        use super::transition::{Pal4TransitionAction, Pal4TransitionDirector};
+        if let Some(overlay) = self.loading_overlay_template() {
+            self.transition_handoff.set(true);
+            return Some(ComRc::from_object(Pal4TransitionDirector::new(
+                overlay,
+                self.vm_handle(),
+                next,
+                Pal4TransitionAction::RestoreMenuSave {
+                    state: Box::new(state),
+                    slot,
+                },
+                self.actor_controller_factory_template(),
+            )));
+        }
+        let mut swap = super::transition::Pal4SceneSwap::new(
+            self.vm_handle(),
+            state.scene_name().to_owned(),
+            state.block_name().to_owned(),
+            state.sub_block_name().to_owned(),
+            self.actor_controller_factory_template(),
+        );
+        while !swap.step().1 {}
+        super::transition::finish_menu_restore(&self.vm, state, slot, swap.had_error());
+        None
     }
 
     /// Restore game state from `slot`, reloading the saved scene and

@@ -259,6 +259,15 @@ impl Pal4VmContext {
 
     pub fn update(&mut self, delta_sec: f32) {
         let _timer = radiance::perf::timer("pal4.app_context.update_total_ns");
+        if let Some(source) = self.bgm_source.as_mut() {
+            source.update();
+        }
+        for source in self.sound_sources.values_mut() {
+            source.update();
+        }
+        if let Some(source) = self.voice_source.as_mut() {
+            source.update();
+        }
         radiance::perf::gauge(
             "pal4.app_context.moving_entities",
             self.moving_entities.borrow().len() as u64,
@@ -1041,7 +1050,11 @@ impl Pal4VmContext {
         self.stop_bgm();
 
         let data = self.loader.load_music(&normalized)?;
-        let mut source = self.audio_engine.create_source();
+        let mut source = crate::audio_mix::mixed_source(
+            self.audio_engine.create_source(),
+            self.loader.audio_mix(),
+            crate::audio_mix::AudioChannel::Music,
+        );
         source.set_data(data, radiance::audio::Codec::Mp3);
         source.play(true);
 
@@ -1415,7 +1428,11 @@ impl Pal4VmContext {
         };
 
         let data = self.loader.load_sound(name, ext)?;
-        let mut source = self.audio_engine.create_source();
+        let mut source = crate::audio_mix::mixed_source(
+            self.audio_engine.create_source(),
+            self.loader.audio_mix(),
+            crate::audio_mix::AudioChannel::Sound,
+        );
         source.set_data(data, codec);
         source.play(looping);
 

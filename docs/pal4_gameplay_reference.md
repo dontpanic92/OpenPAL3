@@ -628,3 +628,35 @@ session screenshots, not committed as game assets.
 The original resize attempt targeted a helper window. Follow-up validation
 selects the nonzero-client game HWND and confirms live model-preview resizing
 to 1600x900, including save/reload and drag rotation without descriptor errors.
+
+### Native System menu and save/load
+
+The System toolbar entry uses the shipped `SystemSetting.xml` and
+`CommonDialog.xml` artwork. `SaveWindow0` and `BtnData0..9` define 100 slots,
+ten per page; the title load screen now pages the same range. Rows distinguish
+empty, readable, and corrupt/unreadable saves and show scene/block, leader
+level, and accumulated playtime. Debug hotkeys still address slots 1–4.
+Save previews and battle-specific settings are not fabricated.
+
+Overwrite, load, return-to-title, and quit require an explicit native checkmark
+click. Escape cancels the top modal without closing the menu; Space/Enter
+does not accept a destructive default. Pending operations and modal/slider
+capture block toolbar/close click-through. Music and sound sliders update
+separate mixer channels (sound includes voice and spatial ambience), persist
+on release, and retain the existing global master gain. Escape during a drag
+restores its original gain. The shared mixer preserves PAL3's existing API.
+
+System actions are queued and drained from app pre-update, outside UI/VM
+borrows, including launches without an agent server. Saves serialize and sync
+a sibling temporary file before publishing; errors remain visible and do not
+silently replace the old slot. In-game loads stage the replacement scene under
+the loading overlay before applying saved state/globals. The outgoing scene
+stays loaded until commit: `pop_scene()` unloads and clears its entities, so
+pushing it back after a failed stage is not a valid rollback.
+
+Focused tests cover paging, slot classification, confirmations, input capture,
+volume isolation/persistence errors, single-flight gating, and save publication
+failure. Live original-asset checks use isolated saves/configuration to exercise
+creation, overwrite cancel/accept, successful position restoration, failed
+scene loading with the original world still rendered, unwritable destinations,
+audio persistence, and return-to-title. Existing user saves are not overwritten.

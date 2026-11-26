@@ -1,7 +1,7 @@
 //! `Pal4TransitionDirector` — the single owner of every PAL4 scene
 //! transition.
 //!
-//! Three flows route through here:
+//! These flows route through here:
 //!
 //! - **Menu → New Game** (`enter_new_game`): no scene preload; just
 //!   paints the loading layout while the story director's opening
@@ -14,6 +14,8 @@
 //!   camera, player-lock state). The story director's idle VM is left
 //!   idle: its `activate` notices the now-populated session scene
 //!   name and skips the new-game opening kick.
+//! - **System → Load Game**: stages the saved scene before replacing
+//!   the live session. A failed stage leaves the loaded world intact.
 //! - **In-game `giArenaLoad` / world-map jump**: the story director,
 //!   on detecting `session.has_pending_scene_load()`, builds a
 //!   transition with itself as the `next` director. The transition
@@ -67,8 +69,34 @@ const PAINT_TIMEOUT_SECS: f32 = 0.1;
 /// hold honest at any frame rate up to 30 FPS.
 const HOLD_DT_CAP: f32 = 1.0 / 30.0;
 
+pub(crate) fn finish_menu_restore(
+    vm: &Rc<RefCell<ScriptVm<Pal4VmContext>>>,
+    state: super::states::persistent_state::Pal4PersistentState,
+    slot: i32,
+    failed: bool,
+) {
+    let mut vm = vm.borrow_mut();
+    if failed {
+        vm.vm_context_mut()
+            .session_mut()
+            .finish_system_action("读取场景失败，已保留当前进度。".into());
+        return;
+    }
+    vm.abort_script();
+    vm.vm_context_mut().dialog_box.close();
+    let snapshot = vm.vm_context_mut().session_mut().restore_saved_state(state);
+    vm.g.borrow_mut().restore_globals(&snapshot.script_globals);
+    OpenPAL4Director::apply_snapshot(vm.vm_context_mut(), &snapshot);
+    vm.vm_context.session().close_menu();
+    log::info!("Game loaded from slot {slot} (System menu)");
+}
+
 /// What the transition is supposed to do during its `Loading` phase.
 pub enum Pal4TransitionAction {
+    RestoreMenuSave {
+        state: Box<super::states::persistent_state::Pal4PersistentState>,
+        slot: i32,
+    },
     /// Menu → New Game. No scene preload — the story director's
     /// opening script (function 0) arms its own `giArenaLoad` on
     /// its first tick, which triggers a second transition that
@@ -182,6 +210,10 @@ ComObject_Pal4TransitionDirector!(super::Pal4TransitionDirector);
 /// tick the multi-stage swap completes. Detangles drain (one-shot)
 /// from fan-out (deferred until after the stepped load).
 enum PostLoadFanout {
+    RestoreMenuSave {
+        state: Box<super::states::persistent_state::Pal4PersistentState>,
+        slot: i32,
+    },
     /// No scene was loaded (`EnterStoryNew`, or
     /// `EnterStoryFromSave` with an empty saved scene) — nothing to
     /// do after Loading. The transition still passes through the
@@ -203,7 +235,7 @@ enum PostLoadFanout {
 }
 
 /// Multi-tick staged version of [`swap_pal4_scene`]. Wraps the same
-/// pop-scene → load → install → session-state-set → leader/lock
+/// load → pop-scene → install → session-state-set → leader/lock
 /// fan-out, but pumps the load through a [`Pal4SceneLoader`] one
 /// stage per `step()` call so the loading overlay's progress bar
 /// can advance between stages. The one-shot
@@ -215,8 +247,8 @@ pub(crate) struct Pal4SceneSwap {
     block_name: String,
     /// Gameplay-data sub-block; empty ≡ same as `block_name`.
     sub_block_name: String,
-    // Lazily built on the first `step()` (after the pre-load
-    // pop-scene), then stepped to completion. Reset to `None` after
+    // Lazily built on the first `step()`, then stepped to completion.
+    // Reset to `None` after
     // the final install + fan-out.
     loader: Option<Pal4SceneLoader>,
     // Error from any stage, surfaced on the next `step()` so the
@@ -257,9 +289,9 @@ impl Pal4SceneSwap {
         }
     }
 
-    /// Step one stage of the swap. The first call pops the outgoing
-    /// scene and builds the `Pal4SceneLoader`. Subsequent calls each
-    /// run one `Pal4SceneLoader::step()`. The final call installs the
+    /// Step one stage of the swap. The first call builds the
+    /// `Pal4SceneLoader` without unloading the outgoing scene.
+    /// Subsequent calls each run one loader step. The final call installs the
     /// new scene + session state and sets `finished`. Returns
     /// `(fraction, finished)` where `fraction ∈ [0, 1]` is the
     /// post-stage progress and `finished` becomes `true` exactly
@@ -277,36 +309,18 @@ impl Pal4SceneSwap {
                 self.block_name,
                 err
             );
-            // The outgoing scene was popped before the (now failed)
-            // load, and `scene_cell` still holds it because we only
-            // overwrite on success. Push it back so the player keeps a
-            // playable world instead of an empty one with no NPCs,
-            // objects or collision.
-            let (scene_manager, scene_cell) = {
-                let vm = self.vm.borrow();
-                let app = vm.vm_context();
-                (app.scene_manager.clone(), app.scene.clone())
-            };
-            let previous = scene_cell.borrow().scene.clone();
-            scene_manager.push_scene(previous);
             self.finished = true;
             return (1.0, true);
         }
 
-        // First step: drain VM-context handles, pop the outgoing
-        // scene, build the loader. Counted as a stage so the bar
-        // advances visibly off zero.
+        // Keep the outgoing scene loaded until commit: pop_scene unloads
+        // and clears its entities, so pushing it again cannot roll back.
         if self.loader.is_none() {
-            let (asset_loader, input, scene_manager) = {
+            let (asset_loader, input) = {
                 let vm = self.vm.borrow();
                 let app = vm.vm_context();
-                (
-                    app.loader.clone(),
-                    app.input.clone(),
-                    app.scene_manager.clone(),
-                )
+                (app.loader.clone(), app.input.clone())
             };
-            let _ = scene_manager.pop_scene();
             self.loader = Some(Pal4SceneLoader::new(
                 asset_loader,
                 input,
@@ -348,6 +362,7 @@ impl Pal4SceneSwap {
                         .inner::<super::game_context::Pal4GameContext>()
                         .set_session(Rc::downgrade(&session));
                 }
+                let _ = scene_manager.pop_scene();
                 *scene_cell.borrow_mut() = scene;
                 scene_manager.push_scene(scene_root);
 
@@ -429,6 +444,16 @@ impl Pal4TransitionDirector {
             None => return,
         };
         match action {
+            Pal4TransitionAction::RestoreMenuSave { state, slot } => {
+                *self.swap.borrow_mut() = Some(Pal4SceneSwap::new(
+                    self.vm.clone(),
+                    state.scene_name().to_owned(),
+                    state.block_name().to_owned(),
+                    state.sub_block_name().to_owned(),
+                    self.factory.clone(),
+                ));
+                *self.post_load.borrow_mut() = PostLoadFanout::RestoreMenuSave { state, slot };
+            }
             Pal4TransitionAction::EnterStoryNew => {
                 // No scene load; PAINTING/HOLDING still run.
                 *self.post_load.borrow_mut() = PostLoadFanout::None;
@@ -503,6 +528,9 @@ impl Pal4TransitionDirector {
             .map(|s| s.had_error())
             .unwrap_or(false);
         match fanout {
+            PostLoadFanout::RestoreMenuSave { state, slot } => {
+                finish_menu_restore(&self.vm, *state, slot, had_error);
+            }
             PostLoadFanout::None => {}
             PostLoadFanout::ApplySnapshot { snapshot, slot } => {
                 if !had_error {
@@ -543,6 +571,16 @@ impl Pal4TransitionDirector {
         };
 
         match action {
+            Pal4TransitionAction::RestoreMenuSave { state, slot } => {
+                let failed = self
+                    .swap_scene(
+                        state.scene_name(),
+                        state.block_name(),
+                        state.sub_block_name(),
+                    )
+                    .is_err();
+                finish_menu_restore(&self.vm, *state, slot, failed);
+            }
             Pal4TransitionAction::EnterStoryNew => {
                 // No-op load: the story director's opening script
                 // arms its own `giArenaLoad` on its first tick and
@@ -750,6 +788,9 @@ impl IDirectorImpl for Pal4TransitionDirector {
         // same `(scene, block)` we will load. The destination is
         // best-effort: for `EnterStoryNew` we have none.
         let (scene, block) = match self.action.borrow().as_ref() {
+            Some(Pal4TransitionAction::RestoreMenuSave { state, .. }) => {
+                (state.scene_name().to_owned(), state.block_name().to_owned())
+            }
             Some(Pal4TransitionAction::EnterStoryFromSave { snapshot, .. }) => {
                 (snapshot.scene_name.clone(), snapshot.block_name.clone())
             }

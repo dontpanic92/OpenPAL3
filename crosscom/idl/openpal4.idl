@@ -143,6 +143,16 @@ interface IPal4MenuState: IUnknown {
     bool use_item(int role, int id);
     // Queue an isolated model preview; returns 0 until the next update has rendered it.
     int preview_texture(int id, float width, float height, float yaw);
+    void refresh_slots();
+    int slot_state(int slot);
+    &str slot_summary(int slot);
+    // Save, load, return to title, quit. Queued outside the UI/VM borrow.
+    bool system_action(int action, int slot);
+    bool system_busy();
+    &str system_message();
+    float audio_volume(bool music);
+    bool set_audio_volume(bool music, float volume);
+    bool save_audio_settings();
 }
 [uuid(d8800081-5242-4c84-a965-c48c94c81102)]
 class Pal4MenuState: IPal4MenuState {}
@@ -275,9 +285,7 @@ interface IPal4Service: IUnknown {
 
     IUiLayoutHandle? open_layout(&str vfs_path);
 
-    // Number of save slots surfaced by the start-menu load screen.
-    // Fixed at 4 to mirror the in-game Num1-Num4 / Num5-Num8 hotkey
-    // slots.
+    // Native 100-slot browser; debug hotkeys still address slots 1–4.
     int save_slot_count();
 
     // True when `<save_dir>/OpenPAL4/Save/<slot>.json` exists and
