@@ -768,6 +768,9 @@ interface IUiHost: IUnknown {
     //   button 0 = left, 1 = right, 2 = middle
     bool is_item_hovered();
     bool mouse_down(int button);
+    bool mouse_clicked(int button);
+    // Monotonic UI milliseconds, wrapping at 2^31.
+    int time_milliseconds();
     float mouse_drag_delta_x(int button);
     float mouse_drag_delta_y(int button);
     void reset_mouse_drag_delta(int button);
@@ -860,6 +863,13 @@ interface IUiHost: IUnknown {
     void image_rect(int texture_com_id,
                     float x0, float y0, float x1, float y1,
                     float u0, float v0, float u1, float v1);
+
+    // Vulkan foreground, viewport-clipped SRC_ALPHA/ONE overlay, after ordinary UI.
+    // Other rendering backends omit these overlays.
+    void image_rect_additive(int texture_com_id,
+                    float x0, float y0, float x1, float y1,
+                    float u0, float v0, float u1, float v1,
+                    float r, float g, float b, float a);
 
     // Draw `s` at absolute position `[x,y]` (top-left) in colour
     // `r,g,b,a`, using the registered LARGE game font (the PAL3 in-game

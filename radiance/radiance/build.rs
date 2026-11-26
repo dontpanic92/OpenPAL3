@@ -10,6 +10,8 @@ fn main() {
     let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap();
     match target_os.as_str() {
         "windows" | "linux" | "macos" | "android" => {
+            build_vulkan_shader("ui_additive.vert");
+            build_vulkan_shader("ui_additive.frag");
             build_vulkan_shader("simple_triangle.vert");
             build_vulkan_shader("simple_triangle.frag");
             build_vulkan_shader("lightmap_texture.vert");

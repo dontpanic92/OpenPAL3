@@ -1,6 +1,7 @@
 #[cfg_attr(any(android, vita), path = "clipboard_nop.rs")]
 mod clipboard;
 
+pub mod additive;
 mod mouse;
 mod platform;
 mod texture_resolver;
@@ -229,6 +230,7 @@ impl ImguiContext {
     }
 
     pub fn draw_ui<F: FnOnce(&Ui)>(&self, delta_sec: f32, draw: F) -> ImguiFrame {
+        additive::take_images();
         self.update_delta_time(delta_sec);
         self.platform.borrow_mut().new_frame();
 

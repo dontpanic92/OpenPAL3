@@ -722,6 +722,10 @@ fn menu_data() -> StatsData {
 }
 
 fn menu_data_with_items(items: &[(u32, &str, u8)]) -> StatsData {
+    menu_data_with_scopes(items, &[])
+}
+
+fn menu_data_with_scopes(items: &[(u32, &str, u8)], party_items: &[u32]) -> StatsData {
     let mut database = vec![0u8; 0xa0 + items.len() * 800];
     let magic = b"__PAL(Softstar_Ltd: Cool_J)_GameDataBase_OutFile__";
     database[..magic.len()].copy_from_slice(magic);
@@ -735,7 +739,7 @@ fn menu_data_with_items(items: &[(u32, &str, u8)]) -> StatsData {
         record[0x260..0x264].copy_from_slice(&17i32.to_le_bytes());
         record[0x264] = *category;
         if *category == 1 {
-            record[0x275] = 1;
+            record[0x275] = if party_items.contains(id) { 2 } else { 1 };
             record[0x276] = 3;
             record[0x284..0x286].copy_from_slice(&20i16.to_le_bytes());
         }
@@ -894,6 +898,323 @@ fn explicit_menu_actions_target_items_and_transfer_equipment_only_on_release() {
     );
     assert_eq!(state.borrow().inventory().quantity(9001), 1);
     assert_eq!(state.borrow().inventory().quantity(82201), 1);
+}
+
+#[test]
+fn native_inventory_click_clock_matches_polled_release_boundaries() {
+    let host = ScriptHost::new();
+    host.set_script_assets(install_script_assets());
+    host.load_source(
+        r#"
+        import yaobow.openpal3.state_menu;
+        pub fn make() -> &state_menu.MenuState { state_menu.make_menu() }
+        pub fn tick(menu: &state_menu.MenuState, now: int, down: bool) -> bool {
+            menu.tick(now, down)
+        }
+    "#,
+    )
+    .unwrap();
+    for (idle, expected) in [(99, true), (100, true), (101, false)] {
+        for hold in [10, 1000] {
+            let menu = host.call_returning_data("make", vec![]).unwrap();
+            let tick = |now, down| {
+                host.call_returning_data(
+                    "tick",
+                    vec![menu.clone(), Data::Int(now), Data::Int(down as i64)],
+                )
+                .unwrap()
+            };
+            assert_eq!(tick(1000, false), Data::Int(0));
+            assert_eq!(tick(1010, true), Data::Int(0));
+            tick(1010 + hold, false);
+            tick(1010 + hold + idle, false);
+            assert_eq!(tick(1011 + hold + idle, true), Data::Int(expected as i64));
+            assert_eq!(
+                tick(1020 + hold + idle, true),
+                Data::Int(0),
+                "holding never repeats a click"
+            );
+        }
+    }
+    let menu = host.call_returning_data("make", vec![]).unwrap();
+    let tick = |now, down| {
+        host.call_returning_data(
+            "tick",
+            vec![menu.clone(), Data::Int(now), Data::Int(down as i64)],
+        )
+        .unwrap()
+    };
+    tick(2147483600, false);
+    tick(2147483610, true);
+    tick(2147483620, false);
+    assert_eq!(
+        tick(20, true),
+        Data::Int(1),
+        "the clock wraps without losing the click cycle"
+    );
+    tick(30, false);
+    assert_eq!(
+        tick(500, true),
+        Data::Int(1),
+        "a third click remains second-state; expiry is polled only while released"
+    );
+}
+
+#[test]
+fn native_inventory_second_click_targets_reuses_and_cancels_without_consuming_invalid_actions() {
+    let host = ScriptHost::new();
+    host.set_script_assets(install_script_assets());
+    host.load_source(
+        r#"
+        import radiance;
+        import shared.openpal3;
+        import yaobow.openpal3.state_menu;
+        pub fn make() -> &state_menu.MenuState { state_menu.make_menu() }
+        pub fn second(menu: &state_menu.MenuState) -> bool {
+            menu.tick(1000, true); menu.tick(1010, false); menu.tick(1020, true)
+        }
+        pub fn clock(menu: &state_menu.MenuState, now: int) -> bool { menu.tick(now, false) }
+        pub fn frame(menu: &state_menu.MenuState, ui: &radiance.IUiHost,
+            atlas: &openpal3.IPal3UiAtlas, game: &openpal3.IPal3MenuState,
+            x: float, y: float, press: bool, release: bool, down: bool) -> bool {
+            menu.paint(ui, atlas, game, x, y, press, release, down)
+        }
+    "#,
+    )
+    .unwrap();
+    let (recorder, ui) = RecordingUiHost::create();
+    recorder.set_display_size(1600, 900);
+    let data = Rc::new(menu_data_with_scopes(
+        &[
+            (42, "Medicine", 1),
+            (43, "Other", 1),
+            (44, "Party medicine", 1),
+        ],
+        &[44],
+    ));
+    let state = Rc::new(RefCell::new(PersistentState::new("test".into())));
+    {
+        let mut state = state.borrow_mut();
+        state.party_mut().set_in_team(1, true);
+        state.stats_mut().set_resource(0, Resource::Hp, 12, &data);
+        state.add_item(42, 5, &data);
+        state.add_item(43, 2, &data);
+    }
+    let ui_id = host.intern(ui);
+    let atlas_id = host.intern(ComRc::<IPal3UiAtlas>::from_object(TestAtlas));
+    let service = Pal3MenuState::create(state.clone(), Some(data.clone()));
+    let game_id = host.intern(service.clone());
+    let ui = host.foreign_box("radiance.comdef.IUiHost", ui_id).unwrap();
+    let atlas = host
+        .foreign_box("shared.openpal3.comdef.IPal3UiAtlas", atlas_id)
+        .unwrap();
+    let game = host
+        .foreign_box("shared.openpal3.comdef.IPal3MenuState", game_id)
+        .unwrap();
+    let menu = host.call_returning_data("make", vec![]).unwrap();
+    let frame = |x: f64, y: f64, press: bool, release: bool, down: bool| {
+        recorder.calls.borrow_mut().clear();
+        host.call_returning_data(
+            "frame",
+            vec![
+                menu.clone(),
+                ui.clone(),
+                atlas.clone(),
+                game.clone(),
+                Data::Float(200. + x * 1.5),
+                Data::Float(y * 1.5),
+                Data::Int(press as i64),
+                Data::Int(release as i64),
+                Data::Int(down as i64),
+            ],
+        )
+        .unwrap();
+    };
+    let click = |x, y| {
+        frame(x, y, true, false, true);
+        frame(x, y, false, true, false);
+    };
+    let second_click = |x, y| {
+        host.call_returning_data("second", vec![menu.clone()])
+            .unwrap();
+        frame(x, y, true, false, true);
+        frame(x, y, false, true, false);
+    };
+    let armed = || {
+        recorder.calls.borrow().iter().any(|call| {
+            matches!(
+                call, UiCall::TextAt { s, .. } if s == "双击队员使用（右键取消）"
+            )
+        })
+    };
+    let hp = || state.borrow().stats().character(0).unwrap().current().hp;
+    click(180., 570.);
+    click(300., 208.);
+    assert!(!armed(), "a single click selects without arming");
+    second_click(300., 208.);
+    assert!(armed());
+    assert_eq!(
+        service.inner::<Pal3MenuState>().take_menu_sounds(),
+        ["wa002"]
+    );
+    assert!(
+        recorder.calls.borrow().iter().any(|call| matches!(
+            call, UiCall::ImageRect { texture_com_id, x0, y0, x1, y1, .. }
+            if *texture_com_id == sprite_id("ui/GameMainUI/Communal/NeedArrow.tga")
+                && (*x0, *y0, *x1, *y1) == (1274., 244.5, 1311.5, 285.)
+        )),
+        "the native arrow uses the letterboxed portrait geometry"
+    );
+    for (time, y) in [
+        (1036, 6),
+        (1037, 4),
+        (2000, 4),
+        (2037, 2),
+        (2038, 2),
+        (2075, 0),
+        (2076, 0),
+        (2113, 2),
+    ] {
+        host.call_returning_data("clock", vec![menu.clone(), Data::Int(time)])
+            .unwrap();
+        frame(0., 0., false, false, false);
+        assert!(
+            recorder.calls.borrow().iter().any(|call| matches!(
+                call, UiCall::ImageRect { texture_com_id, y0, .. }
+                if *texture_com_id == sprite_id("ui/GameMainUI/Communal/NeedArrow.tga")
+                    && *y0 == (157. + y as f32) * 1.5
+            )),
+            "the arrow takes one two-pixel step only after >36ms, without catch-up"
+        );
+    }
+    assert_eq!(state.borrow().inventory().quantity(42), 5);
+    click(300., 234.);
+    click(740., 100.);
+    assert_eq!(hp(), 12, "single target clicks do not apply native actions");
+    second_click(740., 210.);
+    assert_eq!(
+        service.inner::<Pal3MenuState>().take_menu_sounds(),
+        ["wa004"]
+    );
+    assert!(
+        !recorder
+            .calls
+            .borrow()
+            .iter()
+            .any(|call| matches!(call, UiCall::AdditiveImage { .. }))
+    );
+    assert_eq!(
+        state.borrow().inventory().quantity(42),
+        5,
+        "a full target does not consume"
+    );
+    assert!(armed(), "another injured member remains eligible");
+    second_click(740., 100.);
+    assert!(
+        service
+            .inner::<Pal3MenuState>()
+            .take_menu_sounds()
+            .is_empty(),
+        "normal successful use adds no invented sound"
+    );
+    assert_eq!(
+        recorder
+            .calls
+            .borrow()
+            .iter()
+            .filter(|call| matches!(call,
+                UiCall::AdditiveImage { texture_com_id, rect, uv, color }
+                if *texture_com_id == sprite_id("ui/GameMainUI/Par_Effect/spark.tga")
+                    && (rect[2] - rect[0], rect[3] - rect[1]) == (48., 48.)
+                    && *uv == [0.125,0.25,0.75,0.875]
+                    && color[0] >= 168. / 255. && color[1] >= 168. / 255. && color[2] < 38. / 255.
+            ))
+            .count(),
+        24,
+        "twelve rising/falling pairs use the shipped spark and HP tint"
+    );
+    assert_eq!(hp(), 32);
+    assert_eq!(
+        state.borrow().inventory().quantity(42),
+        4,
+        "locked lists retain the original item"
+    );
+    assert_eq!(state.borrow().inventory().quantity(43), 2);
+    second_click(740., 100.);
+    assert_eq!(hp(), 52);
+    assert_eq!(state.borrow().inventory().quantity(42), 3);
+    assert!(armed(), "native targeting persists across successful uses");
+    recorder.mouse_clicked_buttons.borrow_mut()[1] = true;
+    frame(300., 208., false, false, false);
+    recorder.mouse_clicked_buttons.borrow_mut()[1] = false;
+    assert!(
+        service
+            .inner::<Pal3MenuState>()
+            .take_menu_sounds()
+            .is_empty(),
+        "right-click cancellation is silent"
+    );
+    assert!(!armed());
+    second_click(740., 100.);
+    assert_eq!(hp(), 52, "right-click cancellation prevents subsequent use");
+    second_click(300., 208.);
+    assert!(armed());
+    for _ in 0..3 {
+        state.borrow_mut().remove_item(42, &data);
+    }
+    second_click(740., 100.);
+    assert_eq!(
+        hp(),
+        52,
+        "inventory changes invalidate the pinned target item"
+    );
+    assert_eq!(state.borrow().inventory().quantity(43), 2);
+    assert!(!armed());
+    state
+        .borrow_mut()
+        .stats_mut()
+        .set_resource(0, Resource::Hp, 9999, &data);
+    second_click(300., 208.);
+    assert!(!armed(), "no eligible member means no targeting mode");
+    let maximum = hp();
+    state
+        .borrow_mut()
+        .stats_mut()
+        .set_resource(0, Resource::Hp, maximum - 1, &data);
+    second_click(300., 208.);
+    second_click(740., 100.);
+    assert_eq!(hp(), maximum);
+    assert_eq!(state.borrow().inventory().quantity(43), 1);
+    assert!(
+        !armed(),
+        "targeting ends when nobody benefits, even with stock left"
+    );
+    state
+        .borrow_mut()
+        .stats_mut()
+        .set_resource(0, Resource::Hp, 12, &data);
+    second_click(300., 208.);
+    second_click(740., 100.);
+    assert_eq!(hp(), 32);
+    assert_eq!(state.borrow().inventory().quantity(43), 0);
+    assert!(!armed(), "exhausting stock ends targeting");
+    {
+        let mut state = state.borrow_mut();
+        state.add_item(44, 2, &data);
+        state.stats_mut().set_resource(1, Resource::Hp, 1, &data);
+    }
+    second_click(300., 208.);
+    second_click(740., 210.);
+    assert_eq!(hp(), 52, "party items affect every eligible member");
+    assert_eq!(
+        state.borrow().stats().character(1).unwrap().current().hp,
+        21
+    );
+    assert_eq!(
+        state.borrow().inventory().quantity(44),
+        1,
+        "one party application consumes one copy"
+    );
 }
 
 #[test]

@@ -239,6 +239,10 @@ interface IPal3MenuState: IUnknown {
     // Party-wide items require role -1. Failed actions never consume an item.
     bool can_use_item(int role, int id);
     bool use_item(int role, int id);
+    // Native deficit/condition recommendation; -1 when no target is eligible.
+    int item_target_hint(int id);
+    void play_item_menu_sound(bool accepted);
+    void paint_item_effects(IUiHost ui, IPal3UiAtlas atlas, int role, float x, float y, float scale);
     float music_volume();
     float sound_volume();
     // Applies immediately; false rejects a non-finite input.

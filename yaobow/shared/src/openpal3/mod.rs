@@ -7,6 +7,7 @@ pub mod comdef {
 }
 pub mod directors;
 pub mod loaders;
+mod menu_effects;
 pub(crate) mod menu_preview;
 pub mod menu_state;
 pub mod save_slots;

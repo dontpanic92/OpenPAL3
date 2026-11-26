@@ -966,6 +966,20 @@ impl IUiHostImpl for ImguiUiHost {
         .unwrap_or(false)
     }
 
+    fn mouse_clicked(&self, button: i32) -> bool {
+        with_frame("mouse_clicked", |f| {
+            f.ui.is_mouse_clicked(map_mouse_button(button))
+        })
+        .unwrap_or(false)
+    }
+
+    fn time_milliseconds(&self) -> i32 {
+        with_frame("time_milliseconds", |f| {
+            ((f.ui.time() * 1000.) as u64 & 0x7fffffff) as i32
+        })
+        .unwrap_or(0)
+    }
+
     fn mouse_drag_delta_x(&self, button: i32) -> f32 {
         with_frame("mouse_drag_delta_x", |f| {
             f.ui.mouse_drag_delta_with_button(map_mouse_button(button))[0]
@@ -1084,6 +1098,41 @@ impl IUiHostImpl for ImguiUiHost {
                 .uv_min([u0, v0])
                 .uv_max([u1, v1])
                 .build();
+        });
+    }
+
+    fn image_rect_additive(
+        &self,
+        texture_com_id: i32,
+        x0: f32,
+        y0: f32,
+        x1: f32,
+        y1: f32,
+        u0: f32,
+        v0: f32,
+        u1: f32,
+        v1: f32,
+        r: f32,
+        g: f32,
+        b: f32,
+        a: f32,
+    ) {
+        let _ = with_frame("image_rect_additive", |f| {
+            let texture = f
+                .textures
+                .borrow_mut()
+                .resolve(texture_com_id as i64)
+                .or_else(|| {
+                    (texture_com_id >= 0).then(|| imgui::TextureId::new(texture_com_id as usize))
+                });
+            let Some(texture) = texture else { return };
+            let s = if f.dpi_scale > 0.0 { f.dpi_scale } else { 1.0 };
+            radiance::imgui::additive::add_image(radiance::imgui::additive::AdditiveImage {
+                texture,
+                rect: [x0 * s, y0 * s, x1 * s, y1 * s],
+                uv: [u0, v0, u1, v1],
+                color: [r, g, b, a],
+            });
         });
     }
 

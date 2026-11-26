@@ -10,11 +10,15 @@ use std::{
 };
 use vk_mem::{Allocator, AllocatorCreateInfo};
 
+#[path = "ui_additive.rs"]
+mod ui_additive;
+
 pub struct ImguiRenderer {
     renderer: Renderer,
     descriptor_manager: Rc<DescriptorManager>,
     texture_id_set: HashSet<TextureId>,
     _device: Rc<Device>,
+    additive: ui_additive::AdditiveUi,
 }
 
 impl ImguiRenderer {
@@ -80,11 +84,21 @@ impl ImguiRenderer {
             .unwrap()
         };
 
+        let allocator = Rc::new(unsafe {
+            Allocator::new(AllocatorCreateInfo::new(
+                instance.vk_instance(),
+                device.vk_device(),
+                physical_device,
+            ))
+            .unwrap()
+        });
+        let additive = ui_additive::AdditiveUi::new(device.clone(), allocator, render_pass);
         Self {
             renderer,
             descriptor_manager,
             texture_id_set: HashSet::new(),
             _device: device.clone(),
+            additive,
         }
     }
 
@@ -115,7 +129,9 @@ impl ImguiRenderer {
     }
 
     pub fn set_render_pass(&mut self, render_pass: vk::RenderPass) -> RendererResult<()> {
-        self.renderer.set_render_pass(render_pass)
+        self.renderer.set_render_pass(render_pass)?;
+        self.additive.set_render_pass(render_pass);
+        Ok(())
     }
 
     /// Rebuild the GPU font-atlas texture from the (possibly mutated)
@@ -137,6 +153,7 @@ impl ImguiRenderer {
     }
 
     pub fn record_command_buffer(&mut self, frame: ImguiFrame, command_buffer: vk::CommandBuffer) {
+        let images = crate::imgui::additive::take_images();
         if !frame.frame_begun {
             return;
         }
@@ -149,6 +166,12 @@ impl ImguiRenderer {
         if draw_data.total_idx_count > 0 {
             self.renderer.cmd_draw(command_buffer, draw_data).unwrap();
         }
+        let descriptors = images
+            .iter()
+            .map(|image| self.renderer.textures().get(image.texture).copied())
+            .collect::<Vec<_>>();
+        self.additive
+            .draw(command_buffer, draw_data, &images, &descriptors);
     }
 }
 

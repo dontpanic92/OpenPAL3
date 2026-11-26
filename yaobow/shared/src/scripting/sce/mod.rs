@@ -378,6 +378,22 @@ impl SceState {
                 }
             }
         });
+        let sounds = self
+            .menu_state
+            .inner::<crate::openpal3::menu_state::Pal3MenuState>()
+            .take_menu_sounds();
+        for name in sounds {
+            match self.asset_mgr.load_snd_data(name) {
+                Ok(data) => {
+                    let mut source = self.global_state.create_sound_source();
+                    source.set_data(data, radiance::audio::Codec::Wav);
+                    source.play(false);
+                    self.global_state
+                        .add_sound_source(Rc::new(RefCell::new(source)));
+                }
+                Err(error) => log::warn!("Cannot load PAL3 item-menu sound {name}: {error}"),
+            }
+        }
         let elapsed = delta_sec.max(0.);
         if let Some((_, remaining)) = &mut self.mechanism_notice {
             *remaining -= elapsed;

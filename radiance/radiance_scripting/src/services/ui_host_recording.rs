@@ -196,6 +196,12 @@ pub enum UiCall {
         b: f32,
         a: f32,
     },
+    AdditiveImage {
+        texture_com_id: i32,
+        rect: [f32; 4],
+        uv: [f32; 4],
+        color: [f32; 4],
+    },
     ImageRect {
         texture_com_id: i32,
         x0: f32,
@@ -249,6 +255,8 @@ pub struct RecordingUiHost {
     /// across paint passes to simulate a press (down) then release (up).
     pub mouse_is_down: RefCell<bool>,
     pub mouse_wheel_delta: Cell<f32>,
+    pub mouse_clicked_buttons: RefCell<[bool; 5]>,
+    pub time_milliseconds: Cell<i32>,
     /// Optional scripted `mouse_down(_)` results, consumed front-to-back
     /// (one per call). When non-empty it takes precedence over
     /// `mouse_is_down`; when exhausted it falls back to `mouse_is_down`.
@@ -644,10 +652,7 @@ impl IUiHostImpl for HostFacade {
         self.inner.record(UiCall::TreePop);
     }
 
-    // Mouse-query methods are no-ops in the recording host: the
-    // recording UI is only used by tests that don't drive real mouse
-    // input, and returning fixed defaults keeps script-side branches
-    // predictable.
+    // Mouse queries default to inactive; tests can seed the input state.
     fn is_item_hovered(&self) -> bool {
         *self.inner.item_hovered.borrow()
     }
@@ -656,6 +661,17 @@ impl IUiHostImpl for HostFacade {
             return v;
         }
         *self.inner.mouse_is_down.borrow()
+    }
+    fn mouse_clicked(&self, button: i32) -> bool {
+        self.inner
+            .mouse_clicked_buttons
+            .borrow()
+            .get(button as usize)
+            .copied()
+            .unwrap_or(false)
+    }
+    fn time_milliseconds(&self) -> i32 {
+        self.inner.time_milliseconds.get()
     }
     fn mouse_drag_delta_x(&self, _button: i32) -> f32 {
         0.0
@@ -715,6 +731,30 @@ impl IUiHostImpl for HostFacade {
             v1,
         });
     }
+    fn image_rect_additive(
+        &self,
+        texture_com_id: i32,
+        x0: f32,
+        y0: f32,
+        x1: f32,
+        y1: f32,
+        u0: f32,
+        v0: f32,
+        u1: f32,
+        v1: f32,
+        r: f32,
+        g: f32,
+        b: f32,
+        a: f32,
+    ) {
+        self.inner.record(UiCall::AdditiveImage {
+            texture_com_id,
+            rect: [x0, y0, x1, y1],
+            uv: [u0, v0, u1, v1],
+            color: [r, g, b, a],
+        });
+    }
+
     fn text_at(&self, x: f32, y: f32, r: f32, g: f32, b: f32, a: f32, s: &str) {
         self.inner.record(UiCall::TextAt {
             x,

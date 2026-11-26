@@ -25,6 +25,8 @@ pub struct Pal3MenuState {
     audio_mix: Arc<Pal3AudioMix>,
     audio_persistence: AudioPersistence,
     preview: RefCell<Option<super::menu_preview::MenuPreview>>,
+    effects: RefCell<super::menu_effects::ItemEffects>,
+    sounds: RefCell<Vec<&'static str>>,
 }
 
 enum AudioPersistence {
@@ -94,6 +96,8 @@ impl Pal3MenuState {
             audio_mix,
             audio_persistence,
             preview: RefCell::new(None),
+            effects: RefCell::new(super::menu_effects::ItemEffects::default()),
+            sounds: RefCell::new(Vec::new()),
         })
     }
 
@@ -118,9 +122,16 @@ impl Pal3MenuState {
         open: bool,
         engine: &mut dyn radiance::rendering::RenderingEngine,
     ) {
+        if !open {
+            self.effects.borrow_mut().clear();
+        }
         if let Some(preview) = self.preview.borrow_mut().as_mut() {
             preview.render(open, engine);
         }
+    }
+
+    pub fn take_menu_sounds(&self) -> Vec<&'static str> {
+        std::mem::take(&mut *self.sounds.borrow_mut())
     }
 
     fn save_audio_settings(&self) -> bool {
@@ -190,9 +201,97 @@ impl IPal3MenuStateImpl for Pal3MenuState {
     }
 
     fn use_item(&self, role: i32, id: i32) -> bool {
-        self.data
-            .as_ref()
-            .is_some_and(|data| self.state.borrow_mut().use_item(role, id, data))
+        let Some(data) = self.data.as_ref() else {
+            return false;
+        };
+        let mut state = self.state.borrow_mut();
+        let roles: Vec<_> = state
+            .party()
+            .members()
+            .filter(|&member| {
+                (role == -1 || member == role)
+                    && state.can_use_item(if role == -1 { -1 } else { member }, id, data)
+            })
+            .collect();
+        if !state.use_item(role, id, data) {
+            return false;
+        }
+        if let Some(item) = data.item(id as u32) {
+            for role in roles {
+                if item.use_scope != 2 || state.stats().item_applies(role, item, data) {
+                    self.effects.borrow_mut().spawn(role as usize, item);
+                }
+            }
+        }
+        true
+    }
+
+    fn play_item_menu_sound(&self, accepted: bool) {
+        self.sounds
+            .borrow_mut()
+            .push(if accepted { "wa002" } else { "wa004" });
+    }
+
+    fn paint_item_effects(
+        &self,
+        ui: ComRc<radiance::comdef::IUiHost>,
+        atlas: ComRc<super::comdef::IPal3UiAtlas>,
+        role: i32,
+        x: f32,
+        y: f32,
+        scale: f32,
+    ) {
+        self.effects
+            .borrow_mut()
+            .paint(ui, atlas, role as usize, x, y, scale);
+    }
+
+    fn item_target_hint(&self, id: i32) -> i32 {
+        // Supported resource/poison subset; full native 0x49c660 scoring remains unverified.
+        let Some(item) = self.data.as_ref().and_then(|data| data.item(id as u32)) else {
+            return -1;
+        };
+        let state = self.state.borrow();
+        let mut best = (-1, -1i32);
+        for role in state.party().members() {
+            if !self.can_use_item(if item.use_scope == 2 { -1 } else { role }, id) {
+                continue;
+            }
+            let current = state.stats().character(role).unwrap().current();
+            let maximum = state
+                .stats()
+                .attributes(role, self.data.as_ref().unwrap())
+                .unwrap();
+            let mut score = 0i32;
+            for (i, deficit) in [
+                maximum.hp - current.hp,
+                maximum.qi - current.qi,
+                maximum.mp - current.mp,
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                if item.amounts[i] > 0 {
+                    score = score.wrapping_add(deficit);
+                }
+            }
+            for (i, &poison) in state
+                .stats()
+                .character(role)
+                .unwrap()
+                .poisons()
+                .iter()
+                .enumerate()
+            {
+                if item.conditions[i] != 0 {
+                    score = score.wrapping_add(poison as i32);
+                }
+            }
+            if score > best.1 {
+                best = (role, score);
+            }
+        }
+        best.0
     }
 
     fn music_volume(&self) -> f32 {

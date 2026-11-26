@@ -136,6 +136,7 @@ pub struct[openpal3.IPal3StatusRenderer] Pal3StatusRendererImpl(
                 self.menu.on_open(gameplay);
                 self.menu_needs_refresh = false;
             }
+            self.menu.tick(ui.time_milliseconds(), down);
             let stay = self.menu.paint(ui, self.atlas, gameplay, pmx, pmy, press, release, down);
             self.menu_open = stay;
         }
