@@ -6,11 +6,7 @@ use radiance::radiance::UiManager;
 use crate::openpal4::asset_loader::ImageSetImage;
 use crate::ui::dialog_markup::{self, Segment};
 
-/// Widget-default text colour used both as the fallback for runs that
-/// aren't wrapped in any `<colour>` tag and as the placeholder for every
-/// `<dcN>` palette lookup. See [`dialog_markup::parse`] for the rationale
-/// — once the dialog widget's CEGUI `TextColours` palette is wired
-/// through, the per-`dcN` lookup will replace this placeholder.
+/// Fallback text color for callers that do not supply a native widget color.
 const DEFAULT_TEXT_COLOR: [f32; 4] = [1.0, 1.0, 1.0, 1.0];
 
 pub struct DialogBox {
@@ -134,7 +130,7 @@ impl DialogBox {
 fn insert_speaker_break(text: &str) -> String {
     if let Some(idx) = text.find('：') {
         let after = idx + '：'.len_utf8();
-        let already_has_break = text[after..].chars().next() == Some('\n');
+        let already_has_break = dialog_markup::strip(&text[after..]).starts_with('\n');
         if !already_has_break {
             let mut out = String::with_capacity(text.len() + 1);
             out.push_str(&text[..after]);
@@ -291,6 +287,16 @@ mod tests {
     #[test]
     fn inserts_newline_after_speaker_colon() {
         assert_eq!(insert_speaker_break("云天河：abc"), "云天河：\nabc");
+    }
+
+    #[test]
+    fn markup_break_after_speaker_does_not_add_a_blank_line() {
+        let text = "云天河：<dc0><br/>正文</dc0>";
+        assert_eq!(insert_speaker_break(text), text);
+        assert_eq!(
+            crate::ui::dialog_markup::strip(&insert_speaker_break(text)),
+            "云天河：\n正文"
+        );
     }
 
     #[test]

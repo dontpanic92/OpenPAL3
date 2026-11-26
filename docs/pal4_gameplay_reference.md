@@ -266,7 +266,8 @@ Opening/closing the tutorial menu must preserve the surrounding VM continuation.
 `M10 / func7020 / 0x24a` supplies a string plus two float values
 `0.5, 0.5` to `giShowCommonDialog`; `M02 / func1003 / 0x1d8`
 supplies one string to `giShowSelectDialog`. Their current argument counts
-match these examples, though their UI behavior is stubbed.
+match these examples; their native presenters and waiting continuations are
+implemented in the dialog work below.
 `Set4 <local-slot>; GetObjRef 0` replaces a stack placeholder with a
 string reference; it does **not** add another argument. Counting those
 instructions as two pushes produces a false signature mismatch.
@@ -443,9 +444,10 @@ release-outside cancellation, native close/input isolation and item double-click
 Portrait/close geometry is exercised at 800x600, widescreen and 2x coordinates.
 A live asset-backed check captured the
 HUD/status/inventory/equipment composition and repeated use/equip/save/reload
-through keyboard controls. Desktop focus restrictions prevented reliable
-automated OS mouse delivery; pointer behavior was checked through the same
-production p7 hit-testing code with injected pointer coordinates instead.
+through keyboard controls. The initial pointer checks used production p7
+hit-testing with injected coordinates. Subsequent dialog validation corrected
+the Windows automation to select the actual, nonzero-client-area game window
+and use DPI-aware coordinates, enabling physical OS mouse input.
 
 ### Native dialogs and playtime
 
@@ -458,12 +460,30 @@ the app-lifetime asset loader, including the frame that dismisses a prompt.
 Common-message frames use their nine-slice borders rather than stretching
 the center image over the whole panel.
 
+All dialog sprites reuse the shared half-texel-inset atlas UV calculation,
+including one-texel slice axes and mirrored portraits. The scenario background
+is an 800x2 atlas strip stretched to 800x126: sampling its cell boundaries
+blended adjacent HUD pixels into colored bands. Whole-texture sampler clamping
+does not isolate atlas cells; inset UVs fix both those bands and nine-slice seams.
+
 Scenario text uses the native 20-pixel font size, three-pixel line spacing,
 pale default color, portrait position and click indicator. Measured colored
 glyphs wrap and page inside the text rectangle, reserving room for an active
 left/right portrait. System/selection text uses the shipped `systemBold`
-size of 13. Source-layout placeholder text is never shown. Explicit markup
-colors are preserved; unverified `<dcN>` palettes still use the widget default.
+size of 13. Source-layout placeholder text is never shown. Normal colors come
+from each text widget's `NormalTextColour`, falling back to CEGUI's inherited
+opaque white. In particular, common messages use white, not the selection
+question's black. Explicit markup colors are preserved.
+
+The original `OIRAMLOOK.dll` exports establish the rich-text palette, not a
+palette inside layout `TextColours`: `XmlColourLabelProcessor::elementStart`
+at preferred VA `0x10007ab0` maps `dc0` to the widget default and `dc1`/`dc2`/
+`dc3` to opaque red/green/blue. Initializers at `0x100076a0`, `0x100076d0`,
+and `0x10007700` establish those RGB values. Native `<br/>` is a real line
+break in both rendering and agent text; a break already present after a
+speaker colon does not add another blank line. The inherited white default
+is initialized by `CEGUIBase.dll`'s `MultiLineEditbox` constructor at preferred
+VA `0x1007fc60` (normal color at offset `0x4f8`).
 
 Common messages now wait for acknowledgement; selection/confirmation calls
 wait for a real choice. Space/gamepad confirm and directional navigation are
@@ -473,8 +493,20 @@ the VM continuation or overwrite the persistent cutscene lock. Agent choices
 remain 1-based externally, with the established 0-based select / 1-based
 common VM results. Fast-forward skips narration but not plot decisions.
 The 0-based default-selection callback is honored (M02 `func1003` explicitly
-selects its third, cancel option with value 2). Exact animation timing remains
-follow-up work; this is not complete dialog-system parity.
+selects its third, cancel option with value 2). Moving the pointer transfers
+the highlight instead of leaving both the old keyboard/default row and the
+hovered row highlighted.
+
+Narration reveals progressively. The original game's calls at `0x005bae1b`,
+`0x005def36`, and `0x005df228` pass 0.1 seconds to the scenario presenter
+`0x004b78c0`. `OIRAMLOOK.dll`'s `OLSDialogEditbox::updateSelf` at preferred
+VA `0x100b8ab0` advances once after that interval and clears its timer rather
+than batching glyphs after a slow frame. Confirming unfinished text reveals
+the current page without dismissing it; a subsequent confirmation advances
+or closes it, following the native quick-page mouse behavior at `0x100b8b10`.
+The click indicator reads `SegImage`'s actual `.seqimage` file rather than
+guessing frames from a name prefix. The shipped `sanjiao.seqimage` specifies
+two images, 0.2 seconds each, looping indefinitely.
 
 The original `gameInfo.xml` labels establish `staticTimeInfo` as accumulated
 time and `staticGameTimeInfo` as the current session's time. Both now display
@@ -492,7 +524,13 @@ prompt, Space selecting its declared cancel default, explicit agent choices,
 and waiting through fast-forward/invalid choices. A live menu check also
 verified that pause adds no time and 60 steps at 0.1 seconds add exactly six
 saved seconds. Temporary slots were removed without overwriting existing saves.
-Physical OS mouse delivery and full native animation/palette parity remain open.
+Completion checks exercised physical OS mouse hover, release-outside
+cancellation and third-choice selection in M02. M10 block `10`'s `tip` trigger
+(`func7020`) verified a native common-message frame, readable white text,
+physical acknowledgement, and resizing/clicking at 1600x900. Live Q01 captures
+verified progressive glyphs, reveal-before-dismiss, both animated click frames,
+and subsequent script continuation. Menu/3D-preview pointer and resize checks
+remain tracked separately from this completed dialog slice.
 
 ### Original item/equipment model previews
 

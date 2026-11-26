@@ -795,7 +795,11 @@ fn resolve_state_image(
 ) -> Option<StateImage> {
     let set = resolved_sets.get(&refr.set.to_lowercase())?;
     let rect = set.imageset.get(&refr.image)?;
-    let (u0, v0, u1, v1) = uv_for(rect, set.tex_w, set.tex_h);
+    let (u0, v0, u1, v1) = uv_for(
+        [rect.x, rect.y, rect.width, rect.height],
+        set.tex_w,
+        set.tex_h,
+    );
     Some(StateImage {
         texture_com_id: set.com_id,
         u0,
@@ -832,7 +836,11 @@ fn resolve_seg_frames(
         .frames_with_prefix(prefix)
         .into_iter()
         .map(|rect| {
-            let (u0, v0, u1, v1) = uv_for(rect, set.tex_w, set.tex_h);
+            let (u0, v0, u1, v1) = uv_for(
+                [rect.x, rect.y, rect.width, rect.height],
+                set.tex_w,
+                set.tex_h,
+            );
             StateImage {
                 texture_com_id: set.com_id,
                 u0,
@@ -855,7 +863,11 @@ fn is_interactive_widget(window_type: &str) -> bool {
     )
 }
 
-fn uv_for(rect: &cegui_imageset::ImagesetImage, tex_w: u32, tex_h: u32) -> (f32, f32, f32, f32) {
+pub(crate) fn uv_for(
+    [x, y, width, height]: [u32; 4],
+    tex_w: u32,
+    tex_h: u32,
+) -> (f32, f32, f32, f32) {
     let tw = tex_w.max(1) as f32;
     let th = tex_h.max(1) as f32;
     // Half-texel inset: shrink the sampled rectangle by half a
@@ -866,24 +878,18 @@ fn uv_for(rect: &cegui_imageset::ImagesetImage, tex_w: u32, tex_h: u32) -> (f32,
     // For degenerate 1-texel-wide / -tall sprites (width<2 or
     // height<2) the inset would invert u0>u1; in that case sample
     // the single texel's centre on that axis instead.
-    let (u0, u1) = if rect.width >= 2 {
+    let (u0, u1) = if width >= 2 {
         let ix = 0.5 / tw;
-        (
-            rect.x as f32 / tw + ix,
-            (rect.x + rect.width) as f32 / tw - ix,
-        )
+        (x as f32 / tw + ix, (x + width) as f32 / tw - ix)
     } else {
-        let c = (rect.x as f32 + 0.5) / tw;
+        let c = (x as f32 + 0.5) / tw;
         (c, c)
     };
-    let (v0, v1) = if rect.height >= 2 {
+    let (v0, v1) = if height >= 2 {
         let iy = 0.5 / th;
-        (
-            rect.y as f32 / th + iy,
-            (rect.y + rect.height) as f32 / th - iy,
-        )
+        (y as f32 / th + iy, (y + height) as f32 / th - iy)
     } else {
-        let c = (rect.y as f32 + 0.5) / th;
+        let c = (y as f32 + 0.5) / th;
         (c, c)
     };
     (u0, v0, u1, v1)

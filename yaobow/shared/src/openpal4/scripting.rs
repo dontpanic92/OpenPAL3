@@ -2367,14 +2367,6 @@ fn begin_dialog(
         DialogKind::Confirmation => vec!["是".into(), "否".into()],
         _ => Vec::new(),
     };
-    let color = if kind == DialogKind::Talk {
-        [251. / 255., 1., 216. / 255., 1.]
-    } else {
-        [0., 0., 0., 1.]
-    };
-    vm.vm_context
-        .dialog_box
-        .set_text_with_color(text, color, kind == DialogKind::Talk);
     session.borrow().show_dialog_choices(choices.clone());
     session.borrow().set_dialog_open(true);
     let default_selection = if kind == DialogKind::Selection {
@@ -2389,8 +2381,13 @@ fn begin_dialog(
         position,
         default_selection,
     );
+    vm.vm_context.dialog_box.set_text_with_color(
+        text,
+        presenter.text_color(),
+        kind == DialogKind::Talk,
+    );
     presenter.prime_input(vm.vm_context.ui.ui(), &*vm.vm_context.input.borrow());
-    Pal4FunctionState::Yield(Box::new(move |vm, _| {
+    Pal4FunctionState::Yield(Box::new(move |vm, delta_sec| {
         let choice = if presenter.choice_count() > 0 {
             session
                 .borrow()
@@ -2408,6 +2405,7 @@ fn begin_dialog(
                     &vm.vm_context.dialog_box,
                     vm.vm_context.ui.ui(),
                     &*vm.vm_context.input.borrow(),
+                    delta_sec,
                 )
             }
         });

@@ -1,11 +1,15 @@
 use std::{collections::HashMap, rc::Rc};
 
 use anyhow::Context;
+use common::store_ext::StoreExt2;
 use imgui::{MouseButton, Ui};
 use radiance::input::{InputEngine, Key};
 
 use crate::{
-    loaders::cegui::layout::{self, ImageRef},
+    loaders::cegui::{
+        layout::{self, ImageRef},
+        ui_layout_handle::uv_for,
+    },
     ui::{
         dialog_box::{AvatarPosition, DialogBox, DialogBoxPresenter},
         dialog_markup::{self, Segment},
@@ -16,6 +20,109 @@ use super::asset_loader::{AssetLoader, ImageSetImage};
 
 type Rect = [f32; 4];
 
+struct SequenceAnimation {
+    frames: Vec<(ImageRef, f32)>,
+    duration: f32,
+    loops: u32,
+}
+
+impl SequenceAnimation {
+    fn parse(bytes: &[u8]) -> anyhow::Result<Self> {
+        let doc = roxmltree::Document::parse(std::str::from_utf8(bytes)?)?;
+        let root = doc.root_element();
+        anyhow::ensure!(root.has_tag_name("SequenceImage"), "expected SequenceImage");
+        let count: usize = root
+            .attribute("FrameCount")
+            .context("missing FrameCount")?
+            .parse()?;
+        let loops = root.attribute("LoopCount").unwrap_or("0").parse()?;
+        let mut frames = Vec::new();
+        for node in root.children().filter(|n| n.has_tag_name("ImageFrame")) {
+            let index: usize = node
+                .attribute("Index")
+                .context("missing frame Index")?
+                .parse()?;
+            let duration: f32 = node
+                .attribute("Duration")
+                .context("missing Duration")?
+                .parse()?;
+            anyhow::ensure!(
+                duration.is_finite() && duration > 0.,
+                "invalid frame duration"
+            );
+            let image = ImageRef {
+                set: node
+                    .attribute("Imageset")
+                    .context("missing Imageset")?
+                    .into(),
+                image: node.attribute("Image").context("missing Image")?.into(),
+            };
+            frames.push((index, image, duration));
+        }
+        frames.sort_by_key(|frame| frame.0);
+        anyhow::ensure!(
+            count > 0
+                && frames.len() == count
+                && frames.iter().enumerate().all(|(i, frame)| i == frame.0),
+            "invalid sequence indices/count"
+        );
+        let duration = frames.iter().map(|frame| frame.2).sum::<f32>();
+        anyhow::ensure!(duration.is_finite(), "invalid sequence duration");
+        Ok(Self {
+            frames: frames
+                .into_iter()
+                .map(|(_, image, duration)| (image, duration))
+                .collect(),
+            duration,
+            loops,
+        })
+    }
+
+    fn frame(&self, elapsed: f64) -> &ImageRef {
+        let total = self.duration as f64;
+        if self.loops > 0 && elapsed >= total * self.loops as f64 {
+            return &self.frames.last().unwrap().0;
+        }
+        let mut phase = elapsed % total;
+        for (image, duration) in &self.frames {
+            if phase < *duration as f64 {
+                return image;
+            }
+            phase -= *duration as f64;
+        }
+        &self.frames.last().unwrap().0
+    }
+}
+
+#[derive(Default)]
+struct TextReveal {
+    elapsed: f32,
+    visible: usize,
+}
+
+impl TextReveal {
+    fn update(&mut self, delta_sec: f32, glyphs: usize) {
+        if delta_sec.is_finite() && delta_sec > 0. {
+            self.elapsed += delta_sec;
+            // OLSDialogEditbox advances once, then clears its timer (not a catch-up loop).
+            if self.elapsed > 0.1 {
+                self.visible = (self.visible + 1).min(glyphs);
+                self.elapsed = 0.;
+            }
+        }
+    }
+
+    fn advance(&mut self, glyphs: usize) -> bool {
+        if self.visible < glyphs {
+            self.visible = glyphs;
+            false
+        } else {
+            *self = Self::default();
+            true
+        }
+    }
+}
+
 #[derive(Clone, Copy, PartialEq)]
 pub(crate) enum DialogKind {
     Talk,
@@ -24,26 +131,48 @@ pub(crate) enum DialogKind {
     Confirmation,
 }
 
+impl DialogKind {
+    fn text_widget(self) -> &'static str {
+        match self {
+            Self::Talk => "ScenarioDialog/EditDialog",
+            Self::Selection => "SelectDialog/EditQuestion",
+            _ => "CommonDialog/Message",
+        }
+    }
+}
+
 struct Widget {
     rect: Rect,
     images: [Option<ImageRef>; 3],
     frame: [Option<ImageRef>; 8],
+    text_color: [f32; 4],
 }
 
 pub(crate) struct DialogArtwork {
     widgets: HashMap<String, Widget>,
     images: HashMap<String, ImageSetImage>,
+    click_sequence: Option<SequenceAnimation>,
 }
 
 impl DialogArtwork {
     pub(crate) fn load(loader: &AssetLoader) -> anyhow::Result<Self> {
         let mut widgets = HashMap::new();
+        let mut click_sequence = None;
         for file in ["ScenarioDialog", "CommonDialog", "SelectDialog"] {
             let parsed =
                 layout::load_layout(loader.vfs(), &format!("/gamedata/ui/layouts/{file}.xml"))
                     .with_context(|| format!("loading {file}.xml"))?;
             let mut rects: Vec<Rect> = Vec::new();
             for window in &parsed.windows {
+                if file == "ScenarioDialog" && window.name == "ImgClick" {
+                    if let Some(name) = &window.seg_image {
+                        let path = format!("/gamedata/ui/sequence_images/{name}.seqimage");
+                        click_sequence = Some(
+                            SequenceAnimation::parse(&loader.vfs().read_to_end(&path)?)
+                                .with_context(|| format!("loading {path}"))?,
+                        );
+                    }
+                }
                 let parent = window
                     .parent
                     .map_or([0., 0., 800., 600.], |id| rects[id as usize]);
@@ -67,6 +196,20 @@ impl DialogArtwork {
                         .find(|p| p.name == name)
                         .and_then(|p| layout::parse_image_ref(&p.value))
                 });
+                let text_color = window
+                    .properties
+                    .iter()
+                    .find(|p| p.name == "NormalTextColour")
+                    .and_then(|p| u32::from_str_radix(&p.value, 16).ok())
+                    .map(|argb| {
+                        [
+                            ((argb >> 16) & 255) as f32 / 255.,
+                            ((argb >> 8) & 255) as f32 / 255.,
+                            (argb & 255) as f32 / 255.,
+                            (argb >> 24) as f32 / 255.,
+                        ]
+                    })
+                    .unwrap_or([1.; 4]);
                 widgets.insert(
                     format!("{file}/{}", window.name),
                     Widget {
@@ -80,6 +223,7 @@ impl DialogArtwork {
                             window.overlay_pushed_image.clone(),
                         ],
                         frame,
+                        text_color,
                     },
                 );
             }
@@ -108,7 +252,11 @@ impl DialogArtwork {
                 );
             }
         }
-        Ok(Self { widgets, images })
+        Ok(Self {
+            widgets,
+            images,
+            click_sequence,
+        })
     }
 
     fn rect(&self, name: &str) -> Rect {
@@ -118,6 +266,18 @@ impl DialogArtwork {
     fn image(&self, reference: &ImageRef) -> Option<&ImageSetImage> {
         self.images
             .get(&format!("{}:{}", reference.set, reference.image).to_lowercase())
+    }
+
+    fn draw_click(&self, ui: &Ui, rect: Rect, canvas: Canvas, elapsed: f64) {
+        if let Some(image) = self
+            .click_sequence
+            .as_ref()
+            .and_then(|sequence| self.image(sequence.frame(elapsed)))
+        {
+            blit(ui, image, rect, canvas, false);
+        } else {
+            self.draw(ui, "ScenarioDialog/ImgClick", rect, 0, canvas);
+        }
     }
 
     fn draw(&self, ui: &Ui, name: &str, rect: Rect, state: usize, canvas: Canvas) {
@@ -196,18 +356,18 @@ impl Canvas {
     }
 }
 
+fn image_uvs(rect: [u32; 4], [width, height]: [u32; 2], mirror: bool) -> [[f32; 2]; 2] {
+    let (u0, v0, u1, v1) = uv_for(rect, width, height);
+    let (u0, u1) = if mirror { (u1, u0) } else { (u0, u1) };
+    [[u0, v0], [u1, v1]]
+}
+
 fn blit(ui: &Ui, image: &ImageSetImage, [x, y, w, h]: Rect, canvas: Canvas, mirror: bool) {
-    let mut uv0 = [
-        image.x as f32 / image.sprite.width() as f32,
-        image.y as f32 / image.sprite.height() as f32,
-    ];
-    let mut uv1 = [
-        (image.x + image.width) as f32 / image.sprite.width() as f32,
-        (image.y + image.height) as f32 / image.sprite.height() as f32,
-    ];
-    if mirror {
-        std::mem::swap(&mut uv0[0], &mut uv1[0]);
-    }
+    let [uv0, uv1] = image_uvs(
+        [image.x, image.y, image.width, image.height],
+        [image.sprite.width(), image.sprite.height()],
+        mirror,
+    );
     ui.get_foreground_draw_list()
         .add_image(
             image.sprite.imgui_texture_id(),
@@ -299,6 +459,9 @@ pub(crate) struct NativeDialogPresenter {
     held_choice: Option<usize>,
     mouse_down: bool,
     pages: Option<Vec<Vec<Glyph>>>,
+    reveal: TextReveal,
+    animation_elapsed: f64,
+    pointer_position: Option<[f32; 2]>,
 }
 
 impl NativeDialogPresenter {
@@ -321,6 +484,9 @@ impl NativeDialogPresenter {
             held_choice: None,
             mouse_down: false,
             pages: None,
+            reveal: TextReveal::default(),
+            animation_elapsed: 0.,
+            pointer_position: None,
         }
     }
 
@@ -328,7 +494,15 @@ impl NativeDialogPresenter {
         self.choices.len()
     }
 
+    pub(crate) fn text_color(&self) -> [f32; 4] {
+        self.art
+            .as_ref()
+            .and_then(|art| art.widgets.get(self.kind.text_widget()))
+            .map_or([1.; 4], |widget| widget.text_color)
+    }
+
     pub(crate) fn prime_input(&mut self, ui: &Ui, input: &dyn InputEngine) {
+        self.pointer_position = Some(ui.io().mouse_pos);
         self.mouse_down = ui.is_mouse_down(MouseButton::Left);
         self.armed = !self.mouse_down
             && ![Key::Space, Key::GamePadEast, Key::GamePadSouth]
@@ -341,7 +515,11 @@ impl NativeDialogPresenter {
         dialog: &DialogBox,
         ui: &Ui,
         input: &dyn InputEngine,
+        delta_sec: f32,
     ) -> Option<i32> {
+        if delta_sec.is_finite() && delta_sec > 0. {
+            self.animation_elapsed += delta_sec as f64;
+        }
         let confirms = [Key::Space, Key::GamePadEast, Key::GamePadSouth];
         let down = ui.is_mouse_down(MouseButton::Left);
         let confirm_down = confirms
@@ -366,6 +544,8 @@ impl NativeDialogPresenter {
             return None;
         };
         let canvas = Canvas::new(ui.io().display_size);
+        let pointer_moved = self.pointer_position != Some(ui.io().mouse_pos);
+        self.pointer_position = Some(ui.io().mouse_pos);
         let mouse = [
             (ui.io().mouse_pos[0] - canvas.x) / canvas.scale,
             (ui.io().mouse_pos[1] - canvas.y) / canvas.scale,
@@ -374,21 +554,7 @@ impl NativeDialogPresenter {
             .map(|font| ui.push_font(font));
         let talk = self.kind == DialogKind::Talk;
         let selection = self.kind == DialogKind::Selection;
-        let prefix = if talk {
-            "ScenarioDialog"
-        } else if selection {
-            "SelectDialog"
-        } else {
-            "CommonDialog"
-        };
-        let text_widget = if talk {
-            "EditDialog"
-        } else if selection {
-            "EditQuestion"
-        } else {
-            "Message"
-        };
-        let mut text_rect = art.rect(&format!("{prefix}/{text_widget}"));
+        let mut text_rect = art.rect(self.kind.text_widget());
         let size = if talk { 20. } else { 13. };
         let spacing = if talk {
             3.
@@ -430,6 +596,9 @@ impl NativeDialogPresenter {
             )
         });
         self.page = self.page.min(pages.len() - 1);
+        if talk {
+            self.reveal.update(delta_sec, pages[self.page].len());
+        }
         let last = self.page + 1 == pages.len();
         let rows = self.choices.len().clamp(1, 18);
         let (width, height) = if selection {
@@ -461,12 +630,11 @@ impl NativeDialogPresenter {
             if let Some((avatar, rect, right)) = portrait {
                 blit(ui, avatar, rect, canvas, right);
             }
-            art.draw(
+            art.draw_click(
                 ui,
-                "ScenarioDialog/ImgClick",
                 art.rect("ScenarioDialog/ImgClick"),
-                0,
                 canvas,
+                self.animation_elapsed,
             );
         } else if selection {
             art.draw(
@@ -491,7 +659,12 @@ impl NativeDialogPresenter {
             }
         }
         text_rect = translated(text_rect);
-        for glyph in &pages[self.page] {
+        let visible = if talk {
+            self.reveal.visible
+        } else {
+            pages[self.page].len()
+        };
+        for glyph in pages[self.page].iter().take(visible) {
             let mut buf = [0; 4];
             draw_text(
                 ui,
@@ -505,23 +678,24 @@ impl NativeDialogPresenter {
         }
         if !last || talk {
             if confirm || release {
-                if last {
-                    return Some(1);
+                if !talk || self.reveal.advance(pages[self.page].len()) {
+                    if last {
+                        return Some(1);
+                    }
+                    self.page += 1;
                 }
-                self.page += 1;
             }
             if !last && !talk {
-                art.draw(
+                art.draw_click(
                     ui,
-                    "ScenarioDialog/ImgClick",
                     [
                         text_rect[0] + text_rect[2] - 13.,
                         text_rect[1] + text_rect[3] - 12.,
                         13.,
                         12.,
                     ],
-                    0,
                     canvas,
+                    self.animation_elapsed,
                 );
             }
             return None;
@@ -549,31 +723,44 @@ impl NativeDialogPresenter {
             }
         }
         let first = self.selected.saturating_sub(rows - 1);
-        let mut answer = None;
-        for index in 0..count {
-            if selection && !(first..first + rows).contains(&index) {
-                continue;
-            }
-            let name = if selection {
-                "SelectDialog/StaticAnswer"
-            } else if self.kind == DialogKind::Confirmation {
-                if index == 0 {
-                    "CommonDialog/BtYes"
+        let buttons: Vec<_> = (0..count)
+            .filter(|&index| !selection || (first..first + rows).contains(&index))
+            .map(|index| {
+                let name = if selection {
+                    "SelectDialog/StaticAnswer"
+                } else if self.kind == DialogKind::Confirmation {
+                    if index == 0 {
+                        "CommonDialog/BtYes"
+                    } else {
+                        "CommonDialog/BtNo"
+                    }
                 } else {
-                    "CommonDialog/BtNo"
+                    "CommonDialog/BtOk"
+                };
+                let mut rect = art.rect(name);
+                if selection {
+                    rect[1] += (index - first) as f32 * 24.;
                 }
-            } else {
-                "CommonDialog/BtOk"
-            };
-            let mut rect = art.rect(name);
-            if selection {
-                rect[1] += (index - first) as f32 * 24.;
+                (index, name, translated(rect))
+            })
+            .collect();
+        let hovered_choice = buttons
+            .iter()
+            .find(|(_, _, rect)| {
+                mouse[0] >= rect[0]
+                    && mouse[0] < rect[0] + rect[2]
+                    && mouse[1] >= rect[1]
+                    && mouse[1] < rect[1] + rect[3]
+            })
+            .map(|(index, _, _)| *index);
+        if armed && (pointer_moved || press) {
+            if let Some(index) = hovered_choice {
+                self.selected = index;
             }
-            rect = translated(rect);
-            let hovered = mouse[0] >= rect[0]
-                && mouse[0] < rect[0] + rect[2]
-                && mouse[1] >= rect[1]
-                && mouse[1] < rect[1] + rect[3];
+        }
+        let mut answer = None;
+        for (index, name, rect) in buttons {
+            let hovered = hovered_choice == Some(index);
             if press && hovered {
                 self.held_choice = Some(index);
                 self.selected = index;
@@ -583,7 +770,7 @@ impl NativeDialogPresenter {
             }
             let state = if down && self.held_choice == Some(index) {
                 2
-            } else if hovered || self.selected == index {
+            } else if self.selected == index {
                 1
             } else {
                 0
@@ -621,6 +808,92 @@ impl NativeDialogPresenter {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn stretched_dialog_images_never_filter_neighboring_atlas_cells() {
+        for region in [[2, 2, 4, 2], [2, 2, 1, 2], [2, 2, 2, 1], [2, 2, 1, 1]] {
+            let outside = |x: i32, y: i32| {
+                if x < region[0] as i32
+                    || x >= (region[0] + region[2]) as i32
+                    || y < region[1] as i32
+                    || y >= (region[1] + region[3]) as i32
+                {
+                    1.
+                } else {
+                    0.
+                }
+            };
+            for mirror in [false, true] {
+                let [uv0, uv1] = image_uvs(region, [8, 8], mirror);
+                for scale in [0.75f32, 1., 1.515, 2.] {
+                    let width = (29. * scale).round() as usize;
+                    let height = (126. * scale).round() as usize;
+                    for y in 0..height {
+                        for x in 0..width {
+                            let u = uv0[0] + (uv1[0] - uv0[0]) * (x as f32 + 0.5) / width as f32;
+                            let v = uv0[1] + (uv1[1] - uv0[1]) * (y as f32 + 0.5) / height as f32;
+                            let (tx, ty) = (u * 8. - 0.5, v * 8. - 0.5);
+                            let (ix, iy) = (tx.floor() as i32, ty.floor() as i32);
+                            let (fx, fy) = (tx - ix as f32, ty - iy as f32);
+                            let contamination = outside(ix, iy) * (1. - fx) * (1. - fy)
+                                + outside(ix + 1, iy) * fx * (1. - fy)
+                                + outside(ix, iy + 1) * (1. - fx) * fy
+                                + outside(ix + 1, iy + 1) * fx * fy;
+                            assert!(
+                                contamination < 1e-6,
+                                "atlas bleed: {region:?}, scale={scale}, mirror={mirror}, sample=({x},{y})"
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn text_reveal_uses_native_cadence_and_consumes_the_first_advance() {
+        let mut reveal = TextReveal::default();
+        reveal.update(0.1, 4);
+        assert_eq!(reveal.visible, 0);
+        reveal.update(0.01, 4);
+        assert_eq!(reveal.visible, 1);
+        reveal.update(3.0, 4);
+        assert_eq!(
+            reveal.visible, 2,
+            "native update does not batch glyphs after a stalled frame"
+        );
+        assert!(
+            !reveal.advance(4),
+            "first input reveals, rather than dismisses, the page"
+        );
+        assert_eq!(reveal.visible, 4);
+        assert!(reveal.advance(4));
+        assert_eq!(reveal.visible, 0, "the next page starts unrevealed");
+        for delta in [0., -1., f32::NAN, f32::INFINITY] {
+            reveal.update(delta, 4);
+        }
+        assert_eq!(reveal.visible, 0);
+    }
+
+    #[test]
+    fn native_sequences_respect_declared_order_durations_and_loop_count() {
+        let source = br#"<SequenceImage FrameCount="2" LoopCount="0">
+            <ImageFrame Index="1" Duration="0.3" Imageset="ui" Image="second"/>
+            <ImageFrame Index="0" Duration="0.2" Imageset="ui" Image="first"/>
+            </SequenceImage>"#;
+        let mut sequence = SequenceAnimation::parse(source).unwrap();
+        assert_eq!(sequence.frame(0.1).image, "first");
+        assert_eq!(sequence.frame(0.25).image, "second");
+        assert_eq!(sequence.frame(0.6).image, "first");
+        sequence.loops = 1;
+        assert_eq!(sequence.frame(0.6).image, "second");
+        for invalid in [
+            r#"<SequenceImage FrameCount="1"><ImageFrame Index="0" Duration="0" Imageset="s" Image="i"/></SequenceImage>"#,
+            r#"<SequenceImage FrameCount="1"><ImageFrame Index="2" Duration=".2" Imageset="s" Image="i"/></SequenceImage>"#,
+        ] {
+            assert!(SequenceAnimation::parse(invalid.as_bytes()).is_err());
+        }
+    }
 
     #[test]
     fn paging_keeps_all_colored_glyphs_inside_the_text_area() {
@@ -665,6 +938,15 @@ mod tests {
         let mut index = crate::loaders::cegui::ui_layout_handle::ImagesetIndex::new(
             "/gamedata/ui/imagesets".into(),
         );
+        let sequence = SequenceAnimation::parse(
+            &vfs.read_to_end("/gamedata/ui/sequence_images/sanjiao.seqimage")
+                .unwrap(),
+        )
+        .unwrap();
+        for (reference, _) in sequence.frames {
+            let (atlas, _) = index.load(&vfs, &reference.set).unwrap();
+            assert!(atlas.get(&reference.image).is_some());
+        }
         for file in ["ScenarioDialog", "CommonDialog", "SelectDialog"] {
             let parsed =
                 layout::load_layout(&vfs, &format!("/gamedata/ui/layouts/{file}.xml")).unwrap();

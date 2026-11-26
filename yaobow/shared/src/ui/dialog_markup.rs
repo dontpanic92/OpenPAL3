@@ -4,14 +4,10 @@
 //!
 //! * `<colour red=R green=G blue=B alpha=A>…</colour>` — an explicit
 //!   RGBA run, components are 0..255 decimal.
-//! * `<dcN>…</dcN>` — "default colour N", a palette reference into the
-//!   dialog widget's `TextColours` (loaded from the CEGUI `.layout`).
-//!   The imgui port doesn't currently plumb that palette through, so
-//!   every `<dcN>` falls back to the dialog widget's default text
-//!   colour (passed in by the caller as `default_color`). TODO: when
-//!   `yaobow/shared/src/loaders/cegui/layout.rs::WindowDef::text_colours`
-//!   is wired into [`crate::ui::dialog_box::DialogBox`], thread the
-//!   parsed palette into [`parse`].
+//! * `<dc0>…</dc0>` — the widget's default color.
+//! * `<dc1>` / `<dc2>` / `<dc3>` — opaque red / green / blue, as
+//!   initialized by OIRAMLOOK's `XmlColourLabelProcessor`.
+//! * `<br/>` — an explicit line break.
 //!
 //! Behaviour notes:
 //!
@@ -40,9 +36,7 @@ pub struct Segment {
 /// Parse PAL4 dialog markup into a vector of coloured segments.
 ///
 /// `default_color` is the widget's "base" text colour: it's the colour
-/// used for any run not wrapped in a `<colour>` or `<dcN>` tag, and is
-/// also the placeholder colour returned for every `<dcN>` lookup until
-/// the real palette is wired through.
+/// used outside color tags and by `<dc0>`.
 pub fn parse(text: &str, default_color: [f32; 4]) -> Vec<Segment> {
     let mut out: Vec<Segment> = Vec::new();
     let mut color_stack: Vec<[f32; 4]> = vec![default_color];
@@ -61,13 +55,21 @@ pub fn parse(text: &str, default_color: [f32; 4]) -> Vec<Segment> {
                         i = end + 1;
                         continue;
                     }
-                    Tag::OpenDcN(_n) => {
-                        // TODO: look up palette[n] from the dialog
-                        // widget's TextColours once that's plumbed
-                        // through DialogBox. Until then every <dcN>
-                        // resolves to the widget's default colour.
+                    Tag::OpenDcN(n) => {
                         flush(&mut out, &mut buf, *color_stack.last().unwrap());
-                        color_stack.push(default_color);
+                        color_stack.push(match n {
+                            1 => [1., 0., 0., 1.],
+                            2 => [0., 1., 0., 1.],
+                            3 => [0., 0., 1., 1.],
+                            _ => default_color,
+                        });
+                        i = end + 1;
+                        continue;
+                    }
+                    Tag::Break(newline) => {
+                        if newline {
+                            buf.push('\n');
+                        }
                         i = end + 1;
                         continue;
                     }
@@ -114,8 +116,10 @@ pub fn strip(text: &str) -> String {
         if bytes[i] == b'<' {
             if let Some(end) = find_tag_end(bytes, i) {
                 let raw = &text[i + 1..end];
-                if matches!(classify_tag(raw), Tag::Unknown) {
-                    out.push_str(&text[i..=end]);
+                match classify_tag(raw) {
+                    Tag::Unknown => out.push_str(&text[i..=end]),
+                    Tag::Break(true) => out.push('\n'),
+                    _ => {}
                 }
                 i = end + 1;
                 continue;
@@ -134,6 +138,7 @@ pub fn strip(text: &str) -> String {
 enum Tag {
     OpenColour([f32; 4]),
     OpenDcN(u8),
+    Break(bool),
     Close,
     Unknown,
 }
@@ -142,9 +147,12 @@ fn classify_tag(raw: &str) -> Tag {
     let trimmed = raw.trim();
     if let Some(stripped) = trimmed.strip_prefix('/') {
         let name = stripped.trim().to_ascii_lowercase();
+        if name == "br" {
+            return Tag::Break(false);
+        }
         return if name == "colour"
             || name == "color"
-            || (name.starts_with("dc") && name[2..].chars().all(|c| c.is_ascii_digit()))
+            || matches!(name.as_str(), "dc0" | "dc1" | "dc2" | "dc3")
         {
             Tag::Close
         } else {
@@ -159,12 +167,16 @@ fn classify_tag(raw: &str) -> Tag {
     };
     let name_lc = name.to_ascii_lowercase();
 
+    if matches!(name_lc.as_str(), "br" | "br/") {
+        return Tag::Break(true);
+    }
+
     if name_lc == "colour" || name_lc == "color" {
         return Tag::OpenColour(parse_colour_attrs(rest));
     }
 
-    if name_lc.starts_with("dc") {
-        if let Ok(n) = name_lc[2..].parse::<u8>() {
+    if name_lc.len() == 3 && name_lc.starts_with("dc") {
+        if let Ok(n @ 0..=3) = name_lc[2..].parse::<u8>() {
             return Tag::OpenDcN(n);
         }
     }
@@ -324,5 +336,50 @@ mod tests {
         assert_eq!(segs.len(), 1);
         assert_eq!(segs[0].text, "x");
         assert_eq!(segs[0].color, [1.0, 0.0, 0.0, 1.0]);
+    }
+
+    #[test]
+    fn native_palette_nests_and_dc0_restores_the_widget_default() {
+        let base = [0.2, 0.3, 0.4, 0.5];
+        let runs = parse("<dc1>R<dc2>G<DC3>B</DC3>G</dc2><dc0>D</dc0>R</dc1>D", base);
+        assert_eq!(
+            runs.iter()
+                .map(|r| (r.text.as_str(), r.color))
+                .collect::<Vec<_>>(),
+            vec![
+                ("R", [1., 0., 0., 1.]),
+                ("G", [0., 1., 0., 1.]),
+                ("B", [0., 0., 1., 1.]),
+                ("G", [0., 1., 0., 1.]),
+                ("D", base),
+                ("R", [1., 0., 0., 1.]),
+                ("D", base)
+            ]
+        );
+        assert_eq!(strip("<dc4>unknown</dc4>"), "<dc4>unknown</dc4>");
+        assert_eq!(
+            strip("<dc01>unknown</dc01><br//>"),
+            "<dc01>unknown</dc01><br//>"
+        );
+    }
+
+    #[test]
+    fn native_breaks_wrap_without_losing_color_or_agent_text() {
+        let text = "<dc1>A<br/>B<BR />C</dc1>";
+        assert_eq!(
+            parse(text, WHITE),
+            vec![Segment {
+                text: "A\nB\nC".into(),
+                color: [1., 0., 0., 1.]
+            }]
+        );
+        assert_eq!(strip(text), "A\nB\nC");
+        assert_eq!(
+            parse("<dc1>A<br></br>B</dc1>", WHITE),
+            vec![Segment {
+                text: "A\nB".into(),
+                color: [1., 0., 0., 1.]
+            }]
+        );
     }
 }
