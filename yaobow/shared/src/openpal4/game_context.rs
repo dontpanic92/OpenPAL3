@@ -57,7 +57,7 @@ impl IPal4GameContextImpl for Pal4GameContext {
         self.session
             .borrow()
             .upgrade()
-            .is_some_and(|session| session.borrow().menu_input_blocked())
+            .is_some_and(|session| session.borrow().player_input_blocked())
     }
     fn current_leader(&self) -> std::os::raw::c_int {
         self.current_leader.get() as i32

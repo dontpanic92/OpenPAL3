@@ -1,6 +1,5 @@
 use std::{cell::RefCell, rc::Rc};
 
-use imgui::MouseButton;
 use radiance::{input::Key, math::Vec3, utils::interp_value::InterpValue, video::VideoStreamState};
 
 use crate::{
@@ -9,11 +8,13 @@ use crate::{
         ContinuationState, GlobalFunctionState, ScriptGlobalContext, ScriptGlobalFunction,
         ScriptModule, ScriptVm, not_implemented,
     },
-    ui::dialog_box::DialogBoxPresenter,
     utils,
 };
 
-use super::vm_context::Pal4VmContext;
+use super::{
+    native_dialog::{DialogKind, NativeDialogPresenter},
+    vm_context::Pal4VmContext,
+};
 
 type Pal4FunctionState = GlobalFunctionState<Pal4VmContext>;
 
@@ -2126,7 +2127,8 @@ fn select_dialog_set_default_select(
     _: &str,
     vm: &mut ScriptVm<Pal4VmContext>,
 ) -> Pal4FunctionState {
-    as_params!(vm, _select_id: i32);
+    as_params!(vm, select_id: i32);
+    vm.vm_context.session().set_default_dialog_choice(select_id);
     Pal4FunctionState::Completed
 }
 
@@ -2343,32 +2345,81 @@ fn talk(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
     }
 
     let text = get_str(vm, str as usize).unwrap();
-    vm.vm_context.dialog_box.set_text(&text);
-    let presenter = DialogBoxPresenter::new();
+    begin_dialog(vm, &text, DialogKind::Talk, [0.5, 0.5])
+}
 
-    Pal4FunctionState::Yield(Box::new(move |vm, delta_sec| {
-        let ui = &vm.vm_context().ui;
-        presenter.update(&vm.vm_context.dialog_box, delta_sec);
-
-        let fast = vm.vm_context().fast_forward();
-        let input = vm.vm_context().input.clone();
-        let input = input.borrow();
-        let completed = fast
-            || ui.ui().is_mouse_released(MouseButton::Left)
-            || input.get_key_state(Key::GamePadEast).pressed()
-            || input.get_key_state(Key::GamePadSouth).pressed()
-            || input.get_key_state(Key::Space).pressed();
-        if completed {
-            drop(input);
-            // Cut any in-flight voice line so fast-forwarding through a
-            // dialog run doesn't stack overlapping samples.
+fn begin_dialog(
+    vm: &mut ScriptVm<Pal4VmContext>,
+    text: &str,
+    kind: DialogKind,
+    position: [f32; 2],
+) -> Pal4FunctionState {
+    let session = vm.vm_context.session_handle();
+    let choices = match kind {
+        DialogKind::Selection => {
+            let choices = session.borrow().dialog_choices();
+            if choices.is_empty() {
+                vec!["确定".into()]
+            } else {
+                choices
+            }
+        }
+        DialogKind::Confirmation => vec!["是".into(), "否".into()],
+        _ => Vec::new(),
+    };
+    let color = if kind == DialogKind::Talk {
+        [251. / 255., 1., 216. / 255., 1.]
+    } else {
+        [0., 0., 0., 1.]
+    };
+    vm.vm_context
+        .dialog_box
+        .set_text_with_color(text, color, kind == DialogKind::Talk);
+    session.borrow().show_dialog_choices(choices.clone());
+    session.borrow().set_dialog_open(true);
+    let default_selection = if kind == DialogKind::Selection {
+        session.borrow().default_dialog_choice()
+    } else {
+        0
+    };
+    let mut presenter = NativeDialogPresenter::new(
+        &vm.vm_context.loader,
+        kind,
+        choices,
+        position,
+        default_selection,
+    );
+    presenter.prime_input(vm.vm_context.ui.ui(), &*vm.vm_context.input.borrow());
+    Pal4FunctionState::Yield(Box::new(move |vm, _| {
+        let choice = if presenter.choice_count() > 0 {
+            session
+                .borrow()
+                .poll_dialog_choice(presenter.choice_count())
+        } else {
+            None
+        };
+        let fast = vm.vm_context.fast_forward();
+        // Fast-forward skips narration, never a decision that changes the plot.
+        let answer = choice.or_else(|| {
+            if fast && presenter.choice_count() == 0 {
+                Some(1)
+            } else {
+                presenter.update(
+                    &vm.vm_context.dialog_box,
+                    vm.vm_context.ui.ui(),
+                    &*vm.vm_context.input.borrow(),
+                )
+            }
+        });
+        if let Some(answer) = answer {
+            if presenter.choice_count() > 0 {
+                session.borrow().complete_dialog_choice(answer);
+            }
             if fast {
                 vm.vm_context.stop_voice();
             }
-            // Reset text + avatar so the agent state snapshot and any
-            // future debug overlay stop reporting the just-dismissed
-            // line as if it were still on-screen.
             vm.vm_context.dialog_box.close();
+            session.borrow().set_dialog_open(false);
             ContinuationState::Completed
         } else {
             ContinuationState::Loop
@@ -3110,13 +3161,15 @@ fn mst_blend_in(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState 
 }
 
 fn show_common_dialog(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
-    as_params!(vm,_dialog_file_str:i32,_x:f32,_y:f32);
-    Pal4FunctionState::Completed
+    as_params!(vm, text:i32, x:f32, y:f32);
+    let text = get_str(vm, text as usize).unwrap_or_default();
+    begin_dialog(vm, &text, DialogKind::Message, [x, y])
 }
 
 fn show_select_dialog(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
-    as_params!(vm,_dialog_file_str:i32);
-    Pal4FunctionState::Completed
+    as_params!(vm, text:i32);
+    let text = get_str(vm, text as usize).unwrap_or_default();
+    begin_dialog(vm, &text, DialogKind::Selection, [0.5, 0.5])
 }
 fn gob_movment(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
     // V1: snap (position, yaw). The original engine likely glides
@@ -3276,8 +3329,9 @@ fn show_common_dialog_in_select_mode(
     _: &str,
     vm: &mut ScriptVm<Pal4VmContext>,
 ) -> Pal4FunctionState {
-    as_params!(vm, _dialog_file_str:i32,_x:f32,_y:f32);
-    Pal4FunctionState::Completed
+    as_params!(vm, text:i32, x:f32, y:f32);
+    let text = get_str(vm, text as usize).unwrap_or_default();
+    begin_dialog(vm, &text, DialogKind::Confirmation, [x, y])
 }
 
 fn play_movie_final(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {

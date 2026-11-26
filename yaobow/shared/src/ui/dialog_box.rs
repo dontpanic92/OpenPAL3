@@ -56,8 +56,16 @@ impl DialogBox {
     }
 
     pub fn set_text(&mut self, text: &str) {
-        let with_break = insert_speaker_break(text);
-        self.segments = dialog_markup::parse(&with_break, DEFAULT_TEXT_COLOR);
+        self.set_text_with_color(text, DEFAULT_TEXT_COLOR, true);
+    }
+
+    pub(crate) fn set_text_with_color(&mut self, text: &str, color: [f32; 4], speaker: bool) {
+        let with_break = if speaker {
+            insert_speaker_break(text)
+        } else {
+            text.to_owned()
+        };
+        self.segments = dialog_markup::parse(&with_break, color);
         self.visible_text = dialog_markup::strip(&with_break);
         self.active = true;
     }
@@ -94,6 +102,14 @@ impl DialogBox {
     /// `/v1/state.dialog.text` a clean, automation-friendly string.
     pub fn text(&self) -> &str {
         &self.visible_text
+    }
+
+    pub(crate) fn segments(&self) -> &[Segment] {
+        &self.segments
+    }
+
+    pub(crate) fn avatar(&self) -> Option<&ImageSetImage> {
+        self.avatar.as_ref()
     }
 
     /// `true` while an avatar portrait is attached to the dialog.

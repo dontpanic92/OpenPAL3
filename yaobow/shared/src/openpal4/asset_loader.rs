@@ -64,6 +64,7 @@ pub struct AssetLoader {
     texture_resolver: Pal4TextureResolver,
     portraits: HashMap<String, ImageSetImage>,
     gameplay_catalog: OnceCell<Rc<GameplayCatalog>>,
+    dialog_artwork: OnceCell<Option<Rc<super::native_dialog::DialogArtwork>>>,
 }
 
 impl AssetLoader {
@@ -83,6 +84,7 @@ impl AssetLoader {
             texture_resolver: Pal4TextureResolver {},
             portraits,
             gameplay_catalog: OnceCell::new(),
+            dialog_artwork: OnceCell::new(),
         })
     }
 
@@ -810,6 +812,18 @@ impl AssetLoader {
 
     pub fn load_portrait(&self, name: &str) -> Option<ImageSetImage> {
         self.portraits.get(&name.to_lowercase()).cloned()
+    }
+
+    pub(crate) fn dialog_artwork(&self) -> Option<Rc<super::native_dialog::DialogArtwork>> {
+        self.dialog_artwork
+            .get_or_init(|| match super::native_dialog::DialogArtwork::load(self) {
+                Ok(artwork) => Some(Rc::new(artwork)),
+                Err(error) => {
+                    log::error!("Cannot load PAL4 dialog artwork: {error:#}");
+                    None
+                }
+            })
+            .clone()
     }
 }
 

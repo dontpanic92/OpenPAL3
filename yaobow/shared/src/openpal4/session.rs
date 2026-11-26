@@ -65,6 +65,10 @@ pub struct RuntimeSnapshot {
 /// leaks into the loaded one.
 #[derive(Default)]
 pub struct Pal4SessionTransient {
+    dialog_open: Cell<bool>,
+    completed_dialog_choice: Cell<Option<i32>>,
+    default_dialog_choice: Cell<i32>,
+    active_dialog_choices: RefCell<Option<Vec<String>>>,
     menu_tab: Cell<Option<i32>>,
     menu_forced: Cell<bool>,
     menu_input_cooldown: Cell<u8>,
@@ -123,9 +127,38 @@ pub struct Pal4Session {
     state: Pal4PersistentState,
     transient: Pal4SessionTransient,
     catalog: Option<Rc<GameplayCatalog>>,
+    session_play_seconds: f64,
 }
 
 impl Pal4Session {
+    pub fn player_input_blocked(&self) -> bool {
+        self.menu_input_blocked() || self.transient.dialog_open.get()
+    }
+
+    pub fn set_dialog_open(&self, open: bool) {
+        self.transient.dialog_open.set(open);
+        if !open {
+            self.transient.active_dialog_choices.borrow_mut().take();
+            self.transient.menu_input_cooldown.set(2);
+        }
+    }
+
+    pub fn advance_play_time(&mut self, seconds: f32) {
+        self.state.advance_play_time(seconds);
+        if seconds.is_finite() && seconds > 0.0 {
+            self.session_play_seconds =
+                (self.session_play_seconds + seconds as f64).min(i32::MAX as f64);
+        }
+    }
+
+    pub fn play_seconds(&self, current_session: bool) -> i32 {
+        if current_session {
+            self.session_play_seconds as i32
+        } else {
+            self.state.play_seconds() as i32
+        }
+    }
+
     pub fn menu_tab(&self) -> Option<i32> {
         self.transient.menu_tab.get()
     }
@@ -173,6 +206,7 @@ impl Pal4Session {
             state: Pal4PersistentState::new(PAL4_APP_NAME.to_string()),
             transient: Pal4SessionTransient::default(),
             catalog: None,
+            session_play_seconds: 0.0,
         }
     }
 
@@ -182,6 +216,7 @@ impl Pal4Session {
             state,
             transient: Pal4SessionTransient::default(),
             catalog: None,
+            session_play_seconds: 0.0,
         }
     }
 
@@ -218,6 +253,7 @@ impl Pal4Session {
         let mut state = Pal4PersistentState::new(self.app_name().to_string());
         state.initialize_players(&catalog)?;
         self.state = state;
+        self.session_play_seconds = 0.0;
         self.reset_transient();
         Ok(())
     }
@@ -273,7 +309,24 @@ impl Pal4Session {
     /// drop the session borrow immediately — the list is short
     /// (a handful of strings) so the clone is cheap.
     pub fn dialog_choices(&self) -> Vec<String> {
-        self.transient.pending_dialog_choices.borrow().clone()
+        self.transient
+            .active_dialog_choices
+            .borrow()
+            .as_ref()
+            .cloned()
+            .unwrap_or_else(|| self.transient.pending_dialog_choices.borrow().clone())
+    }
+
+    pub fn show_dialog_choices(&self, choices: Vec<String>) {
+        *self.transient.active_dialog_choices.borrow_mut() = Some(choices);
+    }
+
+    pub fn set_default_dialog_choice(&self, index: i32) {
+        self.transient.default_dialog_choice.set(index.max(0));
+    }
+
+    pub fn default_dialog_choice(&self) -> usize {
+        self.transient.default_dialog_choice.get() as usize
     }
 
     /// Append one item to the pending dialog-choice list. Called
@@ -294,11 +347,28 @@ impl Pal4Session {
         self.transient.next_dialog_choice.set(Some(index));
     }
 
+    pub fn poll_dialog_choice(&self, count: usize) -> Option<i32> {
+        self.transient
+            .next_dialog_choice
+            .take()
+            .filter(|&index| index > 0 && index as usize <= count)
+    }
+
+    pub fn complete_dialog_choice(&self, index: i32) {
+        self.transient.completed_dialog_choice.set(Some(index));
+    }
+
     /// Take the buffered 1-based choice (defaulting to the first item)
     /// and clear the pending-items list.
     fn take_dialog_choice_1_based(&self) -> i32 {
-        let choice = self.transient.next_dialog_choice.take().unwrap_or(1);
+        let choice = self
+            .transient
+            .completed_dialog_choice
+            .take()
+            .or_else(|| self.transient.next_dialog_choice.take())
+            .unwrap_or(1);
         self.transient.pending_dialog_choices.borrow_mut().clear();
+        self.transient.default_dialog_choice.set(0);
         choice.max(1)
     }
 
@@ -679,6 +749,8 @@ mod tests {
         let mut session = Pal4Session::new();
         session.open_world_map();
         session.buffer_dialog_choice(3);
+        session.set_dialog_open(true);
+        session.complete_dialog_choice(2);
         session.request_scene_load("m07", "1", "", false);
         session.note_deferred_load_finished(true);
         let gen_before = session.deferred_load_generation();
@@ -693,5 +765,54 @@ mod tests {
         assert_eq!(session.deferred_load_generation(), gen_before);
         // Default-1 fallback still applies for dialog choice.
         assert_eq!(session.take_common_dialog_choice(), 1);
+        assert!(!session.player_input_blocked());
+    }
+
+    #[test]
+    fn dialogs_block_player_input_without_freezing_the_vm_and_preserve_index_conventions() {
+        let session = Pal4Session::new();
+        let locked = session.state().player_locked();
+        session.set_dialog_open(true);
+        assert!(session.player_input_blocked());
+        assert!(!session.menu_input_blocked());
+        session.buffer_dialog_choice(3);
+        assert_eq!(session.poll_dialog_choice(2), None);
+        session.buffer_dialog_choice(2);
+        assert_eq!(session.poll_dialog_choice(2), Some(2));
+        session.complete_dialog_choice(2);
+        assert_eq!(session.poll_dialog_choice(2), None);
+        assert_eq!(session.take_select_dialog_choice(), 1);
+        session.complete_dialog_choice(2);
+        assert_eq!(session.take_common_dialog_choice(), 2);
+        session.set_default_dialog_choice(2);
+        session.complete_dialog_choice(3);
+        assert_eq!(session.take_select_dialog_choice(), 2);
+        assert_eq!(session.default_dialog_choice(), 0);
+        session.set_dialog_open(false);
+        assert!(session.player_input_blocked());
+        session.advance_menu_input_frame();
+        assert!(session.player_input_blocked());
+        session.advance_menu_input_frame();
+        assert!(!session.player_input_blocked());
+        assert_eq!(session.state().player_locked(), locked);
+    }
+
+    #[test]
+    fn play_time_round_trips_without_rewinding_the_current_session_clock() {
+        let mut session = Pal4Session::new();
+        session.advance_play_time(3600.5);
+        let json = serde_json::to_string(session.state()).unwrap();
+        session.advance_play_time(60.5);
+        session.replace_state(serde_json::from_str(&json).unwrap());
+        assert_eq!(session.play_seconds(false), 3600);
+        assert_eq!(session.play_seconds(true), 3661);
+        session.reset_transient();
+        for invalid in [f32::NAN, f32::INFINITY, -1.0] {
+            session.advance_play_time(invalid);
+        }
+        assert_eq!(session.play_seconds(true), 3661);
+        let restored = Pal4Session::from_state(serde_json::from_str(&json).unwrap());
+        assert_eq!(restored.play_seconds(false), 3600);
+        assert_eq!(restored.play_seconds(true), 0);
     }
 }

@@ -217,6 +217,8 @@ pub struct[openpal4.IPal4GameMenu] GameMenu(
             self.draw(c, layout, tab, x, y, down);
             self.draw(c, self.toolbar, 4, x, y, down);
             c.text(self.info.rect("staticMoney"), number(self.game.money()), 13.0);
+            c.text(self.info.rect("staticTimeInfo"), play_time(self.game.play_seconds(false)), 13.0);
+            c.text(self.info.rect("staticGameTimeInfo"), play_time(self.game.play_seconds(true)), 13.0);
             if self.hit(2001, self.frame.rect("btnClose"), true, x, y, press, release) { self.game.close(); }
             let tabs: array<string> = ["Role", "Property", "Equipment"];
             for t in Range(0, 3) {
@@ -376,6 +378,12 @@ pub fn make(game: &openpal4.IPal4MenuState, input: &scripting_services.IInputSer
         0, -1, 0, -1, -1, false, true, -1, 0.0, -1.0, 0, 0, 0.4, false, "");
 }
 
+fn two_digits(value: int) -> string {
+    return if value < 10 { "0" + number(value) } else { number(value) };
+}
+fn play_time(seconds: int) -> string {
+    return two_digits(seconds / 3600) + ":" + two_digits(seconds / 60 % 60) + ":" + two_digits(seconds % 60);
+}
 fn resource(game: &openpal4.IPal4MenuState, role: int, current: int, maximum: int) -> string {
     number(game.member_value(role, current)) + "/" + number(game.member_value(role, maximum))
 }

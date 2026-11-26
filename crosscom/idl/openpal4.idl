@@ -128,6 +128,7 @@ interface IPal4MenuState: IUnknown {
     // level, HP, max HP, MP, max MP, physical, toughness, speed, luck, will, EXP
     int member_value(int role, int field);
     int money();
+    int play_seconds(bool current_session);
     int inventory_count(int tab, int category);
     int inventory_item(int tab, int category, int index);
     int item_quantity(int id);

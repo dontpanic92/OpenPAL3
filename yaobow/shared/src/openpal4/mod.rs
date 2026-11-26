@@ -22,6 +22,7 @@ pub mod menu_state;
 mod menu_preview;
 pub mod launch;
 pub mod modes;
+mod native_dialog;
 pub mod object_component;
 pub mod pal4_debug;
 pub mod scene;

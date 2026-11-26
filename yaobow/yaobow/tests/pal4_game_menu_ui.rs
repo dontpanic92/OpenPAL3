@@ -184,6 +184,8 @@ impl Harness {
                 anchor(menu.toolbar, "Property",118.0,524.0,97.0,76.0);
                 anchor(menu.toolbar, "Equipment",219.0,524.0,97.0,76.0);
                 anchor(menu.frame, "btnClose",754.0,554.0,40.0,40.0);
+                anchor(menu.info, "staticTimeInfo",12.0,81.0,89.0,14.0);
+                anchor(menu.info, "staticGameTimeInfo",12.0,124.0,89.0,14.0);
                 anchor(menu.properties, "PropertyList",377.0,35.0,306.0,189.0);
                 anchor(menu.properties, "PropertyClassImage",0.0,0.0,51.0,236.0);
                 anchor(menu.properties, "PropertyWindow",338.0,0.0,379.0,240.0);
@@ -258,6 +260,32 @@ impl Harness {
             )
             .unwrap();
     }
+}
+
+#[test]
+fn native_menu_displays_saved_and_current_session_time_separately() {
+    let h = Harness::new();
+    h.state.borrow_mut().advance_play_time(3661.0);
+    let saved = h.state.borrow().state().clone();
+    h.state.borrow_mut().advance_play_time(60.0);
+    h.state.borrow_mut().replace_state(saved);
+    h.key(38);
+    let (recorder, ui) = RecordingUiHost::create();
+    recorder.set_display_size(800, 600);
+    let id = h.host.intern(ui);
+    let ui = h.host.foreign_box("radiance.comdef.IUiHost", id).unwrap();
+    h.frame(ui, 0.0, 0.0, false);
+    let calls = recorder.calls.borrow();
+    assert!(
+        calls
+            .iter()
+            .any(|call| matches!(call, UiCall::TextAt { s, .. } if s == "01:01:01"))
+    );
+    assert!(
+        calls
+            .iter()
+            .any(|call| matches!(call, UiCall::TextAt { s, .. } if s == "01:02:01"))
+    );
 }
 
 #[test]

@@ -184,6 +184,9 @@ impl IPal4MenuStateImpl for Pal4MenuState {
     fn money(&self) -> i32 {
         self.session.borrow().state().money()
     }
+    fn play_seconds(&self, current_session: bool) -> i32 {
+        self.session.borrow().play_seconds(current_session)
+    }
     fn inventory_count(&self, tab: i32, category: i32) -> i32 {
         self.inventory_ids(tab, category).len() as i32
     }

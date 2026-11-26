@@ -122,6 +122,8 @@ pub struct Pal4PersistentState {
     script_globals: Vec<u32>,
     #[serde(default = "default_menu_grants")]
     menu_grants: [bool; 8],
+    #[serde(default)]
+    play_seconds: f64,
 }
 
 fn default_menu_grants() -> [bool; 8] {
@@ -159,6 +161,7 @@ impl Pal4PersistentState {
             inventory: HashMap::new(),
             script_globals: Vec::new(),
             menu_grants: default_menu_grants(),
+            play_seconds: 0.0,
         }
     }
 
@@ -314,6 +317,16 @@ impl Pal4PersistentState {
 
     pub fn money(&self) -> i32 {
         self.money
+    }
+
+    pub fn play_seconds(&self) -> f64 {
+        self.play_seconds
+    }
+
+    pub fn advance_play_time(&mut self, seconds: f32) {
+        if seconds.is_finite() && seconds > 0.0 {
+            self.play_seconds = (self.play_seconds + seconds as f64).min(i32::MAX as f64);
+        }
     }
 
     pub fn add_money(&mut self, amount: i32) {

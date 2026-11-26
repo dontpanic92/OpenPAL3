@@ -435,8 +435,8 @@ Keyboard controls remain available. Native inventory rows use release selection
 and double-click or Space to perform a supported action; wheel and arrow keys
 change list pages, and the header arrows / Q/E change the selected party member.
 The first category still uses the existing all-items view; native recent-item
-tracking is not implemented. Rage and playtime are not fabricated where those
-fields lack authoritative runtime data.
+tracking is not implemented. Rage remains unavailable rather than displaying
+an invented combat value. Playtime now uses the session clocks described below.
 
 Recorded-host regressions cover portrait opening, disabled native tabs,
 release-outside cancellation, native close/input isolation and item double-click.
@@ -446,6 +446,53 @@ HUD/status/inventory/equipment composition and repeated use/equip/save/reload
 through keyboard controls. Desktop focus restrictions prevented reliable
 automated OS mouse delivery; pointer behavior was checked through the same
 production p7 hit-testing code with injected pointer coordinates instead.
+
+### Native dialogs and playtime
+
+PAL4's existing Rust VM continuation/presenter boundary now draws the original
+`ScenarioDialog.xml`, `CommonDialog.xml` and `SelectDialog.xml` artwork.
+No new script bridge is needed for per-character dialog layout. Atlas lookup
+reuses the shared internal-name index: names such as `duihuakuang0` and
+`kuang20` are not their `.imageset` filenames. Atlas sprites are retained by
+the app-lifetime asset loader, including the frame that dismisses a prompt.
+Common-message frames use their nine-slice borders rather than stretching
+the center image over the whole panel.
+
+Scenario text uses the native 20-pixel font size, three-pixel line spacing,
+pale default color, portrait position and click indicator. Measured colored
+glyphs wrap and page inside the text rectangle, reserving room for an active
+left/right portrait. System/selection text uses the shipped `systemBold`
+size of 13. Source-layout placeholder text is never shown. Explicit markup
+colors are preserved; unverified `<dcN>` palettes still use the widget default.
+
+Common messages now wait for acknowledgement; selection/confirmation calls
+wait for a real choice. Space/gamepad confirm and directional navigation are
+supported, with press/release-latched mouse buttons. Opening/closing input
+cannot leak into player movement, and modal input blocking does not freeze
+the VM continuation or overwrite the persistent cutscene lock. Agent choices
+remain 1-based externally, with the established 0-based select / 1-based
+common VM results. Fast-forward skips narration but not plot decisions.
+The 0-based default-selection callback is honored (M02 `func1003` explicitly
+selects its third, cancel option with value 2). Exact animation timing remains
+follow-up work; this is not complete dialog-system parity.
+
+The original `gameInfo.xml` labels establish `staticTimeInfo` as accumulated
+time and `staticGameTimeInfo` as the current session's time. Both now display
+HH:MM:SS from active simulation-frame time, including menus and cutscenes.
+Agent pause adds no time; stepping adds the requested step duration; fast-forward
+does not multiply the clock. Accumulated time is saved/restored with progress.
+The current session clock is not rewound by loading another save, and starts
+at zero on a new playthrough/session. Old-save migration is not introduced.
+
+Validation covers colored paging, modal input/reset behavior, result/default
+indices, clock persistence and recorded-host menu text. Original-asset checks
+resolve the shipped dialog layouts and atlas references. Live Q01 captures
+verify native narration/portraits; M02 `func1003` verifies the three-option
+prompt, Space selecting its declared cancel default, explicit agent choices,
+and waiting through fast-forward/invalid choices. A live menu check also
+verified that pause adds no time and 60 steps at 0.1 seconds add exactly six
+saved seconds. Temporary slots were removed without overwriting existing saves.
+Physical OS mouse delivery and full native animation/palette parity remain open.
 
 ### Original item/equipment model previews
 

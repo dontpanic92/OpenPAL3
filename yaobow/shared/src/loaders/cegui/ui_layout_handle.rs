@@ -917,14 +917,14 @@ fn imageset_dir_for(layout_path: &str) -> String {
 /// internal `Name` attribute (case-insensitive). The two cheap
 /// filename-based candidates (`{set}.imageset`, `{set}_0.imageset`)
 /// are tried first to avoid the dir scan for the common case.
-struct ImagesetIndex {
+pub(crate) struct ImagesetIndex {
     dir: String,
     name_to_path: HashMap<String, String>,
     scanned: bool,
 }
 
 impl ImagesetIndex {
-    fn new(dir: String) -> Self {
+    pub(crate) fn new(dir: String) -> Self {
         Self {
             dir,
             name_to_path: HashMap::new(),
@@ -940,7 +940,11 @@ impl ImagesetIndex {
         }
     }
 
-    fn load(&mut self, vfs: &MiniFs, set_name: &str) -> anyhow::Result<(Imageset, Vec<u8>)> {
+    pub(crate) fn load(
+        &mut self,
+        vfs: &MiniFs,
+        set_name: &str,
+    ) -> anyhow::Result<(Imageset, Vec<u8>)> {
         let lower = set_name.to_lowercase();
         let candidates = [
             format!("{}.imageset", set_name),

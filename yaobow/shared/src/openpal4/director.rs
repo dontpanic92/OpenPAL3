@@ -563,6 +563,8 @@ impl OpenPAL4Director {
             }
         };
 
+        vm.abort_script();
+        vm.vm_context_mut().dialog_box.close();
         vm.g.borrow_mut().restore_globals(&snapshot.script_globals);
 
         if snapshot.scene_name.is_empty() {
@@ -592,12 +594,6 @@ impl OpenPAL4Director {
         }
         let mut vm = self.vm.borrow_mut();
         Self::apply_snapshot(vm.vm_context_mut(), &snapshot);
-        // The VM may have been mid-script when the user pressed the
-        // F-key load hotkey. Abandon the in-flight script (and any
-        // pending Yield continuations) so it does not resume against
-        // the freshly restored scene. The next agent / trigger /
-        // `giArenaLoad` re-enters naturally.
-        vm.abort_script();
         log::info!("Game loaded from slot {}", slot);
     }
 
@@ -709,6 +705,15 @@ impl IDirectorImpl for OpenPAL4Director {
 
     fn update(&self, delta_sec: f32) -> Option<crosscom::ComRc<radiance::comdef::IDirector>> {
         let _timer = radiance::perf::timer("pal4.director.update_total_ns");
+        let (advance, effective_dt) = self.compute_effective_dt(delta_sec);
+        {
+            let session = self.vm.borrow().vm_context.session_handle();
+            let mut session = session.borrow_mut();
+            session.advance_menu_input_frame();
+            if advance {
+                session.advance_play_time(effective_dt);
+            }
+        }
         let menu = self.game_menu.borrow().clone();
         if let Some((state, menu)) = menu {
             let (session, available) = {
@@ -722,7 +727,6 @@ impl IDirectorImpl for OpenPAL4Director {
             };
             {
                 let session = session.borrow();
-                session.advance_menu_input_frame();
                 if session
                     .menu_tab()
                     .is_some_and(|tab| !session.state().menu_enabled(tab))
@@ -760,8 +764,6 @@ impl IDirectorImpl for OpenPAL4Director {
         // simulation. Pause + zero pending steps = full freeze
         // (input bridge still ticks so a held key set just before
         // pause stays sensible; that's handled below).
-        let (advance, effective_dt) = self.compute_effective_dt(delta_sec);
-
         if !advance {
             self.end_agent_frame();
             return None;
