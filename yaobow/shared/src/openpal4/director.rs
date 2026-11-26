@@ -55,6 +55,10 @@ pub struct Pal4DebugBundle {
 }
 
 pub struct OpenPAL4Director {
+    rendering_engine: RefCell<Option<Rc<RefCell<dyn radiance::rendering::RenderingEngine>>>>,
+    rendered_clean_frame: Cell<bool>,
+    can_capture_frame: Cell<bool>,
+    menu_was_open: Cell<bool>,
     game_menu: RefCell<
         Option<(
             ComRc<super::comdef::IPal4MenuState>,
@@ -201,6 +205,10 @@ impl OpenPAL4Director {
             rotating_entities.clone(),
         );
         Self {
+            rendering_engine: RefCell::new(None),
+            rendered_clean_frame: Cell::new(false),
+            can_capture_frame: Cell::new(false),
+            menu_was_open: Cell::new(false),
             game_menu: RefCell::new(None),
             vm: Rc::new(RefCell::new(create_script_vm(vm_context))),
             control: FreeViewController::new(input),
@@ -448,6 +456,31 @@ impl OpenPAL4Director {
         }
     }
 
+    pub(crate) fn set_save_preview(
+        &self,
+        engine: Rc<RefCell<dyn radiance::rendering::RenderingEngine>>,
+        uploader: Option<radiance_scripting::services::sprite::SpriteUploader>,
+    ) {
+        *self.rendering_engine.borrow_mut() = Some(engine);
+        if let (Some((state, _)), Some(uploader)) = (self.game_menu.borrow().as_ref(), uploader) {
+            state
+                .inner::<super::menu_state::Pal4MenuState>()
+                .set_thumbnail_uploader(uploader);
+        }
+    }
+
+    fn capture_save_preview(&self) -> Option<Vec<u8>> {
+        if !self.can_capture_frame.get() {
+            return None;
+        }
+        self.rendering_engine
+            .borrow()
+            .as_ref()?
+            .borrow_mut()
+            .capture_last_frame()
+            .and_then(super::save_slots::encode_thumbnail)
+    }
+
     fn refresh_debug_snapshot(&self, delta_sec: f32) {
         let bundle_ref = self.debug.borrow();
         let Some(bundle) = bundle_ref.as_ref() else {
@@ -539,6 +572,12 @@ impl OpenPAL4Director {
     }
 
     pub(crate) fn try_save_state(&self, slot: i32) -> anyhow::Result<()> {
+        let menu_open = self.vm.borrow().vm_context.session().menu_tab().is_some();
+        let thumbnail = if menu_open {
+            None
+        } else {
+            Some(self.capture_save_preview())
+        };
         let mut vm = self.vm.borrow_mut();
         let globals = vm.g.borrow().globals_snapshot();
 
@@ -546,6 +585,9 @@ impl OpenPAL4Director {
         let position = Some(app.leader_pos());
         let direction = Some(app.leader_direction());
         let camera = app.camera_transform();
+        if let Some(thumbnail) = thumbnail {
+            app.session_mut().state_mut().set_thumbnail(thumbnail);
+        }
 
         app.session_mut()
             .try_save_runtime(slot, position, direction, camera, globals)
@@ -790,6 +832,15 @@ impl IDirectorImpl for OpenPAL4Director {
                 .inner::<super::menu_state::Pal4MenuState>()
                 .set_available(available);
             menu.tick();
+            let open = session.borrow().menu_tab().is_some();
+            if open != self.menu_was_open.replace(open) {
+                let thumbnail = if open {
+                    self.capture_save_preview()
+                } else {
+                    None
+                };
+                session.borrow_mut().state_mut().set_thumbnail(thumbnail);
+            }
             state
                 .inner::<super::menu_state::Pal4MenuState>()
                 .update_preview(session.borrow().menu_tab());
@@ -916,6 +967,15 @@ impl IDirectorImpl for OpenPAL4Director {
     }
 
     fn deactivate(&self) {
+        self.rendered_clean_frame.set(false);
+        self.can_capture_frame.set(false);
+        self.menu_was_open.set(false);
+        self.vm
+            .borrow_mut()
+            .vm_context_mut()
+            .session_mut()
+            .state_mut()
+            .set_thumbnail(None);
         // An in-game transition handoff (`giArenaLoad` / world map) also
         // routes through `deactivate`, but the transition director hands
         // control back to *this* director, so the pending fires will still
@@ -952,6 +1012,16 @@ impl IDirectorImpl for OpenPAL4Director {
 
 impl IUiLayerImpl for OpenPAL4Director {
     fn render(&self, ui: ComRc<IUiHost>, dt: f32) {
+        self.can_capture_frame.set(self.rendered_clean_frame.get());
+        let clean = {
+            let vm = self.vm.borrow();
+            vm.is_idle()
+                && !vm.vm_context.is_player_locked()
+                && !vm.vm_context.movie_playing()
+                && vm.vm_context.session().menu_tab().is_none()
+                && !self.debug_visible.get()
+        };
+        self.rendered_clean_frame.set(clean);
         let menu = self
             .game_menu
             .borrow()
@@ -959,6 +1029,9 @@ impl IUiLayerImpl for OpenPAL4Director {
             .map(|(_, menu)| menu.clone());
         if let Some(menu) = menu {
             menu.render(ui.clone(), dt);
+        }
+        if self.vm.borrow().vm_context.session().menu_tab().is_some() {
+            self.rendered_clean_frame.set(false);
         }
         // Tilde edge-detect → toggle visibility. Done in Rust (rather
         // than in script) so the script overlay stays oblivious to the
@@ -971,6 +1044,7 @@ impl IUiLayerImpl for OpenPAL4Director {
             return;
         }
 
+        self.rendered_clean_frame.set(false);
         self.refresh_debug_snapshot(dt);
 
         // Clone the COM handles out of the RefCell first so we drop the

@@ -20,6 +20,14 @@ fn original_database_initializes_and_persists_gameplay() {
         (246, 188)
     );
     assert_eq!(catalog.roles[&0].stats.integer("CA_MAX_HP"), 90);
+    assert_eq!(catalog.scene_names[&("Q01".into(), "Q01".into())], "青鸾峰");
+    let (_, (chapter, memo)) = catalog
+        .story_descriptions
+        .range(..=10600)
+        .next_back()
+        .unwrap();
+    assert_eq!(chapter, "序章");
+    assert!(memo.starts_with("1-2-3."));
 
     let mut session = Pal4Session::new();
     session.install_catalog(catalog.clone()).unwrap();

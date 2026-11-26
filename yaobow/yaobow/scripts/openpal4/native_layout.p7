@@ -1,5 +1,33 @@
 import scripting_services;
+import radiance;
 import radiance_scripting.ui as geometry;
+
+pub struct Sprite(pub texture: int, u0: float, v0: float, u1: float, v1: float) {
+    pub fn draw(self: &Self, ui: &radiance.IUiHost, r: geometry.Rect, ox: float, oy: float, scale: float) {
+        if self.texture != 0 {
+            ui.image_rect(self.texture, ox + r.x * scale, oy + r.y * scale,
+                ox + (r.x + r.w) * scale, oy + (r.y + r.h) * scale,
+                self.u0, self.v0, self.u1, self.v1);
+        }
+    }
+}
+
+pub fn capture(layout: &NativeLayout, name: string, set: string, image: string) -> &Sprite {
+    if layout.handle != null {
+        let art = layout.handle!;
+        let id = layout.find(name);
+        if !art.set_window_image(id, 0, set, image) {
+            return &Sprite(0, 0.0, 0.0, 0.0, 0.0);
+        }
+        for i in Range(0, art.draw_count()) {
+            if art.draw_window_id(i) == id {
+                return &Sprite(art.draw_texture_com_id(i), art.draw_u0(i), art.draw_v0(i),
+                    art.draw_u1(i), art.draw_v1(i));
+            }
+        }
+    }
+    return &Sprite(0, 0.0, 0.0, 0.0, 0.0);
+}
 
 pub struct NativeLayout(
     pub handle: ?&scripting_services.IUiLayoutHandle,

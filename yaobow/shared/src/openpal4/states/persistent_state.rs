@@ -146,6 +146,8 @@ pub struct Pal4PersistentState {
     menu_grants: [bool; 8],
     #[serde(default)]
     play_seconds: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    thumbnail_png: Option<Vec<u8>>,
 }
 
 fn default_menu_grants() -> [bool; 8] {
@@ -186,6 +188,7 @@ impl Pal4PersistentState {
             script_globals: Vec::new(),
             menu_grants: default_menu_grants(),
             play_seconds: 0.0,
+            thumbnail_png: None,
         }
     }
 
@@ -208,6 +211,14 @@ impl Pal4PersistentState {
         Self::get_data_dir(app_name)
             .join("Save")
             .join(format!("{slot}.json"))
+    }
+
+    pub(crate) fn thumbnail(&self) -> Option<&[u8]> {
+        self.thumbnail_png.as_deref()
+    }
+
+    pub(crate) fn set_thumbnail(&mut self, png: Option<Vec<u8>>) {
+        self.thumbnail_png = png;
     }
 
     /// Read a save slot for display purposes only. Returns `None` when

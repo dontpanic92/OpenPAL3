@@ -20,6 +20,9 @@ import radiance_scripting.freeview;
 // as a `gui.Stack` of positioned `gui.LayoutImage`s that wrap the
 // original layout's atlas images, plus `gui.TextButton` save rows.
 import radiance_scripting.ui as gui;
+import shared.openpal4;
+import yaobow.openpal4.native_layout as native;
+import yaobow.openpal4.save_rows;
 
 // Layout-relative button names (exact `Name=...` attributes from
 // `MainWindow.xml`'s `<Window Type="OiramLook/Button" ...>` nodes).
@@ -76,23 +79,12 @@ let MENU_BGM_NAME: string = "p01-1";
 let MENU_LAYOUT_PATH: string = "/gamedata/ui/layouts/MainWindow.xml";
 let LOAD_LAYOUT_PATH: string = "/gamedata/ui/layouts/loadWindow.xml";
 
-// Name of the load layout's central save-panel background window.
-// Our clickable slot rows are anchored inside this window's rect so
-// they sit over the original save-list area. Falls back to a centred
-// region of the native canvas when the window is absent.
-let LOAD_PANEL_WINDOW: string = "SaveWindowzhong";
-
-// Slot-list overlay layout, in the load layout's native pixel space.
-// `LOAD_LIST_INSET` pads the panel rect; rows are evenly distributed.
-let LOAD_LIST_INSET: float = 24.0;
-
 // Classify a clicked load-screen widget by its layout `Name=...`.
 // loadWindow.xml's back control is `BtnClose`; the `BtnLoad0..9`
 // buttons are *page* selectors (labelled "1~10".."91~100") for the
 // original game's 100-slot list, and the actual saves live in a
 // dynamic `List` (MultiColumnList) widget our flat image renderer
-// can't populate. Page buttons select the ten visible rows, rendered
-// over the central save panel (see `append_slot_rows`).
+// can't populate. Page buttons select a group of ten scrollable rows.
 fn is_back_name(name: string) -> bool {
     return name.contains("Back") || name.contains("back")
         || name.contains("Return") || name.contains("Cancel")
@@ -119,6 +111,11 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal4StartMenuDirector(
     // Save slot carried by a pending Intent.Load, or NO_SLOT.
     pub load_slot: int,
     pub load_page: int,
+    pub load_selected: int,
+    pub load_first: int,
+    pub slots: ?&openpal4.IPal4SaveSlots,
+    pub load_art: &native.NativeLayout,
+    pub rows: &save_rows.SaveRows,
     // Cross-frame press latch for the declarative widget tree (the
     // pressed widget's key, or NO_PRESS). Replaces the old
     // `pressed_window_id` / `pressed_slot` int fields — the latch now
@@ -187,19 +184,12 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal4StartMenuDirector(
         0
     }
 
-    // Declare the menu UI as a widget tree. `UiLayout` hosts the original
-    // CEGUI layout (atlas images + name-based click dispatch) and owns the
-    // letterbox fit; on the load screen a `ListView` of save rows is
-    // anchored over the central panel via `LayoutAnchor`.
+    // Load artwork and absolute-positioned rows share one draw layer.
     pub fn build(self: &Self) -> box<gui.Element> {
         if self.mode == MODE_LOAD {
             if self.load_layout != null {
                 let mut items: array<box<gui.Element>> = [
-                    gui.UiLayout(self.load_layout!, (name: string) => { self.on_load_click(name); }),
-                    gui.LayoutAnchor(self.load_layout!, LOAD_PANEL_WINDOW,
-                        gui.Padding(
-                            gui.ListView(self.slot_count(), (i: int) => self.slot_row(i), 0.0),
-                            LOAD_LIST_INSET, LOAD_LIST_INSET, LOAD_LIST_INSET, LOAD_LIST_INSET)),
+                    SlotList(self),
                 ];
                 let names: array<string> = ["BtnLoad0","BtnLoad1","BtnLoad2","BtnLoad3","BtnLoad4",
                     "BtnLoad5","BtnLoad6","BtnLoad7","BtnLoad8","BtnLoad9"];
@@ -230,26 +220,6 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal4StartMenuDirector(
         return gui.Positioned(20.0, 20.0, 800.0, 40.0, gui.Text(msg));
     }
 
-    pub fn slot_count(self: &Self) -> int {
-        return min(10, max(0, self.host.pal4().save_slot_count() - self.load_page * 10));
-    }
-
-    // Build one save-slot row widget (declarative `ListView` item builder).
-    // Populated rows render white + clickable (loads on release); empty
-    // rows render greyed + inert. The press latch key is namespaced by
-    // `SLOT_KEY_BASE` so it never collides with a layout `window_id`.
-    pub fn slot_row(self: &Self, idx: int) -> box<gui.Element> {
-        let slot = self.load_page * 10 + idx + 1;
-        let exists = self.host.pal4().save_slot_exists(slot);
-        let label = self.host.pal4().save_slot_summary(slot);
-        let key = SLOT_KEY_BASE + slot;
-        if exists {
-            return gui.TextButton(key, label, true, () => { self.fire_load_slot(slot); },
-                gui.Color.WHITE);
-        }
-        return gui.TextButton(key, label, false, () => {}, gui.Color.gray(0.5));
-    }
-
     // --- Click handlers (mutate intent/mode; drained in `update`) -------
 
     pub fn on_main_click(self: &Self, name: string) {
@@ -266,6 +236,8 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal4StartMenuDirector(
             // otherwise the button is inert.
             if self.load_layout != null {
                 self.mode = MODE_LOAD;
+                self.slots = self.host.pal4().save_slots();
+                self.load_selected = -1; self.load_first = 0;
             }
             return;
         }
@@ -280,7 +252,9 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal4StartMenuDirector(
         let names: array<string> = ["BtnLoad0","BtnLoad1","BtnLoad2","BtnLoad3","BtnLoad4",
             "BtnLoad5","BtnLoad6","BtnLoad7","BtnLoad8","BtnLoad9"];
         for i in Range(0,10) {
-            if name == names[i] { self.load_page = i; }
+            if name == names[i] {
+                self.load_page = i; self.load_first = 0; self.load_selected = -1;
+            }
         }
     }
 
@@ -318,6 +292,76 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal4StartMenuDirector(
     }
 }
 
+struct[gui.Element] SlotList(menu: &Pal4StartMenuDirector) {
+    fn measure(self: ref<Self>, avail: gui.Size, ui: &radiance.IUiHost) -> gui.Size {
+        gui.Size.ZERO
+    }
+    fn paint(self: ref<Self>, rect: gui.Rect, ui: &radiance.IUiHost, ctx: box<gui.UiCtx>) {
+        let menu = self.menu;
+        if menu.load_layout == null || menu.slots == null { return; }
+        let handle = menu.load_layout!;
+        let size = gui.Size(handle.native_width() as float,handle.native_height() as float);
+        let scale = min(rect.w/size.w,rect.h/size.h);
+        if scale <= 0.0 { return; }
+        let fitted = gui.Rect(rect.x+(rect.w-size.w*scale)/2.0,rect.y+(rect.h-size.h*scale)/2.0,
+            size.w*scale,size.h*scale);
+        let list = menu.load_art.rect("List");
+        let x = (ui.mouse_pos_x()-fitted.x)/scale;
+        let y = (ui.mouse_pos_y()-fitted.y)/scale;
+        let down = ui.mouse_down(0);
+        for i in Range(0,handle.draw_count()) {
+            let id = handle.draw_window_id(i);
+            let name = handle.window_name(id);
+            if name == "ImgSelectMask" || name == "StaticSelectMask" { continue; }
+            let r = gui.Rect(handle.draw_x(i),handle.draw_y(i),handle.draw_w(i),handle.draw_h(i));
+            let over = native.contains(r,x,y) && handle.draw_is_interactive(i);
+            let mut texture = handle.draw_texture_com_id(i);
+            let mut u0 = handle.draw_u0(i); let mut v0 = handle.draw_v0(i);
+            let mut u1 = handle.draw_u1(i); let mut v1 = handle.draw_v1(i);
+            if over && down && handle.draw_pressed_texture_com_id(i) != 0 {
+                texture = handle.draw_pressed_texture_com_id(i);
+                u0 = handle.draw_pressed_u0(i); v0 = handle.draw_pressed_v0(i);
+                u1 = handle.draw_pressed_u1(i); v1 = handle.draw_pressed_v1(i);
+            } else {
+                if over && handle.draw_hover_texture_com_id(i) != 0 {
+                    texture = handle.draw_hover_texture_com_id(i);
+                    u0 = handle.draw_hover_u0(i); v0 = handle.draw_hover_v0(i);
+                    u1 = handle.draw_hover_u1(i); v1 = handle.draw_hover_v1(i);
+                }
+            }
+            if texture != 0 {
+                ui.image_rect(texture,fitted.x+r.x*scale,fitted.y+r.y*scale,
+                    fitted.x+(r.x+r.w)*scale,fitted.y+(r.y+r.h)*scale,u0,v0,u1,v1);
+            }
+            if handle.draw_is_interactive(i) {
+                ctx.track_press(ui,id,over,down,() => { menu.on_load_click(name); });
+            }
+        }
+        menu.rows.paint(ui,menu.slots!,list,menu.load_page,menu.load_first,menu.load_selected,
+            fitted.x,fitted.y,scale);
+        for visible in Range(0,4) {
+            let index = menu.load_first+visible;
+            let slot = menu.load_page*10+index+1;
+            let r = menu.rows.row(list,visible);
+            ctx.track_press(ui,SLOT_KEY_BASE+slot,native.contains(r,x,y),down,() => {
+                if menu.load_selected == index && menu.slots!.status(slot) == 1 {
+                    menu.fire_load_slot(slot);
+                } else { menu.load_selected=index; }
+            });
+        }
+        for direction in Range(0,2) {
+            let r = menu.rows.arrow(list,direction);
+            ctx.track_press(ui,SLOT_KEY_BASE+201+direction,native.contains(r,x,y),down,() => {
+                menu.load_first=max(0,min(6,menu.load_first+if direction==0 { -1 } else { 1 }));
+            });
+        }
+        if native.contains(list,x,y) {
+            if ui.mouse_wheel() > 0.0 { menu.load_first=max(0,menu.load_first-1); }
+            if ui.mouse_wheel() < 0.0 { menu.load_first=min(6,menu.load_first+1); }
+        }
+    }
+}
+
 pub fn make_pal4_start_menu(
     host: &yaobow_services.IYaobowHostContext,
     asset_path: string,
@@ -330,9 +374,11 @@ pub fn make_pal4_start_menu(
     // Game" can switch to it without a per-click load.
     let layout = host.pal4().open_layout(MENU_LAYOUT_PATH);
     let load_layout = host.pal4().open_layout(LOAD_LAYOUT_PATH);
+    let rows = save_rows.make();
+    rows.install(load_layout,"ImgSelectMask");
     let bgm = host.pal4().load_music(MENU_BGM_NAME);
     return &Pal4StartMenuDirector(
         host, asset_path, layout, load_layout, bgm,
-        Intent.None, false, MODE_MAIN, NO_SLOT, 0, gui.make_ctx(),
+        Intent.None, false, MODE_MAIN, NO_SLOT, 0, -1, 0, null, native.make(load_layout), rows, gui.make_ctx(),
     ) as &radiance.IDirector;
 }

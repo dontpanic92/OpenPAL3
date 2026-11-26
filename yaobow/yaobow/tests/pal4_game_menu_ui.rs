@@ -370,7 +370,7 @@ fn system_pages_distinguish_empty_corrupt_and_valid_saves_and_gate_overwrites() 
     let id = h.host.intern(ui);
     let ui = h.host.foreign_box("radiance.comdef.IUiHost", id).unwrap();
     h.frame(ui.clone(), 0., 0., false);
-    h.click(&ui, 500., 55.);
+    h.click(&ui, 500., 85.);
     assert!(
         !h.bridge.system_busy(),
         "occupied slots must not save before confirmation"
@@ -396,7 +396,7 @@ fn system_pages_distinguish_empty_corrupt_and_valid_saves_and_gate_overwrites() 
             .calls
             .borrow()
             .iter()
-            .any(|c| matches!(c, UiCall::TextAt { s, .. } if s.starts_with("11")))
+            .any(|c| matches!(c, UiCall::TextAt { s, .. } if s == "11"))
     );
     for _ in 0..8 {
         h.key(41);
@@ -410,6 +410,105 @@ fn system_pages_distinguish_empty_corrupt_and_valid_saves_and_gate_overwrites() 
     assert!(
         h.bridge.system_busy(),
         "explicit checkmark submits the occupied slot"
+    );
+}
+
+#[test]
+fn native_save_rows_show_snapshot_details_and_scroll_to_the_selected_slot() {
+    let saves = SystemSaves::new();
+    let h = Harness::in_namespace(saves.namespace());
+    {
+        let mut session = h.state.borrow_mut();
+        let state = session.state_mut();
+        state.set_scene("M02".into(), "3".into());
+        state.player_mut(0).level = 22;
+        state.advance_play_time(3661.);
+        state.add_quest_percentage(42);
+        state.try_save(2).unwrap();
+        state.try_save(10).unwrap();
+    }
+    assert!(h.bridge.open(6));
+    h.key(-1);
+    let snapshot = h.bridge.save_slots();
+    let (recorder, ui) = RecordingUiHost::create();
+    recorder.set_display_size(800, 600);
+    let id = h.host.intern(ui);
+    let ui = h.host.foreign_box("radiance.comdef.IUiHost", id).unwrap();
+    h.frame(ui.clone(), 0., 0., false);
+    assert!(
+        recorder
+            .calls
+            .borrow()
+            .iter()
+            .any(|call| matches!(call, UiCall::TextAt { s, .. } if s == "22级"))
+    );
+    assert!(
+        recorder
+            .calls
+            .borrow()
+            .iter()
+            .any(|call| matches!(call, UiCall::TextAt { s, .. } if s == "01:01:01"))
+    );
+    h.click(&ui, 660., 419.);
+    h.key(-1);
+    recorder.calls.borrow_mut().clear();
+    h.frame(ui.clone(), 0., 0., false);
+    assert!(
+        !recorder
+            .calls
+            .borrow()
+            .iter()
+            .any(|call| matches!(call, UiCall::TextAt { s, .. } if s == "1")),
+        "mouse scrolling must persist on an idle tick"
+    );
+    h.key(40);
+    recorder.set_mouse_wheel(-1.);
+    h.frame(ui.clone(), 400., 170., false);
+    recorder.set_mouse_wheel(0.);
+    h.key(-1);
+    recorder.calls.borrow_mut().clear();
+    h.frame(ui.clone(), 400., 170., false);
+    assert!(
+        !recorder
+            .calls
+            .borrow()
+            .iter()
+            .any(|call| matches!(call, UiCall::TextAt { s, .. } if s == "1")),
+        "wheel scrolling must persist on an idle tick"
+    );
+    h.key(40);
+    h.click(&ui, 400., 170.);
+    assert!(
+        !h.bridge.system_busy(),
+        "selecting a different row must not save or load"
+    );
+    for _ in 0..8 {
+        h.key(42);
+    }
+    recorder.calls.borrow_mut().clear();
+    h.frame(ui.clone(), 0., 0., false);
+    assert!(
+        recorder
+            .calls
+            .borrow()
+            .iter()
+            .any(|call| matches!(call, UiCall::TextAt { s, .. } if s == "10"))
+    );
+    assert!(
+        !recorder
+            .calls
+            .borrow()
+            .iter()
+            .any(|call| matches!(call, UiCall::TextAt { s, .. } if s == "1"))
+    );
+    h.state.borrow_mut().state_mut().player_mut(0).level = 23;
+    h.state.borrow().state().try_save(10).unwrap();
+    h.bridge.refresh_slots();
+    assert_eq!(h.bridge.save_slots().level(10), 23);
+    assert_eq!(
+        snapshot.level(10),
+        22,
+        "refresh must not change a live snapshot"
     );
 }
 

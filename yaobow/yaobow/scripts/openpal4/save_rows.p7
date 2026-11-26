@@ -1,0 +1,96 @@
+import radiance;
+import scripting_services;
+import shared.openpal4;
+import radiance_scripting.ui as gui;
+import yaobow.openpal4.native_layout as native;
+
+pub struct SaveRows(
+    art: &native.NativeLayout, frames: array<&native.Sprite>, portraits: array<&native.Sprite>,
+    arrows: array<&native.Sprite>,
+) {
+    pub fn install(self: &Self, handle: ?&scripting_services.IUiLayoutHandle, mask: string) {
+        self.art = native.make(handle);
+        self.frames = [
+            native.capture(self.art,mask,"kuang0","kuang21"),
+            native.capture(self.art,mask,"kuang20","kuang21"),
+            native.capture(self.art,mask,"gy0","xuanzhekuang2"),
+        ];
+        let mut portraits: array<&native.Sprite> = [];
+        for role in Range(0,4) {
+            portraits.push(native.capture(self.art,mask,"gy0","tou"+number(role+1)));
+        }
+        self.portraits = portraits;
+        self.arrows = [
+            native.capture(self.art,mask,"gy0","fangjiao"),
+            native.capture(self.art,mask,"gy0","fangjiaob"),
+        ];
+        self.art.image(mask,0,"gy0","touming");
+    }
+    pub fn row(self: &Self, list: gui.Rect, visible: int) -> gui.Rect {
+        gui.Rect(list.x+2.0,list.y+26.0+(visible as float)*91.0,min(601.0,list.w-34.0),91.0)
+    }
+    pub fn arrow(self: &Self, list: gui.Rect, direction: int) -> gui.Rect {
+        gui.Rect(list.x+list.w-32.0,if direction == 0 { list.y } else { list.y+list.h-23.0 },32.0,23.0)
+    }
+    pub fn paint(self: &Self, ui: &radiance.IUiHost, slots: &openpal4.IPal4SaveSlots,
+        list: gui.Rect, page: int, first: int, selected: int, ox: float, oy: float, scale: float) {
+        ui.clip_rect(ox+list.x*scale,oy+list.y*scale,
+            ox+(list.x+list.w)*scale,oy+(list.y+list.h)*scale,() => {
+            for visible in Range(0,4) {
+                let index = first+visible;
+                if index >= 10 { continue; }
+                let slot = page*10+index+1;
+                let r = self.row(list,visible);
+                if self.frames.len() == 3 {
+                    self.frames[if slots.status(slot) == 1 { 1 } else { 0 }].draw(ui,r,ox,oy,scale);
+                    if selected == index { self.frames[2].draw(ui,r,ox,oy,scale); }
+                }
+                self.text(ui,r.x+7.0,r.y+35.0,26.0,number(slot),ox,oy,scale);
+                if slots.status(slot) == 1 {
+                    let leader = slots.leader(slot);
+                    if leader >= 0 && leader < self.portraits.len() {
+                        self.portraits[leader].draw(ui,gui.Rect(r.x+26.0,r.y+4.0,53.0,65.0),ox,oy,scale);
+                    }
+                    self.text(ui,r.x+42.0,r.y+73.0,90.0,number(slots.level(slot))+"级",ox,oy,scale);
+                    self.text(ui,r.x+258.0,r.y+10.0,228.0,slots.detail(slot,0),ox,oy,scale);
+                    self.text(ui,r.x+258.0,r.y+37.0,65.0,slots.detail(slot,2),ox,oy,scale);
+                    self.text(ui,r.x+324.0,r.y+37.0,162.0,slots.detail(slot,1),ox,oy,scale);
+                    self.text(ui,r.x+258.0,r.y+64.0,228.0,slots.detail(slot,3),ox,oy,scale);
+                    let thumbnail = slots.thumbnail(slot);
+                    if thumbnail != null {
+                        let image = thumbnail!;
+                        ui.image_rect(image.com_id(),ox+(r.x+495.0)*scale,oy+(r.y+7.0)*scale,
+                            ox+(r.x+593.0)*scale,oy+(r.y+82.0)*scale,0.0,0.0,1.0,1.0);
+                    }
+                } else {
+                    if slots.status(slot) == 2 {
+                        self.text(ui,r.x+258.0,r.y+37.0,228.0,"存档损坏或无法读取",ox,oy,scale);
+                    }
+                }
+            }
+        });
+        if self.arrows.len() == 2 {
+            for direction in Range(0,2) {
+                self.arrows[direction].draw(ui,self.arrow(list,direction),ox,oy,scale);
+            }
+        }
+    }
+    fn text(self: &Self, ui: &radiance.IUiHost, x: float, y: float, width: float, value: string,
+        ox: float, oy: float, scale: float) {
+        ui.clip_rect(ox+x*scale,oy+y*scale,ox+(x+width)*scale,oy+(y+20.0)*scale,() => {
+            ui.text_at_size(ox+x*scale,oy+y*scale,13.0*scale,0.08,0.08,0.08,1.0,value);
+        });
+    }
+}
+
+pub fn make() -> &SaveRows {
+    &SaveRows(native.make(null),[],[],[])
+}
+
+fn number(n: int) -> string {
+    if n == 0 { return "0"; }
+    let digits: array<string> = ["0","1","2","3","4","5","6","7","8","9"];
+    let mut value = n; let mut out = "";
+    while value > 0 { out=digits[value%10]+out; value=value/10; }
+    out
+}

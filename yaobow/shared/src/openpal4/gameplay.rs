@@ -190,6 +190,8 @@ pub struct GameplayCatalog {
     pub equipment: BTreeMap<i32, EquipmentDefinition>,
     pub properties: BTreeMap<i32, PropertyDefinition>,
     pub skills: BTreeMap<i32, SkillDefinition>,
+    pub scene_names: HashMap<(String, String), String>,
+    pub story_descriptions: BTreeMap<i32, (String, String)>,
 }
 
 impl GameplayCatalog {
@@ -394,6 +396,24 @@ impl GameplayCatalog {
                 catalog.skills.insert(id, skill).is_none(),
                 "duplicate skill {id}"
             );
+        }
+        if let Some(table) = database.tables.iter().find(|t| t.name == "Scene") {
+            for values in &table.rows {
+                let row = Row { table, values };
+                catalog.scene_names.insert(
+                    (row.text("SCENE")?, row.text("SECTION")?),
+                    row.text("NAME")?,
+                );
+            }
+        }
+        if let Some(table) = database.tables.iter().find(|t| t.name == "StoryDesc") {
+            for values in &table.rows {
+                let row = Row { table, values };
+                catalog.story_descriptions.insert(
+                    row.integer("ID")?,
+                    (row.text("CHAPTER")?, row.text("MEMO")?),
+                );
+            }
         }
         Ok(catalog)
     }

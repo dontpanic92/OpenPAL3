@@ -144,6 +144,7 @@ interface IPal4MenuState: IUnknown {
     // Queue an isolated model preview; returns 0 until the next update has rendered it.
     int preview_texture(int id, float width, float height, float yaw);
     void refresh_slots();
+    IPal4SaveSlots save_slots();
     int slot_state(int slot);
     &str slot_summary(int slot);
     // Save, load, return to title, quit. Queued outside the UI/VM borrow.
@@ -156,6 +157,19 @@ interface IPal4MenuState: IUnknown {
 }
 [uuid(d8800081-5242-4c84-a965-c48c94c81102)]
 class Pal4MenuState: IPal4MenuState {}
+
+[uuid(d8800081-5242-4c84-a965-c48c94c81104)]
+interface IPal4SaveSlots: IUnknown {
+    int status(int slot);
+    &str summary(int slot);
+    // Location, elapsed time, chapter, story description. Empty/corrupt slots have no details.
+    &str detail(int slot, int field);
+    int leader(int slot);
+    int level(int slot);
+    ISprite? thumbnail(int slot);
+}
+[uuid(d8800081-5242-4c84-a965-c48c94c81105)]
+class Pal4SaveSlots: IPal4SaveSlots {}
 
 [uuid(d8800081-5242-4c84-a965-c48c94c81103), protosept(scriptable)]
 interface IPal4GameMenu: IUnknown {
@@ -298,6 +312,7 @@ interface IPal4Service: IUnknown {
     // "Slot 1 - (empty)" for a missing/unreadable one. ASCII only
     // (the PAL4 menu font has no CJK glyphs).
     &str save_slot_summary(int slot);
+    IPal4SaveSlots save_slots();
 
     // Build a fresh `CoreScene` containing the ZJM start-menu backdrop:
     // ZJM.bsp + ZJM_water.dff + ZJM_trans.dff under

@@ -3,60 +3,38 @@ import scripting_services;
 import shared.openpal4;
 import radiance_scripting.ui as gui;
 import yaobow.openpal4.native_layout as native;
-
-struct Sprite(texture: int, u0: float, v0: float, u1: float, v1: float) {
-    fn draw(self: &Self, ui: &radiance.IUiHost, r: gui.Rect, ox: float, oy: float, scale: float) {
-        if self.texture != 0 {
-            ui.image_rect(self.texture, ox + r.x * scale, oy + r.y * scale,
-                ox + (r.x + r.w) * scale, oy + (r.y + r.h) * scale,
-                self.u0, self.v0, self.u1, self.v1);
-        }
-    }
-}
-
-fn capture(layout: &native.NativeLayout, name: string, set: string, image: string) -> &Sprite {
-    layout.image(name, 0, set, image);
-    if layout.handle != null {
-        let art = layout.handle!;
-        let id = layout.find(name);
-        for i in Range(0, art.draw_count()) {
-            if art.draw_window_id(i) == id {
-                return &Sprite(art.draw_texture_com_id(i), art.draw_u0(i), art.draw_v0(i),
-                    art.draw_u1(i), art.draw_v1(i));
-            }
-        }
-    }
-    return &Sprite(0, 0.0, 0.0, 0.0, 0.0);
-}
+import yaobow.openpal4.save_rows;
 
 pub struct SystemMenu(
     game: &openpal4.IPal4MenuState, input: &scripting_services.IInputService,
     pub layout: &native.NativeLayout, pub dialog: &native.NativeLayout,
-    panels: array<&Sprite>, buttons: array<&Sprite>, thumb: &Sprite,
+    panels: array<&native.Sprite>, buttons: array<&native.Sprite>, thumb: &native.Sprite,
+    rows: &save_rows.SaveRows, pub first: int,
     pub mode: int, pub page: int, pub selected: int, pub modal: int,
     held: int, dragging: int, drag_origin: float, waiting: bool, pub feedback: string,
 ) {
     pub fn install(self: &Self, layout: ?&scripting_services.IUiLayoutHandle,
         dialog: ?&scripting_services.IUiLayoutHandle) {
         self.layout = native.make(layout); self.dialog = native.make(dialog);
-        let mut panels: array<&Sprite> = [];
+        let mut panels: array<&native.Sprite> = [];
         for part in Range(0, 2) {
             let prefix = if part == 0 { "wentikuang" } else { "wentikuangb" };
             for i in Range(0, 9) {
-                panels.push(capture(self.dialog, "FrameMessage", "duihuakuang0", prefix + number(i + 1)));
+                panels.push(native.capture(self.dialog, "FrameMessage", "duihuakuang0", prefix + number(i + 1)));
             }
         }
         self.panels = panels;
-        let mut buttons: array<&Sprite> = [];
+        let mut buttons: array<&native.Sprite> = [];
         for i in Range(0, 3) {
-            buttons.push(capture(self.dialog, "FrameMessage", "duihuakuang0", "wentikuanganniu" + number(i + 1) + "b"));
+            buttons.push(native.capture(self.dialog, "FrameMessage", "duihuakuang0", "wentikuanganniu" + number(i + 1) + "b"));
         }
         self.buttons = buttons;
-        self.thumb = capture(self.layout, "Savewindowblanknew", "gy0", "huakuai");
+        self.thumb = native.capture(self.layout, "Savewindowblanknew", "gy0", "huakuai");
         self.layout.image("Savewindowblanknew", 0, "kuang20", "kuang11new");
+        self.rows.install(layout,"ImgDataMask");
     }
     pub fn reset(self: &Self) {
-        self.mode = 0; self.page = 0; self.selected = 0; self.modal = -1;
+        self.mode = 0; self.page = 0; self.selected = 0; self.first = 0; self.modal = -1;
         self.held = -1; self.dragging = -1; self.waiting = false; self.feedback = "";
         self.game.refresh_slots();
         self.set_mode(0);
@@ -80,7 +58,7 @@ pub struct SystemMenu(
         self.dragging >= 0 || self.modal >= 0 || self.waiting
     }
     fn change_page(self: &Self, direction: int) {
-        self.page = max(0, min(9, self.page + direction)); self.selected = 0; self.held = -1;
+        self.page = max(0, min(9, self.page + direction)); self.selected = 0; self.first = 0; self.held = -1;
     }
     fn choose_slot(self: &Self) {
         if self.waiting || self.mode > 1 { return; }
@@ -117,8 +95,11 @@ pub struct SystemMenu(
             return;
         }
         if self.mode > 1 { return; }
-        if self.input.key_pressed(40) { self.selected = max(0, self.selected - 1); }
-        if self.input.key_pressed(42) { self.selected = min(9, self.selected + 1); }
+        if self.input.key_pressed(40) || self.input.key_pressed(42) {
+            if self.input.key_pressed(40) { self.selected = max(0, self.selected - 1); }
+            if self.input.key_pressed(42) { self.selected = min(9, self.selected + 1); }
+            self.first = max(min(self.first,self.selected),self.selected-3);
+        }
         if self.input.key_pressed(39) { self.change_page(-1); }
         if self.input.key_pressed(41) { self.change_page(1); }
         if self.input.key_pressed(0) || self.input.key_pressed(44) { self.choose_slot(); }
@@ -164,15 +145,15 @@ pub struct SystemMenu(
                 if down { 2 } else { 1 }
             } else { if selected { 2 } else { 0 } };
             let image = if state == 2 {
-                &Sprite(handle.draw_pressed_texture_com_id(i), handle.draw_pressed_u0(i), handle.draw_pressed_v0(i),
+                &native.Sprite(handle.draw_pressed_texture_com_id(i), handle.draw_pressed_u0(i), handle.draw_pressed_v0(i),
                     handle.draw_pressed_u1(i), handle.draw_pressed_v1(i))
             } else { if state == 1 {
-                &Sprite(handle.draw_hover_texture_com_id(i), handle.draw_hover_u0(i), handle.draw_hover_v0(i),
+                &native.Sprite(handle.draw_hover_texture_com_id(i), handle.draw_hover_u0(i), handle.draw_hover_v0(i),
                     handle.draw_hover_u1(i), handle.draw_hover_v1(i))
-            } else { &Sprite(0,0.0,0.0,0.0,0.0) } };
+            } else { &native.Sprite(0,0.0,0.0,0.0,0.0) } };
             if image.texture != 0 { image.draw(ui, rect, ox, oy, scale); }
             else {
-                let base = &Sprite(handle.draw_texture_com_id(i), handle.draw_u0(i), handle.draw_v0(i),
+                let base = &native.Sprite(handle.draw_texture_com_id(i), handle.draw_u0(i), handle.draw_v0(i),
                     handle.draw_u1(i), handle.draw_v1(i));
                 base.draw(ui, rect, ox, oy, scale);
             }
@@ -219,25 +200,30 @@ pub struct SystemMenu(
                 self.text(ui,gui.Rect(r.x+8.0,r.y+19.0,r.w-8.0,20.0),
                     number(page*10+1)+"~"+number(page*10+10),ox,oy,scale,false);
                 if !blocked {
-                    if self.hit(3100+page,r,x,y,press,release) { self.page=page; self.selected=0; self.held=-1; }
+                    if self.hit(3100+page,r,x,y,press,release) { self.page=page; self.selected=0; self.first=0; self.held=-1; }
                 }
             }
             let list = self.layout.rect("List");
-            let height = list.h / 10.0;
-            for row in Range(0,10) {
-                let r = gui.Rect(list.x+8.0,list.y+(row as float)*height,list.w-16.0,height);
-                if row == self.selected {
-                    ui.fill_rect(ox+r.x*scale,oy+r.y*scale,ox+(r.x+r.w)*scale,oy+(r.y+r.h)*scale,0.1,0.45,0.55,0.22);
-                }
-                self.text(ui,gui.Rect(r.x+6.0,r.y+10.0,r.w-12.0,20.0),
-                    self.game.slot_summary(self.page*10+row+1),ox,oy,scale,false);
+            self.rows.paint(ui,self.game.save_slots(),list,self.page,self.first,self.selected,ox,oy,scale);
+            for visible in Range(0,4) {
+                let row = self.first+visible;
+                let r = self.rows.row(list,visible);
                 if !blocked {
-                    if self.hit(3200+row,r,x,y,press,release) { self.selected=row; self.choose_slot(); }
+                    if self.hit(3200+row,r,x,y,press,release) {
+                        if self.selected == row { self.choose_slot(); } else { self.selected=row; }
+                    }
+                }
+            }
+            for direction in Range(0,2) {
+                if !blocked {
+                    if self.hit(3250+direction,self.rows.arrow(list,direction),x,y,press,release) {
+                        self.first=max(0,min(6,self.first+if direction == 0 { -1 } else { 1 }));
+                    }
                 }
             }
             if !blocked && native.contains(list,x,y) {
-                if ui.mouse_wheel() > 0.0 { self.change_page(-1); }
-                if ui.mouse_wheel() < 0.0 { self.change_page(1); }
+                if ui.mouse_wheel() > 0.0 { self.first=max(0,self.first-1); }
+                if ui.mouse_wheel() < 0.0 { self.first=min(6,self.first+1); }
             }
         }
         if self.mode == 2 {
@@ -306,8 +292,8 @@ pub struct SystemMenu(
 }
 
 pub fn make(game: &openpal4.IPal4MenuState, input: &scripting_services.IInputService) -> &SystemMenu {
-    return &SystemMenu(game,input,native.make(null),native.make(null),[],[],&Sprite(0,0.0,0.0,0.0,0.0),
-        0,0,0,-1,-1,-1,0.0,false,"");
+    return &SystemMenu(game,input,native.make(null),native.make(null),[],[],&native.Sprite(0,0.0,0.0,0.0,0.0),
+        save_rows.make(),0,0,0,0,-1,-1,-1,0.0,false,"");
 }
 
 fn number(n: int) -> string {

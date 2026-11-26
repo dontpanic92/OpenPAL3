@@ -498,6 +498,58 @@ swaps; that path now binds the same context as synchronous loads, preventing
 WASD from leaking through an open menu after loading. Temporary slots are removed
 without changing existing saves.
 
+### Native save previews and slot details
+
+Read-only inspection of the original initialized PAL4 executable establishes
+that screenshots/details belong inside each **601x91 save row**, not a separate
+bottom preview panel. Row construction at `0x004b1ab0` selects `kuang0:kuang21`
+for empty rows, `kuang20:kuang21` for populated rows, and
+`gy0:xuanzhekuang2` for selection. Painting at `0x004b1f20` places the screenshot
+at row-local `(495,7)..(593,82)`: **98x75 pixels**, matching the shipped
+`save/0.png`. Title setup (`0x00447099..0x00447100`) and System setup
+(`0x0047e16c..0x0047e205`) hide/reparent the `ImgSelectMask`/`StaticSelectMask`
+and `ImgDataMask`/`StaticDataMask` templates; they are not fixed preview widgets.
+These observations use original local binary/assets only.
+
+The story-detail painter (`0x004b24fa..0x004b2575`) chooses the last
+`StoryDesc.ID <= saved MVar`; it does not derive a chapter from quest percentage.
+The original save header/serialized `MVar` agree on 10600 for the inspected
+slot, selecting the 10500 story entry. The engine maps MVar to shared global 0.
+`StoryDesc.CHAPTER`/`MEMO` and `Scene.NAME`, keyed by `SCENE`/`SECTION`, now supply
+localized row details alongside saved leader level and elapsed playtime.
+Missing metadata falls back to scene/block and progress without inventing a
+chapter.
+
+System and title browsers share the native row presenter, selected-row artwork,
+leader portrait, details and screenshot. Ten page groups retain the 100-slot
+range, with four visible rows and original `gy0` scroll arrows. Keyboard
+selection scrolls into view; mouse scrolling does not get undone on idle ticks.
+A completed click on a different row selects it without executing a save/load;
+activation of the selected row retains the existing action/confirmation flow.
+Exact original double-click timing and multi-member portrait composition are
+not claimed here.
+
+The thumbnail is an optional PNG inside the atomically published save JSON, so
+progress and preview cannot disagree through separately updated sidecars.
+Opening a menu freezes the last clean gameplay frame; saving while it remains
+open reuses that image rather than capturing the menu. Loading/scene handoff,
+movies, script locks and debug-overlay frames cannot supply a new clean preview.
+No available frame means no preview, not a failed save. Missing/corrupt/wrong-size
+PNG data leaves otherwise valid progress readable. Snapshot-owned sprites keep
+texture handles alive across browsing/refresh. The uploader is obtained before
+UI painting and queues pixels without borrowing the busy texture cache.
+Title artwork and rows use the same draw layer, avoiding native panel images
+covering the preview.
+
+Focused tests cover PNG crop/dimensions/limits, metadata predecessor lookup,
+corrupt-image fallback, atomic refresh, saved details and keyboard/arrow/wheel
+scrolling. Original-asset checks verify localized Q01 and the 10600 story lookup.
+Release live checks use app-local agent input and temporary slots 96/100:
+title row selection/load, visibly rendered thumbnails, last-slot browsing,
+overwrite cancellation, native save/refresh and reload all pass. The saved
+thumbnail contains gameplay rather than an open menu. Temporary saves are
+removed; existing user slots are not modified.
+
 ### Native dialogs and playtime
 
 PAL4's existing Rust VM continuation/presenter boundary now draws the original

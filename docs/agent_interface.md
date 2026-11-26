@@ -74,7 +74,12 @@ player-opened menu is active.
 
 The native System toolbar entry opens save/load, music/sound settings, and
 return-to-title/quit controls. Save/load browsers have 100 slots on ten pages;
-the title load screen uses the same slot range. Overwrite, load, title, and
+the title load screen uses the same slot range. Each page has four visible native
+rows with arrows/wheel scrolling. Populated rows show saved location, leader
+level, elapsed time, chapter/story text and an optional 98x75 gameplay thumbnail.
+Click a different row to select it; activate the selected row to save/load.
+Missing or damaged previews do not invalidate otherwise readable progress.
+Overwrite, load, title, and
 quit confirmations require an explicit mouse click on the native checkmark;
 Space/Enter never accepts a destructive default. Escape dismisses a modal
 before closing the menu. Empty/corrupt loads and filesystem/scene-loading

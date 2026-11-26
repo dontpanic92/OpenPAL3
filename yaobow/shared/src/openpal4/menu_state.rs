@@ -19,7 +19,8 @@ pub struct Pal4MenuState {
     descriptions: HashMap<i32, String>,
     effects: HashMap<i32, String>,
     preview: RefCell<Option<super::menu_preview::Pal4MenuPreview>>,
-    slots: RefCell<Vec<(i32, String)>>,
+    slots: RefCell<ComRc<super::comdef::IPal4SaveSlots>>,
+    thumbnail_uploader: RefCell<Option<radiance_scripting::services::sprite::SpriteUploader>>,
     scratch: RefCell<String>,
     audio_mix: std::sync::Arc<crate::audio_mix::AudioMix>,
     persist_audio: Cell<bool>,
@@ -65,7 +66,8 @@ impl Pal4MenuState {
             effects,
             preview: RefCell::new(None),
             available: Cell::new(false),
-            slots: RefCell::new(Vec::new()),
+            slots: RefCell::new(super::save_slots::Pal4SaveSlots::empty()),
+            thumbnail_uploader: RefCell::new(None),
             scratch: RefCell::new(String::new()),
             audio_mix,
             persist_audio: Cell::new(persist_audio),
@@ -85,6 +87,13 @@ impl Pal4MenuState {
 
     pub(crate) fn set_preview(&self, preview: super::menu_preview::Pal4MenuPreview) {
         *self.preview.borrow_mut() = Some(preview);
+    }
+
+    pub(crate) fn set_thumbnail_uploader(
+        &self,
+        uploader: radiance_scripting::services::sprite::SpriteUploader,
+    ) {
+        *self.thumbnail_uploader.borrow_mut() = Some(uploader);
     }
 
     pub(crate) fn update_preview(&self, tab: Option<i32>) {
@@ -149,48 +158,24 @@ impl Pal4MenuState {
 
 impl IPal4MenuStateImpl for Pal4MenuState {
     fn refresh_slots(&self) {
-        use super::states::persistent_state::Pal4PersistentState;
         let app_name = self.session.borrow().app_name().to_owned();
-        let slots = (1..=Pal4PersistentState::SLOT_COUNT)
-            .map(|slot| {
-                let path = Pal4PersistentState::slot_path(&app_name, slot);
-                match Pal4PersistentState::load(&app_name, slot) {
-                    Ok(state) if !state.scene_name().is_empty() => {
-                        let level = state.player(state.leader()).map_or(0, |p| p.level);
-                        let time = state.play_seconds() as i32;
-                        (
-                            1,
-                            format!(
-                                "{slot:02}   {} / {}   Lv.{level}   {:02}:{:02}:{:02}",
-                                state.scene_name(),
-                                state.block_name(),
-                                time / 3600,
-                                time / 60 % 60,
-                                time % 60
-                            ),
-                        )
-                    }
-                    Err(_) if !path.exists() => (0, format!("{slot:02}   空白存档")),
-                    _ => (2, format!("{slot:02}   存档损坏或无法读取")),
-                }
-            })
-            .collect();
-        *self.slots.borrow_mut() = slots;
+        *self.slots.borrow_mut() = super::save_slots::Pal4SaveSlots::snapshot(
+            &app_name,
+            Some(&self.catalog),
+            self.thumbnail_uploader.borrow().as_ref(),
+        );
+    }
+
+    fn save_slots(&self) -> ComRc<super::comdef::IPal4SaveSlots> {
+        self.slots.borrow().clone()
     }
 
     fn slot_state(&self, slot: i32) -> i32 {
-        self.slots
-            .borrow()
-            .get(slot.wrapping_sub(1) as usize)
-            .map_or(0, |s| s.0)
+        self.slots.borrow().status(slot)
     }
 
     fn slot_summary(&self, slot: i32) -> &str {
-        *self.scratch.borrow_mut() = self
-            .slots
-            .borrow()
-            .get(slot.wrapping_sub(1) as usize)
-            .map_or_else(String::new, |s| s.1.clone());
+        *self.scratch.borrow_mut() = self.slots.borrow().summary(slot).to_owned();
         // The COM adapter copies this string before the next accessor call.
         unsafe { (*self.scratch.as_ptr()).as_str() }
     }

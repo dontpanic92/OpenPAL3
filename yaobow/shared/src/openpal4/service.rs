@@ -95,6 +95,8 @@ pub struct Pal4Service {
     /// `None` when this slot is empty (e.g. on a build target with
     /// no imgui pump).
     texture_cache: RefCell<Option<Rc<RefCell<ImguiTextureCache>>>>,
+    // UI callbacks request snapshots while the texture cache is mutably borrowed.
+    save_preview_uploader: RefCell<Option<radiance_scripting::services::sprite::SpriteUploader>>,
 
     /// Reusable scratch buffer backing `save_slot_summary`'s `&str`
     /// return. The accessor refreshes it then returns a pointer into
@@ -149,6 +151,7 @@ impl Pal4Service {
             script_factory: RefCell::new(None),
             launch_loader: RefCell::new(None),
             texture_cache: RefCell::new(None),
+            save_preview_uploader: RefCell::new(None),
             summary_scratch: RefCell::new(String::new()),
             mode_registry: RefCell::new(Pal4ModeRegistry::with_builtins()),
             session: Rc::new(RefCell::new(Pal4Session::new())),
@@ -177,6 +180,9 @@ impl Pal4Service {
     /// by `install_imgui_ui_renderer`. Idempotent — replaces a previous
     /// cache (in tests / hot-reload scenarios).
     pub fn set_texture_cache(&self, cache: Rc<RefCell<ImguiTextureCache>>) {
+        *self.save_preview_uploader.borrow_mut() = Some(
+            radiance_scripting::services::sprite::SpriteUploader::new(&cache.borrow()),
+        );
         *self.texture_cache.borrow_mut() = Some(cache);
     }
 
@@ -815,6 +821,19 @@ impl IPal4ServiceImpl for Pal4Service {
         *self.summary_scratch.borrow_mut() = label;
         unsafe { (*self.summary_scratch.as_ptr()).as_str() }
     }
+    fn save_slots(&self) -> ComRc<super::comdef::IPal4SaveSlots> {
+        let uploader = self.save_preview_uploader.borrow().clone();
+        let catalog = self
+            .launch_loader
+            .borrow()
+            .as_ref()
+            .and_then(|loader| loader.gameplay_catalog().ok());
+        super::save_slots::Pal4SaveSlots::snapshot(
+            PAL4_APP_NAME,
+            catalog.as_deref(),
+            uploader.as_ref(),
+        )
+    }
     fn open_layout(&self, vfs_path: &str) -> Option<ComRc<IUiLayoutHandle>> {
         let cache = self.texture_cache.borrow().clone()?;
         let loader = self.launch_loader.borrow().as_ref()?.clone();
@@ -1009,6 +1028,8 @@ impl Pal4Service {
         if let Some(factory) = self.script_factory.borrow().clone() {
             director.set_actor_controller_factory(factory.clone());
         }
+        let uploader = self.save_preview_uploader.borrow().clone();
+        director.set_save_preview(rendering_engine.clone(), uploader);
         #[cfg(vulkan)]
         if let Some(cache) = self.texture_cache.borrow().clone() {
             let catalog = loader.gameplay_catalog().expect("PAL4 gameplay catalog");
