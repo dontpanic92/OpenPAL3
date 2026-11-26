@@ -431,6 +431,9 @@ fn parse_post_command(url: &str, req: &mut Request) -> Result<AgentCommand, Agen
     let cmd = match url {
         "/v1/input/key" => AgentCommand::KeyInput(parse::<KeyInputParams>(&body)?),
         "/v1/input/axis" => AgentCommand::AxisInput(parse::<AxisInputParams>(&body)?),
+        "/v1/input/mouse" => {
+            AgentCommand::MouseInput(parse::<crate::protocol::MouseInputParams>(&body)?)
+        }
         "/v1/player/teleport" => AgentCommand::TeleportPlayer(parse::<TeleportParams>(&body)?),
         "/v1/dialog/advance" => AgentCommand::AdvanceDialog,
         "/v1/time/pause" => AgentCommand::PauseTime,

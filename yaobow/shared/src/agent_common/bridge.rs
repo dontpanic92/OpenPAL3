@@ -25,6 +25,7 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use agent_server::{AgentCommandConsumer, AgentCommandQueue, AgentTraceSink};
+use radiance::imgui::SyntheticMouseInput;
 use radiance::input::SyntheticInputBridge;
 use radiance::rendering::RenderingEngine;
 
@@ -66,6 +67,7 @@ pub struct AgentBridge {
     /// `None` in tests that don't spin up Vulkan and in headless
     /// boots that haven't wired a readback-capable backend.
     pub rendering_engine: RefCell<Option<Rc<RefCell<dyn RenderingEngine>>>>,
+    pub mouse_input: RefCell<Option<Rc<RefCell<SyntheticMouseInput>>>>,
 
     /// Monotonic frame counter — incremented exactly once per game
     /// tick that actually advanced (real + stepped).
@@ -116,6 +118,7 @@ impl AgentBridge {
             input_bridge,
             trace_sink,
             rendering_engine: RefCell::new(None),
+            mouse_input: RefCell::new(None),
             frame: Cell::new(0),
             paused: Cell::new(false),
             requested_steps: Cell::new(0),
@@ -131,6 +134,10 @@ impl AgentBridge {
     /// Idempotent — passing a new handle replaces the previous one.
     pub fn set_rendering_engine(&self, engine: Rc<RefCell<dyn RenderingEngine>>) {
         *self.rendering_engine.borrow_mut() = Some(engine);
+    }
+
+    pub fn set_mouse_input(&self, mouse: Rc<RefCell<SyntheticMouseInput>>) {
+        *self.mouse_input.borrow_mut() = Some(mouse);
     }
 
     /// Effective per-step `dt`, accounting for the "0 means default"

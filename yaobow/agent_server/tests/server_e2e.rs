@@ -182,6 +182,50 @@ fn server_round_trips_post_input_key() {
 }
 
 #[test]
+fn mouse_route_validates_json_and_delivers_pointer_command_to_game_thread() {
+    use agent_server::protocol::{AgentCommand, MouseAction, MouseButton};
+
+    let (queue, consumer) = AgentCommandQueue::new();
+    let server = AgentServer::start(AgentServerConfig::loopback(0), &queue, None).unwrap();
+    let addr = server.local_addr();
+    wait_for_server(&addr);
+    for invalid in [
+        r#"{}"#,
+        r#"{"action":"unknown"}"#,
+        r#"{"action":"click","button":"unknown"}"#,
+        r#"{"action":"move","x":"invalid","y":20}"#,
+    ] {
+        let (status, body) = http_request(&addr, "POST", "/v1/input/mouse", invalid);
+        assert_eq!(status, 400, "{body}");
+    }
+    let worker = thread::spawn(move || {
+        consumer
+            .drain_with_timeout(Duration::from_secs(2), |env| {
+                let AgentCommand::MouseInput(params) = &env.command else {
+                    panic!("unexpected command: {:?}", env.command);
+                };
+                assert_eq!(params.action, MouseAction::Down);
+                assert_eq!(params.button, MouseButton::Right);
+                assert_eq!([params.x, params.y], [Some(123.), Some(456.)]);
+                env.reply(AgentResponse::Ok);
+            })
+            .unwrap();
+    });
+    let (status, body) = http_request(
+        &addr,
+        "POST",
+        "/v1/input/mouse",
+        r#"{"action":"down","button":"right","x":123,"y":456}"#,
+    );
+    assert_eq!(status, 200, "{body}");
+    assert!(matches!(
+        serde_json::from_str::<AgentResponse>(&body).unwrap(),
+        AgentResponse::Ok
+    ));
+    worker.join().unwrap();
+}
+
+#[test]
 fn log_tail_is_served_without_worker() {
     // Install a sink, push a record, then start the server WITHOUT a
     // worker — proves `/v1/log/tail` doesn't route through the queue.

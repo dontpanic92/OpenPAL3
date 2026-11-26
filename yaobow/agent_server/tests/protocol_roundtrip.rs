@@ -98,6 +98,31 @@ fn every_command_roundtrips() {
 }
 
 #[test]
+fn mouse_actions_accept_named_buttons_optional_positions_and_defaults() {
+    for params in [
+        r#"{"action":"move","x":120,"y":240}"#,
+        r#"{"action":"click","x":120,"y":240}"#,
+        r#"{"action":"down","button":"right"}"#,
+        r#"{"action":"up","button":"middle"}"#,
+        r#"{"action":"scroll","delta_y":-2,"delta_x":1}"#,
+        r#"{"action":"reset"}"#,
+    ] {
+        let params: agent_server::protocol::MouseInputParams =
+            serde_json::from_str(params).unwrap();
+        roundtrip_command(&AgentCommand::MouseInput(params));
+    }
+    let params: agent_server::protocol::MouseInputParams =
+        serde_json::from_str(r#"{"action":"click"}"#).unwrap();
+    assert_eq!(params.button, agent_server::protocol::MouseButton::Left);
+    assert!(
+        serde_json::from_str::<agent_server::protocol::MouseInputParams>(
+            r#"{"action":"click","button":"unknown"}"#
+        )
+        .is_err()
+    );
+}
+
+#[test]
 fn every_response_roundtrips() {
     let cases = [
         AgentResponse::Ok,

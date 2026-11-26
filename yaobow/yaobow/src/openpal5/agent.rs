@@ -48,6 +48,7 @@ pub fn dispatch_pal5_command(ctx: &Pal5DispatchCtx, command: AgentCommand) -> Ag
         C::GetState => AgentResponse::State(build_snapshot(ctx)),
         C::KeyInput(p) => handlers::handle_key_input(ctx.bridge, p),
         C::AxisInput(p) => handlers::handle_axis_input(ctx.bridge, p),
+        C::MouseInput(p) => handlers::handle_mouse_input(ctx.bridge, p),
         C::PauseTime => {
             ctx.bridge.paused.set(true);
             AgentResponse::Ok

@@ -78,6 +78,7 @@ player-opened menu is active.
 | ------ | ----------------------------------- | ----------------------------------------------------- |
 | `POST` | `/v1/input/key`                     | `{"key":"F","action":"tap"\|"down"\|"up"}`            |
 | `POST` | `/v1/input/axis`                    | `{"axis":"LeftStickX","value":-1.0}`                  |
+| `POST` | `/v1/input/mouse`                   | App-local UI mouse: `{"action":"click","x":400,"y":300}`; see below. Shared by PAL3/3A, PAL4, PAL5 and the SWD5-family agent adapters, including title menus. |
 | `POST` | `/v1/player/teleport`               | `{"player":0,"pos":[x,y,z]}`                          |
 | `POST` | `/v1/dialog/advance`                | _(empty body)_ — synthesises a `Space` tap            |
 | `POST` | `/v1/dialog/choose`                 | `{"index":N}` — choose a 1-based on-screen item (`1` = first). PAL4 selection dialogs now wait for a decision, exposing their items through `/v1/state.dialog.choices`. A choice can also be pre-buffered before firing the trigger. Out-of-range choices do not dismiss the prompt. The VM preserves its native result conventions: select-dialog getters are 0-based; common-dialog getters are 1-based. |
@@ -87,6 +88,44 @@ player-opened menu is active.
 
 `action: "tap"` emits one frame of `pressed + released + is_down` and
 naturally goes back to `up` next frame. `down` / `up` are sticky.
+
+### UI mouse
+
+`POST /v1/input/mouse` injects app-local UI pointer events through the
+shared engine UI, not a PAL3-specific menu shim. It works with the
+agent-enabled PAL3/3A, PAL4, PAL5/5Q and SWD5-family adapters, including
+their title menus. It does not move the OS cursor, require accessibility
+permissions, or drive raw gameplay mouse-look.
+
+| Action | Example body |
+| ------ | ------------ |
+| Move | `{"action":"move","x":400,"y":300}` |
+| Click | `{"action":"click","button":"left","x":400,"y":300}` |
+| Start drag | `{"action":"down","x":400,"y":300}` |
+| Continue drag | `{"action":"move","x":520,"y":300}` |
+| End drag | `{"action":"up","x":520,"y":300}` |
+| Scroll | `{"action":"scroll","delta_y":-2,"delta_x":0,"x":400,"y":300}` |
+| Release control | `{"action":"reset"}` |
+
+Coordinates are **physical pixels in `/v1/screenshot`**, with the origin
+at the top left, including any letterboxing. Use the screenshot dimensions;
+do not multiply by desktop DPI or assume the native menu's 800x600 canvas.
+`x` and `y` must be supplied together, and are required for `move`; other
+actions may omit them to retain the current pointer. `button` defaults
+to `left`; `right`, `middle`, `extra1` and `extra2` are also accepted.
+Wheel deltas are in detents: positive `delta_y` scrolls up and positive
+`delta_x` scrolls right. Invalid payloads return **400**; an unwired UI
+controller returns **501**.
+
+**200 means queued, not drawn.** Actions are processed in order, at most
+one per rendered UI frame. A click presses and releases on separate
+frames; ImGui event processing can add another frame of latency. Wait
+for rendered feedback before asserting results. Dragging uses
+`down` / `move` / `up`, with the button held between commands. Synthetic
+pointer/button state remains active until `reset`, which discards
+unprocessed actions, releases synthetic buttons and hands control back
+to physical input. Avoid simultaneous physical and synthetic mouse use.
+Paused gameplay may need stepping or resuming for its UI to update.
 
 ### Camera
 
@@ -425,6 +464,7 @@ Differences from PAL4:
 | `GET  /v1/log/tail`                   | **Supported**      | Transport-layer, game-agnostic |
 | `GET  /v1/screenshot`                 | **Supported**      | Reads back the last presented swapchain frame |
 | `POST /v1/input/key`, `/v1/input/axis` | **Supported**     | Routed through the synthetic-input bridge |
+| `POST /v1/input/mouse`                | **Supported**     | Shared app-local UI pointer queue; screenshot-pixel coordinates |
 | `POST /v1/time/pause` / `resume` / `step` | **Supported** | `AdventureDirector::update` honors `bridge.effective_dt` |
 | `POST /v1/time/fast_forward`          | **Supported**      | `SceVm` reads the flag: dialog/movie waits are skipped and timed SCE tweens (camera/role/fade/quake) collapse to their final state in one frame |
 | `POST /v1/player/teleport`            | **Supported**      | Teleports `GlobalState::role_controlled` and mirrors to `PersistentState` |
@@ -492,6 +532,7 @@ The SWD5 column applies identically to `--swd5`, `--swdhc` and
 | ------------------------------------- | ------------- | ----- |
 | `GET  /v1/state`                      | **Supported** | Frame/fps/dt/paused/fast_forward + `scene`, `script_running` (and `leader_pos` on PAL5 once the player entity exists) |
 | `POST /v1/input/key` / `axis`         | **Supported** | Injected through the synthetic-input overlay the Lua context polls |
+| `POST /v1/input/mouse`                | **Supported** | Shared app-local UI pointer queue; independent of the Lua input overlay |
 | `POST /v1/time/pause` / `resume` / `step` | **Supported** | Freezes / single-steps the script clock (the Lua VM `Wait`/`sleep` tick) |
 | `POST /v1/time/fast_forward`          | **Supported** | Collapses pending `Wait`/`sleep` and dismisses the current dialog so scripted waits skip |
 | `POST /v1/dialog/advance`             | **Supported** | Synthesises the Space tap the player presses to dismiss a story/talk box |

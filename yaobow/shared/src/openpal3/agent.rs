@@ -81,6 +81,7 @@ pub fn dispatch_pal3_command(ctx: &Pal3DispatchCtx, command: AgentCommand) -> Ag
         C::GetState => AgentResponse::State(build_snapshot(ctx)),
         C::KeyInput(p) => handle_key_input(ctx.bridge, p),
         C::AxisInput(p) => handle_axis_input(ctx.bridge, p),
+        C::MouseInput(p) => crate::agent_common::handlers::handle_mouse_input(ctx.bridge, p),
         C::PauseTime => {
             ctx.bridge.paused.set(true);
             AgentResponse::Ok

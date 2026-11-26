@@ -28,6 +28,8 @@ pub enum AgentCommand {
     /// Set an axis state (e.g. gamepad stick) into the synthetic
     /// input bridge.
     AxisInput(AxisInputParams),
+    /// App-local UI mouse input; coordinates are screenshot pixels.
+    MouseInput(MouseInputParams),
     /// Teleport a player slot to an absolute world position.
     TeleportPlayer(TeleportParams),
     /// Advance the currently open dialog box (equivalent to pressing
@@ -225,6 +227,42 @@ pub struct AxisInputParams {
     pub axis: String,
     /// Value in the canonical [-1.0, 1.0] range.
     pub value: f32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MouseInputParams {
+    pub action: MouseAction,
+    #[serde(default)]
+    pub button: MouseButton,
+    /// Absolute screenshot-pixel position; x/y must be supplied together.
+    pub x: Option<f32>,
+    pub y: Option<f32>,
+    #[serde(default)]
+    pub delta_x: f32,
+    #[serde(default)]
+    pub delta_y: f32,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum MouseAction {
+    Move,
+    Down,
+    Up,
+    Click,
+    Scroll,
+    Reset,
+}
+
+#[derive(Debug, Default, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum MouseButton {
+    #[default]
+    Left,
+    Right,
+    Middle,
+    Extra1,
+    Extra2,
 }
 
 /// Absolute teleport for the given player slot (`0..PLAYER_COUNT`).

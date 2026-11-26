@@ -46,6 +46,51 @@ pub fn handle_axis_input(bridge: &Rc<AgentBridge>, params: AxisInputParams) -> A
     AgentResponse::Ok
 }
 
+pub fn handle_mouse_input(
+    bridge: &AgentBridge,
+    params: agent_server::protocol::MouseInputParams,
+) -> AgentResponse {
+    use agent_server::protocol::{MouseAction, MouseButton};
+    use radiance::imgui::MouseInput;
+    let position = match (params.x, params.y) {
+        (Some(x), Some(y)) => Some([x, y]),
+        (None, None) => None,
+        _ => return AgentResponse::err(AgentError::bad_request("supply both x and y")),
+    };
+    let button = match params.button {
+        MouseButton::Left => imgui::MouseButton::Left,
+        MouseButton::Right => imgui::MouseButton::Right,
+        MouseButton::Middle => imgui::MouseButton::Middle,
+        MouseButton::Extra1 => imgui::MouseButton::Extra1,
+        MouseButton::Extra2 => imgui::MouseButton::Extra2,
+    };
+    let input = match params.action {
+        MouseAction::Move => match position {
+            Some(position) => MouseInput::Move(position),
+            None => return AgentResponse::err(AgentError::bad_request("move requires x and y")),
+        },
+        MouseAction::Down | MouseAction::Up => MouseInput::Button {
+            button,
+            down: params.action == MouseAction::Down,
+            position,
+        },
+        MouseAction::Click => MouseInput::Click { button, position },
+        MouseAction::Scroll => MouseInput::Scroll {
+            position,
+            delta: [params.delta_x, params.delta_y],
+        },
+        MouseAction::Reset => MouseInput::Reset,
+    };
+    let Some(mouse) = bridge.mouse_input.borrow().clone() else {
+        return AgentResponse::err(AgentError::not_implemented("UI mouse input is unavailable"));
+    };
+    let result = mouse.borrow_mut().enqueue(input);
+    match result {
+        Ok(()) => AgentResponse::Ok,
+        Err(message) => AgentResponse::err(AgentError::bad_request(message)),
+    }
+}
+
 /// `/v1/time/step` — queue N fixed-step frames. Requires a prior
 /// `/v1/time/pause`.
 pub fn handle_step(bridge: &Rc<AgentBridge>, params: StepTimeParams) -> AgentResponse {
@@ -116,4 +161,69 @@ pub fn handle_perf_metrics() -> AgentResponse {
         enabled: radiance::perf::enabled(),
         metrics,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::cell::RefCell;
+
+    use agent_server::protocol::{AgentErrorKind, MouseInputParams};
+    use radiance::imgui::SyntheticMouseInput;
+    use radiance::input::{AxisState, InputEngine, KeyState, SyntheticInputBridge};
+
+    struct IdleInput;
+
+    impl InputEngine for IdleInput {
+        fn get_key_state(&self, _: Key) -> KeyState {
+            KeyState::default()
+        }
+
+        fn get_axis_state(&self, _: Axis) -> AxisState {
+            AxisState::default()
+        }
+    }
+
+    #[test]
+    fn mouse_handler_validates_payloads_and_requires_ui_controller() {
+        let bridge = AgentBridge::new(Rc::new(RefCell::new(SyntheticInputBridge::new(Rc::new(
+            RefCell::new(IdleInput),
+        )))));
+        let click: MouseInputParams =
+            serde_json::from_str(r#"{"action":"click","x":10,"y":20}"#).unwrap();
+        assert!(matches!(
+            handle_mouse_input(&bridge, click.clone()),
+            AgentResponse::Error(AgentError {
+                kind: AgentErrorKind::NotImplemented,
+                ..
+            })
+        ));
+        bridge.set_mouse_input(Rc::new(RefCell::new(SyntheticMouseInput::default())));
+        assert!(matches!(
+            handle_mouse_input(&bridge, click),
+            AgentResponse::Ok
+        ));
+        for json in [
+            r#"{"action":"move"}"#,
+            r#"{"action":"click","x":10}"#,
+            r#"{"action":"scroll","y":20}"#,
+        ] {
+            assert!(matches!(
+                handle_mouse_input(&bridge, serde_json::from_str(json).unwrap()),
+                AgentResponse::Error(AgentError {
+                    kind: AgentErrorKind::BadRequest,
+                    ..
+                })
+            ));
+        }
+        let mut scroll: MouseInputParams = serde_json::from_str(r#"{"action":"scroll"}"#).unwrap();
+        scroll.delta_y = f32::NAN;
+        assert!(matches!(
+            handle_mouse_input(&bridge, scroll),
+            AgentResponse::Error(AgentError {
+                kind: AgentErrorKind::BadRequest,
+                ..
+            })
+        ));
+    }
 }

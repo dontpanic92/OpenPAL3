@@ -1,10 +1,12 @@
 #[cfg_attr(any(android, vita), path = "clipboard_nop.rs")]
 mod clipboard;
 
+mod mouse;
 mod platform;
 mod texture_resolver;
 mod theme;
 
+pub use self::mouse::{MouseInput, SyntheticMouseInput};
 pub use self::texture_resolver::TextureResolver;
 pub use self::theme::{DEFAULT_THEME, available_themes, menu_item_padding};
 
@@ -56,6 +58,7 @@ pub struct ImguiContext {
     /// applying it immediately would re-enter that borrow and panic
     /// ("RefCell already borrowed"). Mirrors `pending_theme`.
     pending_game_font: RefCell<Option<(Vec<u8>, f32)>>,
+    mouse_input: Rc<RefCell<SyntheticMouseInput>>,
 }
 
 thread_local! {
@@ -122,6 +125,7 @@ impl ImguiContext {
             pending_theme: RefCell::new(None),
             atlas_dirty: Cell::new(false),
             pending_game_font: RefCell::new(None),
+            mouse_input: Rc::new(RefCell::new(SyntheticMouseInput::default())),
         }
     }
 
@@ -232,6 +236,7 @@ impl ImguiContext {
         // Apply any theme switch requested from the previous frame
         // before `frame()` snapshots the style for the new draw pass.
         self.drain_pending_theme(&mut context);
+        self.mouse_input.borrow_mut().apply_frame(context.io_mut());
         let ui = context.frame();
         self.platform.borrow_mut().prepare_render(ui);
 
@@ -242,6 +247,10 @@ impl ImguiContext {
 
     pub fn context_mut(&self) -> RefMut<'_, Context> {
         self.context.borrow_mut()
+    }
+
+    pub fn mouse_input(&self) -> Rc<RefCell<SyntheticMouseInput>> {
+        self.mouse_input.clone()
     }
 
     fn update_delta_time(&self, delta_sec: f32) {

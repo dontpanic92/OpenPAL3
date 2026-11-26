@@ -497,6 +497,7 @@ impl Pal4Service {
             command,
             AgentCommand::KeyInput(_)
                 | AgentCommand::AxisInput(_)
+                | AgentCommand::MouseInput(_)
                 | AgentCommand::PauseTime
                 | AgentCommand::ResumeTime
                 | AgentCommand::StepTime(_)
@@ -547,6 +548,9 @@ impl Pal4Service {
         match command {
             AgentCommand::KeyInput(params) => Self::handle_key_input(bridge, params),
             AgentCommand::AxisInput(params) => Self::handle_axis_input(bridge, params),
+            AgentCommand::MouseInput(params) => {
+                crate::agent_common::handlers::handle_mouse_input(&bridge.inner, params)
+            }
             AgentCommand::PauseTime => Self::handle_pause(bridge, true),
             AgentCommand::ResumeTime => Self::handle_pause(bridge, false),
             AgentCommand::StepTime(params) => Self::handle_step(bridge, params),

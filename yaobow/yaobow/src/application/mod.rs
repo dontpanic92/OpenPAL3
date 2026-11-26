@@ -415,6 +415,14 @@ impl YaobowApplicationLoader {
         let real_input = self.app.engine().borrow().input_engine();
         let synth = Rc::new(RefCell::new(SyntheticInputBridge::new(real_input)));
         let pal4_bridge = Rc::new(Pal4AgentBridge::new(synth));
+        pal4_bridge.inner.set_mouse_input(
+            self.app
+                .engine()
+                .borrow()
+                .ui_manager()
+                .imgui_context()
+                .mouse_input(),
+        );
 
         let log_sink = install_global_log_sink();
         let server = start_agent_server(&opts, &pal4_bridge.inner, log_sink)?;
@@ -445,6 +453,13 @@ impl YaobowApplicationLoader {
         let real_input = app.engine().borrow().input_engine();
         let synth = Rc::new(RefCell::new(SyntheticInputBridge::new(real_input)));
         let bridge = Rc::new(AgentBridge::new(synth));
+        bridge.set_mouse_input(
+            app.engine()
+                .borrow()
+                .ui_manager()
+                .imgui_context()
+                .mouse_input(),
+        );
 
         let log_sink = install_global_log_sink();
         let server = start_agent_server(opts, &bridge, log_sink)?;
