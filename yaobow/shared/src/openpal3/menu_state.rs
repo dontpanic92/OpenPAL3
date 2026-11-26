@@ -15,12 +15,16 @@ use super::{
     states::persistent_state::PersistentState,
 };
 
+pub(crate) const EARTH_PEARL_PROC: u32 = 2101;
+
 pub struct Pal3MenuState {
     state: Rc<RefCell<PersistentState>>,
     data: Option<Rc<StatsData>>,
     descriptions: HashMap<u32, String>,
     pending_load: Cell<Option<i32>>,
     pending_return_to_menu: Cell<bool>,
+    earth_pearl_available: Cell<bool>,
+    pending_earth_pearl: Cell<bool>,
     load_failed: Cell<bool>,
     audio_mix: Arc<Pal3AudioMix>,
     audio_persistence: AudioPersistence,
@@ -95,6 +99,8 @@ impl Pal3MenuState {
             descriptions,
             pending_load: Cell::new(None),
             pending_return_to_menu: Cell::new(false),
+            earth_pearl_available: Cell::new(false),
+            pending_earth_pearl: Cell::new(false),
             load_failed: Cell::new(false),
             audio_mix,
             audio_persistence,
@@ -108,6 +114,23 @@ impl Pal3MenuState {
 
     pub fn take_requested_load(&self) -> Option<i32> {
         self.pending_load.take()
+    }
+
+    pub(crate) fn set_earth_pearl_context(
+        &self,
+        scene_type: u32,
+        scene_name: &str,
+        has_return_proc: bool,
+    ) {
+        // Native 0x49ce82 excludes M22; 0x49d314 requires procedure 2101.
+        self.earth_pearl_available
+            .set(scene_type == 2 && !scene_name.eq_ignore_ascii_case("M22") && has_return_proc);
+    }
+
+    pub(crate) fn take_earth_pearl_request(&self) -> bool {
+        self.pending_earth_pearl.take()
+            && self.earth_pearl_available.get()
+            && self.state.borrow().inventory().contains(6427)
     }
 
     pub(crate) fn capture_save_thumbnail(
@@ -230,18 +253,48 @@ impl IPal3MenuStateImpl for Pal3MenuState {
     }
 
     fn item_use_scope(&self, id: i32) -> i32 {
+        if id == 6427 {
+            return self.data.as_ref().map_or(0, |data| {
+                data.item(6427).map_or(0, |item| {
+                    if item.category == 3
+                        && item.use_kind == 3
+                        && item.use_context & 2 != 0
+                        && item.use_scope == 2
+                    {
+                        2
+                    } else {
+                        0
+                    }
+                })
+            });
+        }
         self.data
             .as_ref()
             .map_or(0, |data| self.state.borrow().item_use_scope(id, data))
     }
 
     fn can_use_item(&self, role: i32, id: i32) -> bool {
+        if id == 6427 {
+            return role == -1
+                && self.item_use_scope(id) == 2
+                && self.earth_pearl_available.get()
+                && !self.pending_earth_pearl.get()
+                && self.state.borrow().inventory().contains(6427);
+        }
         self.data
             .as_ref()
             .is_some_and(|data| self.state.borrow().can_use_item(role, id, data))
     }
 
     fn use_item(&self, role: i32, id: i32) -> bool {
+        if id == 6427 {
+            if !self.can_use_item(role, id) {
+                return false;
+            }
+            // Dispatch after p7 returns. Native 0x49e5fd never consumes this item.
+            self.pending_earth_pearl.set(true);
+            return true;
+        }
         let Some(data) = self.data.as_ref() else {
             return false;
         };
@@ -524,7 +577,10 @@ fn clean_description(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::openpal3::{loaders::stats::test_data, states::stats::Resource};
+    use crate::openpal3::{
+        loaders::stats::{test_data, test_data_with_items},
+        states::stats::Resource,
+    };
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     static TEST_PATH_ID: AtomicUsize = AtomicUsize::new(0);
@@ -561,6 +617,82 @@ mod tests {
         assert!(!ui.set_music_volume(f32::NAN));
         assert_eq!(ui.music_volume(), 0.25);
         assert!(!ui.save_audio_settings());
+    }
+
+    fn earth_pearl_data() -> Rc<StatsData> {
+        Rc::new(test_data_with_items(&[
+            fileformats::pal3::gdb::ItemDefinition {
+                id: 6427,
+                category: 3,
+                use_kind: 3,
+                use_scope: 2,
+                use_context: 2,
+                ..Default::default()
+            },
+        ]))
+    }
+
+    #[test]
+    fn earth_pearl_requires_native_maze_context_and_queues_a_reusable_action() {
+        let data = earth_pearl_data();
+        let state = Rc::new(RefCell::new(PersistentState::new("test".into())));
+        let ui = Pal3MenuState::create(state.clone(), Some(data.clone()));
+        let menu = ui.inner::<Pal3MenuState>();
+        menu.set_earth_pearl_context(2, "m01", true);
+        assert_eq!(ui.item_use_scope(6427), 2);
+        assert!(!ui.use_item(-1, 6427));
+        state.borrow_mut().grant_world_item(6427, &data);
+
+        for (kind, scene, has_proc) in [
+            (0, "q01", true),
+            (1, "m02", true),
+            (2, "M22", true),
+            (2, "m22", true),
+            (2, "m01", false),
+        ] {
+            menu.set_earth_pearl_context(kind, scene, has_proc);
+            assert!(!ui.can_use_item(-1, 6427));
+            assert!(!ui.use_item(-1, 6427));
+            assert!(!menu.take_earth_pearl_request());
+            assert_eq!(state.borrow().inventory().quantity(6427), 1);
+        }
+
+        menu.set_earth_pearl_context(2, "m01", true);
+        assert!(!ui.use_item(0, 6427));
+        for _ in 0..2 {
+            assert!(ui.can_use_item(-1, 6427));
+            assert!(ui.use_item(-1, 6427));
+            assert!(!ui.use_item(-1, 6427), "one outstanding request per frame");
+            assert_eq!(state.borrow().inventory().quantity(6427), 1);
+            assert!(menu.take_earth_pearl_request());
+            assert!(!menu.take_earth_pearl_request());
+            assert_eq!(state.borrow().inventory().quantity(6427), 1);
+        }
+    }
+
+    #[test]
+    fn earth_pearl_drops_stale_requests_without_touching_the_bag_or_links() {
+        let data = earth_pearl_data();
+        let state = Rc::new(RefCell::new(PersistentState::new("test".into())));
+        let ui = Pal3MenuState::create(state.clone(), Some(data.clone()));
+        let menu = ui.inner::<Pal3MenuState>();
+        state.borrow_mut().add_item(6123, 1, &data);
+        let before = state.borrow().inventory().clone();
+        menu.set_earth_pearl_context(2, "m01", true);
+        assert!(ui.use_item(-1, 6427));
+        menu.set_earth_pearl_context(2, "m22", true);
+        assert!(!menu.take_earth_pearl_request());
+        assert_eq!(*state.borrow().inventory(), before);
+        menu.set_earth_pearl_context(2, "m01", true);
+        assert!(
+            !menu.take_earth_pearl_request(),
+            "stale requests do not retry"
+        );
+        assert!(ui.use_item(-1, 6427));
+        state.borrow_mut().remove_item(6427, &data);
+        let after_removal = state.borrow().inventory().clone();
+        assert!(!menu.take_earth_pearl_request());
+        assert_eq!(*state.borrow().inventory(), after_removal);
     }
 
     #[test]

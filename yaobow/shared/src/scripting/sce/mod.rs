@@ -338,6 +338,18 @@ impl SceState {
     /// when the player has control (no SCE proc running).
     pub fn render_status(&mut self, delta_sec: f32, scene_manager: ComRc<ISceneManager>) {
         let renderer = self.status_renderer.clone();
+        let menu = self.menu_state.clone();
+        let menu = menu.inner::<crate::openpal3::menu_state::Pal3MenuState>();
+        let return_proc = crate::openpal3::menu_state::EARTH_PEARL_PROC;
+        let can_call_return = self.asset_mgr.game() == crate::GameType::PAL3
+            && !self.context.is_running()
+            && self.context.has_proc(return_proc);
+        if let Some(scene) = scene_manager.scn_scene() {
+            let scene = scene.inner::<crate::openpal3::scene::ScnScene>();
+            menu.set_earth_pearl_context(scene.scene_type(), scene.name(), can_call_return);
+        } else {
+            menu.set_earth_pearl_context(0, "", false);
+        }
         let role_position = scene_manager
             .get_resolved_role(self, -1)
             .map(|role| role.transform().borrow().position());
@@ -378,6 +390,11 @@ impl SceState {
                 }
             }
         });
+        if menu.take_earth_pearl_request() {
+            self.call_proc(return_proc);
+            self.global_state.set_adv_input_enabled(false);
+            renderer.set_menu_open(false);
+        }
         let sounds = self
             .menu_state
             .inner::<crate::openpal3::menu_state::Pal3MenuState>()

@@ -90,7 +90,8 @@ pub struct ScnFile {
     pub cpk_name: String,
     pub scn_name: String,
     pub scn_base_name: String,
-    pub global_scene_index: u32,
+    /// Native map category at disk offset 0x72; 2 allows maze-only items.
+    pub scene_type: u32,
     pub is_night: bool,
     pub skybox_id: u32,
     pub roles: Vec<ScnRole>,
@@ -121,7 +122,7 @@ pub fn scn_load_from_file<P: AsRef<Path>>(vfs: &MiniFs, path: P, game: GameType)
     let scn_name = reader.read_gbk_string(32).unwrap();
     let scn_base_name = reader.read_gbk_string(32).unwrap();
 
-    let global_scene_index = reader.read_u32::<LittleEndian>().unwrap();
+    let scene_type = reader.read_u32::<LittleEndian>().unwrap();
     let is_night = reader.read_u32::<LittleEndian>().unwrap();
     let skybox_id = reader.read_u32::<LittleEndian>().unwrap();
 
@@ -143,7 +144,7 @@ pub fn scn_load_from_file<P: AsRef<Path>>(vfs: &MiniFs, path: P, game: GameType)
         cpk_name,
         scn_name,
         scn_base_name,
-        global_scene_index,
+        scene_type,
         is_night: is_night == 1,
         skybox_id,
         roles,

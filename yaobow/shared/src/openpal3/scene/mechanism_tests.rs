@@ -705,7 +705,7 @@ fn scene_with_nav(nodes: Vec<ScnNode>, cpk: &str, nav: NavFile, game: crate::Gam
             cpk_name: cpk.into(),
             scn_name: "7".into(),
             scn_base_name: "7".into(),
-            global_scene_index: 0,
+            scene_type: 0,
             is_night: false,
             skybox_id: 0,
             roles: vec![],

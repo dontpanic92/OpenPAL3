@@ -1448,6 +1448,10 @@ impl ScnScene {
         &self.scn_name
     }
 
+    pub(crate) fn scene_type(&self) -> u32 {
+        self.scn_file.scene_type
+    }
+
     pub fn nav(&self) -> &Nav {
         &self.nav
     }

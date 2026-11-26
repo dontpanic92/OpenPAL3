@@ -1132,6 +1132,15 @@ impl SceExecutionContext {
         self.sce_name = sce_name;
     }
 
+    pub(crate) fn has_proc(&self, proc_id: u32) -> bool {
+        self.sce.procs.contains_key(&proc_id)
+            && self
+                .sce
+                .proc_headers
+                .iter()
+                .any(|header| header.id == proc_id)
+    }
+
     pub fn call_proc(&mut self, proc_id: u32, global_state: &mut GlobalState) {
         self.proc_stack
             .push(SceProcContext::new_from_id(self.sce.clone(), proc_id));
