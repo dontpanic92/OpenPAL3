@@ -16,6 +16,7 @@ pub struct Camera {
     aspect: f32,
     near_clip: f32,
     far_clip: f32,
+    orthographic_height: Option<f32>,
 }
 
 /// Six-plane world-space view frustum.
@@ -42,6 +43,7 @@ impl Camera {
             aspect,
             near_clip,
             far_clip,
+            orthographic_height: None,
         }
     }
 
@@ -54,10 +56,18 @@ impl Camera {
     }
 
     pub fn set_fov43(&mut self, fov: f32) {
+        self.orthographic_height = None;
         if (fov - self.fov43).abs() > std::f32::EPSILON {
             self.fov43 = fov;
         }
 
+        self.update_projection_matrix();
+    }
+
+    /// Full vertical span in world units. `set_fov43` returns to perspective.
+    pub fn set_orthographic(&mut self, height: f32) {
+        assert!(height.is_finite() && height > 0.);
+        self.orthographic_height = Some(height);
         self.update_projection_matrix();
     }
 
@@ -166,6 +176,16 @@ impl Camera {
     }
 
     fn update_projection_matrix(&mut self) {
+        if let Some(height) = self.orthographic_height {
+            let mut projection = Mat44::new_zero();
+            projection[0][0] = 2. / (height * self.aspect);
+            projection[1][1] = 2. / height;
+            projection[2][2] = -2. / (self.far_clip - self.near_clip);
+            projection[2][3] = -(self.far_clip + self.near_clip) / (self.far_clip - self.near_clip);
+            projection[3][3] = 1.;
+            self.projection = projection;
+            return;
+        }
         self.projection = Self::generate_projection_matrix(
             self.fov43,
             self.aspect,
@@ -194,5 +214,29 @@ impl Camera {
         } else {
             fov43
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn orthographic_projection_preserves_span_on_resize_and_can_return_to_perspective() {
+        let mut camera = Camera::new_with_params(0.5, 4. / 3., 10., 100.);
+        camera.set_orthographic(240.);
+        let p = camera.projection_matrix();
+        assert!((p[0][0] * 160. - 1.).abs() < 1e-6);
+        assert!((p[1][1] * 120. - 1.).abs() < 1e-6);
+        assert!((p[2][2] * -10. + p[2][3] + 1.).abs() < 1e-6);
+        assert!((p[2][2] * -100. + p[2][3] - 1.).abs() < 1e-6);
+        assert_eq!(p[3][3], 1.);
+        camera.set_aspect(2.);
+        let p = camera.projection_matrix();
+        assert!((p[0][0] * 240. - 1.).abs() < 1e-6);
+        assert!((p[1][1] * 120. - 1.).abs() < 1e-6);
+        camera.set_fov43(0.5);
+        assert_eq!(camera.projection_matrix()[3][2], -1.);
+        assert_eq!(camera.projection_matrix()[3][3], 0.);
     }
 }

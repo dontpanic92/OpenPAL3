@@ -416,6 +416,25 @@ impl SceState {
             .take_requested_load()
     }
 
+    #[cfg(not(target_os = "vita"))]
+    pub fn install_menu_preview(
+        &self,
+        cache: Rc<RefCell<radiance_scripting::services::texture_cache::ImguiTextureCache>>,
+    ) {
+        self.menu_state
+            .inner::<crate::openpal3::menu_state::Pal3MenuState>()
+            .install_preview(crate::openpal3::menu_preview::MenuPreview::new(
+                self.asset_mgr.clone(),
+                cache,
+            ));
+    }
+
+    pub fn render_menu_preview(&self, engine: &mut dyn radiance::rendering::RenderingEngine) {
+        self.menu_state
+            .inner::<crate::openpal3::menu_state::Pal3MenuState>()
+            .render_preview(self.status_renderer.is_menu_open(), engine);
+    }
+
     pub fn take_menu_exit(&self) -> bool {
         self.menu_state
             .inner::<crate::openpal3::menu_state::Pal3MenuState>()

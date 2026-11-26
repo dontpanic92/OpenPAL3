@@ -1,3 +1,4 @@
+use common::store_ext::StoreExt2;
 use crosscom::ComRc;
 use fileformats::pol::{PolMaterialInfo, PolTriangle, PolVertex, read_pol};
 use mini_fs::{MiniFs, StoreExt};
@@ -6,6 +7,7 @@ use radiance::components::mesh::{Geometry, StaticMeshComponent, TexCoord};
 use radiance::math::Vec3;
 use radiance::rendering::{
     BlendMode, ComponentFactory, LightMapMaterialDef, MaterialDef, Pal3GeomMaterialDef,
+    SimpleMaterialDef,
 };
 use radiance::scene::CoreEntity;
 use std::io::BufReader;
@@ -30,6 +32,52 @@ pub fn create_entity_from_pol_model<P: AsRef<Path>>(
         crosscom::ComRc::from_object(mesh_component),
     );
     entity
+}
+
+pub(crate) fn create_item_preview(
+    factory: &Rc<dyn ComponentFactory>,
+    vfs: &MiniFs,
+    model: &str,
+    texture: &str,
+) -> anyhow::Result<ComRc<IEntity>> {
+    let pol = read_pol(&mut BufReader::new(vfs.open(model)?))?;
+    let dds = Path::new(texture).with_extension("dds");
+    let texture = if vfs.open(&dds).is_ok() {
+        dds
+    } else {
+        PathBuf::from(texture)
+    };
+    let texture_data = vfs.read_to_end(&texture)?;
+    let material = SimpleMaterialDef::create2(texture.to_str().unwrap(), Some(texture_data));
+    let geometries = pol
+        .meshes
+        .iter()
+        .flat_map(|mesh| {
+            mesh.material_info.iter().map(|info| {
+                let blend = if info.use_alpha == 0 {
+                    BlendMode::Opaque
+                } else {
+                    BlendMode::AlphaTest
+                };
+                create_geometry(
+                    &mesh.vertices,
+                    &info.triangles,
+                    material.clone().with_blend(blend),
+                    false,
+                )
+            })
+        })
+        .collect();
+    let entity = CoreEntity::create(model.to_owned(), true);
+    entity.add_component(
+        IStaticMeshComponent::uuid(),
+        ComRc::from_object(StaticMeshComponent::new(
+            entity.clone(),
+            geometries,
+            factory.clone(),
+        )),
+    );
+    Ok(entity)
 }
 
 fn load_pol_model<P: AsRef<Path>>(vfs: &MiniFs, path: P) -> Vec<Geometry> {

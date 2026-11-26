@@ -37,6 +37,70 @@ fn deferred_scene_loading_installs_triggers_only_when_their_work_completes() {
 
 #[test]
 #[ignore = "requires original game assets via PAL3_ASSET_PATH"]
+fn shipped_item_previews_load_variant_textures_and_reject_missing_assets() {
+    use crate::openpal3::loaders::pol::create_item_preview;
+    let path = std::env::var("PAL3_ASSET_PATH").expect("PAL3_ASSET_PATH");
+    let assets = AssetManager::new(
+        Rc::new(UnusedFactory),
+        Rc::new(packfs::init_virtual_fs(std::path::Path::new(&path), None)),
+    );
+    let mut variants = vec![];
+    for (model, image) in [("MB", "6"), ("MB", "7"), ("PE", "2"), ("WXA", "4")] {
+        let folder = format!("/basedata/basedata/Item/{model}");
+        let texture = format!("{folder}/{model}{image}.tga");
+        let entity = create_item_preview(
+            &assets.component_factory(),
+            assets.vfs(),
+            &format!("{folder}/{model}.pol"),
+            &texture,
+        )
+        .unwrap();
+        let component = entity
+            .get_component(IStaticMeshComponent::uuid())
+            .unwrap()
+            .query_interface::<IStaticMeshComponent>()
+            .unwrap();
+        let geometries = component.inner::<StaticMeshComponent>().get_geometries();
+        assert!(!geometries.is_empty());
+        for geometry in &*geometries {
+            assert!(!geometry.indices.is_empty());
+            assert_eq!(
+                geometry.material.textures()[0].name(),
+                format!("{folder}/{model}{image}.dds")
+            );
+        }
+        variants.push(
+            geometries[0].material.textures()[0]
+                .with_image(|image| image.expect("shipped texture decodes").as_raw().clone()),
+        );
+        drop(geometries);
+        entity.load();
+        entity.unload();
+        assert!(entity.get_component(IStaticMeshComponent::uuid()).is_none());
+    }
+    assert_ne!(variants[0], variants[1]);
+    assert!(
+        create_item_preview(
+            &assets.component_factory(),
+            assets.vfs(),
+            "/missing.pol",
+            "/missing.tga"
+        )
+        .is_err()
+    );
+    assert!(
+        create_item_preview(
+            &assets.component_factory(),
+            assets.vfs(),
+            "/basedata/basedata/Item/MB/MB.pol",
+            "/missing.tga"
+        )
+        .is_err()
+    );
+}
+
+#[test]
+#[ignore = "requires original game assets via PAL3_ASSET_PATH"]
 fn shipped_deferred_scene_loading_matches_synchronous_entities_and_finishes_once() {
     use crate::openpal3::comdef::IScnSceneComponent;
     use radiance::comdef::{IScene, ISceneExt};

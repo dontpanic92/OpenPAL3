@@ -377,6 +377,15 @@ pub struct MenuState(
         c.blit(COMMON + "Info.tga", 10.0, 125.0, 232.0, 414.0);
         c.blit(COMMON + word, 195.0, 142.0, 16.0, 32.0);
         if self.item != 0 {
+            let preview = game.item_preview_texture(self.item, self.tab == 2);
+            if preview != 0 {
+                c.ui.clip_rect(c.x + 10.0 * c.scale, c.y + 174.0 * c.scale,
+                    c.x + 242.0 * c.scale, c.y + 372.0 * c.scale, () => {
+                        c.ui.image_rect(preview, c.x, c.y,
+                            c.x + 800.0 * c.scale, c.y + 600.0 * c.scale,
+                            0.0, 0.0, 1.0, 1.0);
+                    });
+            }
             c.ui.clip_rect(c.x + 22.0 * c.scale, c.y + 142.0 * c.scale,
                 c.x + 187.0 * c.scale, c.y + 174.0 * c.scale, () => {
                     c.text(22.0, 142.0, game.item_name(self.item), true);

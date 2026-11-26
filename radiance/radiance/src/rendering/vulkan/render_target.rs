@@ -162,6 +162,7 @@ impl VulkanRenderTarget {
             physical_device,
             width: w,
             height: h,
+            clear_color: [0., 0., 0., 1.],
             render_pass,
             attachments: Some(attachments),
             imgui_texture_id,
@@ -170,7 +171,6 @@ impl VulkanRenderTarget {
             command_buffer,
             render_finished_semaphore,
             in_flight_fence,
-            clear_color: [0.0, 0.0, 0.0, 1.0],
         })
     }
 
@@ -218,9 +218,14 @@ impl VulkanRenderTarget {
 }
 
 impl RenderTarget for VulkanRenderTarget {
+    fn clear_color(&self) -> [f32; 4] {
+        self.clear_color
+    }
+
     fn set_clear_color(&mut self, color: [f32; 4]) {
         self.clear_color = color;
     }
+
     fn extent(&self) -> (u32, u32) {
         (self.width, self.height)
     }

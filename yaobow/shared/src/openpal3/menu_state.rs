@@ -24,6 +24,7 @@ pub struct Pal3MenuState {
     load_failed: Cell<bool>,
     audio_mix: Arc<Pal3AudioMix>,
     audio_persistence: AudioPersistence,
+    preview: RefCell<Option<super::menu_preview::MenuPreview>>,
 }
 
 enum AudioPersistence {
@@ -92,6 +93,7 @@ impl Pal3MenuState {
             load_failed: Cell::new(false),
             audio_mix,
             audio_persistence,
+            preview: RefCell::new(None),
         })
     }
 
@@ -105,6 +107,20 @@ impl Pal3MenuState {
 
     pub fn report_load_failed(&self) {
         self.load_failed.set(true);
+    }
+
+    pub(crate) fn install_preview(&self, preview: super::menu_preview::MenuPreview) {
+        *self.preview.borrow_mut() = Some(preview);
+    }
+
+    pub(crate) fn render_preview(
+        &self,
+        open: bool,
+        engine: &mut dyn radiance::rendering::RenderingEngine,
+    ) {
+        if let Some(preview) = self.preview.borrow_mut().as_mut() {
+            preview.render(open, engine);
+        }
     }
 
     fn save_audio_settings(&self) -> bool {
@@ -133,6 +149,13 @@ impl Pal3MenuState {
 }
 
 impl IPal3MenuStateImpl for Pal3MenuState {
+    fn item_preview_texture(&self, id: i32, equipment: bool) -> i32 {
+        self.preview
+            .borrow()
+            .as_ref()
+            .map_or(0, |preview| preview.request(id, equipment))
+    }
+
     fn request_return_to_menu(&self) -> bool {
         if !self.available() {
             return false;

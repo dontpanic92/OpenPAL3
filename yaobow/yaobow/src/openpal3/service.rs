@@ -309,6 +309,12 @@ impl Pal3Service {
             .state()
             .take_menu_load();
         let Some(slot) = slot else {
+            let rendering_engine = self.app.engine().borrow().rendering_engine();
+            current
+                .inner::<AdventureDirector>()
+                .sce_vm()
+                .state()
+                .render_menu_preview(&mut *rendering_engine.borrow_mut());
             return;
         };
         let path = self.last_asset_path.borrow().clone();
@@ -563,6 +569,10 @@ impl IPal3ServiceImpl for Pal3Service {
         if let Some(bridge) = self.agent_bridge.borrow().as_ref() {
             adv.set_agent_bridge(bridge.clone());
         }
+        #[cfg(not(target_os = "vita"))]
+        if let Some(cache) = self.texture_cache.borrow().as_ref() {
+            adv.sce_vm().state().install_menu_preview(cache.clone());
+        }
         ComRc::<IDirector>::from_object(adv)
     }
 
@@ -595,6 +605,10 @@ impl IPal3ServiceImpl for Pal3Service {
         )?;
         if let Some(bridge) = self.agent_bridge.borrow().as_ref() {
             adv.set_agent_bridge(bridge.clone());
+        }
+        #[cfg(not(target_os = "vita"))]
+        if let Some(cache) = self.texture_cache.borrow().as_ref() {
+            adv.sce_vm().state().install_menu_preview(cache.clone());
         }
         Some(ComRc::<IDirector>::from_object(adv))
     }

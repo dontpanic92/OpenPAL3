@@ -15,6 +15,11 @@
 //! `ui.image(...)` without inspection.
 
 pub trait RenderTarget {
+    /// Opaque black by default; transparent targets can composite over UI artwork.
+    fn clear_color(&self) -> [f32; 4] {
+        [0., 0., 0., 1.]
+    }
+
     /// Offscreen background. Backends without configurable targets may ignore it.
     fn set_clear_color(&mut self, _color: [f32; 4]) {}
 
