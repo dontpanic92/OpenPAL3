@@ -121,7 +121,7 @@ fn shipped_item_previews_load_variant_textures_and_reject_missing_assets() {
 
 #[test]
 #[ignore = "requires original game assets via PAL3_ASSET_PATH"]
-fn shipped_cvd_switches_and_bridge_deform_and_restore_both_render_passes() {
+fn shipped_cvd_loops_switches_and_bridge_deform_and_restore_both_render_passes() {
     fn bounds(entity: &crosscom::ComRc<radiance::comdef::IEntity>) -> Vec<([f32; 3], [f32; 3])> {
         let mut result = vec![];
         if let Some(component) = entity.get_rendering_component() {
@@ -139,10 +139,8 @@ fn shipped_cvd_switches_and_bridge_deform_and_restore_both_render_passes() {
     }
 
     let path = std::env::var("PAL3_ASSET_PATH").expect("PAL3_ASSET_PATH");
-    let assets = AssetManager::new(
-        Rc::new(UnusedFactory),
-        Rc::new(packfs::init_virtual_fs(std::path::Path::new(&path), None)),
-    );
+    let vfs = Rc::new(packfs::init_virtual_fs(std::path::Path::new(&path), None));
+    let assets = AssetManager::new(Rc::new(UnusedFactory), vfs.clone());
     for model in ["wz05.cvd", "wz06.cvd", "_e.cvd"] {
         let load = || {
             if model.starts_with('_') {
@@ -153,11 +151,16 @@ fn shipped_cvd_switches_and_bridge_deform_and_restore_both_render_passes() {
             .unwrap()
         };
         let entity = load();
+        if model == "wz06.cvd" {
+            super::cvd_entity::configure_scene_playback(&entity, 29, 0);
+        }
         entity.load();
         let duration = super::cvd_entity::animation_duration(&entity);
         assert!(duration > 0., "{model}");
         let initial = bounds(&entity);
         assert!(!initial.is_empty());
+        entity.update(duration * 0.25);
+        assert_eq!(bounds(&entity), initial, "{model} stays externally owned");
         if !model.starts_with('_') {
             assert_eq!(initial.len(), 6, "three materials, each with two passes");
             for pair in initial.chunks_exact(2) {
@@ -172,11 +175,19 @@ fn shipped_cvd_switches_and_bridge_deform_and_restore_both_render_passes() {
         );
         super::cvd_entity::set_animation_time(&entity, duration);
         let final_pose = bounds(&entity);
+        entity.update(duration * 0.5);
+        assert_eq!(
+            bounds(&entity),
+            final_pose,
+            "{model} keeps its completed pose"
+        );
         super::cvd_entity::set_animation_time(&entity, duration + 1.);
         assert_eq!(bounds(&entity), final_pose, "{model} must clamp at the end");
         let restored = load();
+        super::cvd_entity::configure_scene_playback(&restored, 0, 0);
         super::cvd_entity::set_animation_time(&restored, duration);
         restored.load();
+        restored.update(duration * 0.5);
         assert_eq!(
             bounds(&restored),
             final_pose,
@@ -184,6 +195,59 @@ fn shipped_cvd_switches_and_bridge_deform_and_restore_both_render_passes() {
         );
         entity.unload();
         restored.unload();
+    }
+
+    // Q01/b node 42 is a native type-17 ambient model with mode 0.
+    for game in [crate::GameType::PAL3, crate::GameType::PAL3A] {
+        let assets = Rc::new(AssetManager::new_for_game(
+            Rc::new(UnusedFactory),
+            vfs.clone(),
+            game,
+        ));
+        let mut fixture = node(42, 17, u16::MAX);
+        fixture.name = "_bn03a.cvd".into();
+        fixture.ladder_nav_coord1.1 = 0;
+        let scene = ScnScene::new(
+            CoreScene::create(),
+            &assets,
+            "q01",
+            "b",
+            ScnFile {
+                cpk_name: "q01".into(),
+                scn_name: "b".into(),
+                scn_base_name: "b".into(),
+                scene_type: 0,
+                is_night: false,
+                skybox_id: 0,
+                roles: vec![],
+                nodes: vec![fixture],
+            },
+            NavFile {
+                version: 1,
+                maps: vec![],
+                unknown2: vec![],
+            },
+        );
+        scene.load_objects_for_test();
+        let idle = scene.get_root_object(42).unwrap();
+        idle.load();
+        let initial = bounds(&idle);
+        assert!(!initial.is_empty());
+        let duration = super::cvd_entity::animation_duration(&idle);
+        idle.update(duration * 0.25);
+        let animated = bounds(&idle);
+        assert_ne!(
+            animated, initial,
+            "both games' scene loading enables ambient mesh playback"
+        );
+        super::cvd_entity::set_animation_time(&idle, duration * 0.25);
+        idle.update(duration * 0.5);
+        assert_eq!(
+            bounds(&idle),
+            animated,
+            "explicit ownership stops ambient playback"
+        );
+        idle.unload();
     }
 }
 

@@ -89,7 +89,9 @@ fn new_from_cvd_model_node<P: AsRef<Path>>(
         scale_keyframes,
         scale_factor,
         mesh_timestamps,
-        animation_time: Cell::new(0.),
+        mesh_time: Cell::new(0.),
+        playback_time: Cell::new(0.),
+        playback: Cell::new(Playback::External),
         meshes,
     };
 
@@ -151,6 +153,13 @@ fn material_passes(material: MaterialDef, mode: u8) -> Vec<MaterialDef> {
     ]
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Playback {
+    External,
+    Loop,
+    Once,
+}
+
 pub struct CvdModelComponent {
     entity: ComRc<IEntity>,
     component_factory: Rc<dyn ComponentFactory>,
@@ -159,7 +168,9 @@ pub struct CvdModelComponent {
     scale_keyframes: Option<CvdScaleKeyFrames>,
     scale_factor: f32,
     mesh_timestamps: Vec<f32>,
-    animation_time: Cell<f32>,
+    mesh_time: Cell<f32>,
+    playback_time: Cell<f64>,
+    playback: Cell<Playback>,
     meshes: Vec<CvdMesh>,
 }
 
@@ -168,7 +179,7 @@ ComObject_CvdModel!(super::CvdModelComponent);
 impl IComponentImpl for CvdModelComponent {
     fn on_loading(&self) -> crosscom::Void {
         let mut objects = vec![];
-        let frame = sample_mesh_frame(&self.mesh_timestamps, self.animation_time.get());
+        let frame = sample_mesh_frame(&self.mesh_timestamps, self.mesh_time.get());
         for mesh in &self.meshes {
             for material in &mesh.materials {
                 objects.push(self.component_factory.create_render_object(
@@ -187,7 +198,28 @@ impl IComponentImpl for CvdModelComponent {
 
     fn on_unloading(&self) {}
 
-    fn on_updating(&self, _delta_sec: f32) -> crosscom::Void {}
+    fn on_updating(&self, delta_sec: f32) -> crosscom::Void {
+        let playback = self.playback.get();
+        let duration = f64::from(self.duration());
+        if playback == Playback::External
+            || duration <= 0.
+            || !delta_sec.is_finite()
+            || delta_sec <= 0.
+        {
+            return;
+        }
+        let time = self.playback_time.get() + f64::from(delta_sec);
+        let time = match playback {
+            Playback::Loop => time % duration,
+            Playback::Once => time.min(duration),
+            Playback::External => unreachable!(),
+        };
+        self.playback_time.set(time);
+        // Native Render (0x10011460) wraps mesh time even at a held endpoint;
+        // transform tracks keep the once-only clock's final pose.
+        let sample_time = time as f32;
+        self.set_time(sample_time, sample_time % duration as f32);
+    }
 }
 
 impl CvdModelComponent {
@@ -200,7 +232,9 @@ impl CvdModelComponent {
             scale_keyframes: None,
             scale_factor: 1.,
             mesh_timestamps: vec![],
-            animation_time: Cell::new(0.),
+            mesh_time: Cell::new(0.),
+            playback_time: Cell::new(0.),
+            playback: Cell::new(Playback::External),
             meshes: vec![],
         }
     }
@@ -267,7 +301,7 @@ impl CvdModelComponent {
         .fold(0., f32::max)
     }
 
-    fn set_time(&self, time: f32) {
+    fn set_time(&self, time: f32, mesh_time: f32) {
         let mut transform = Transform::new();
         if let Some(keys) = &self.position_keyframes {
             if let Some((a, b, t)) = sample_pair(&keys.frames, time, |k| k.timestamp) {
@@ -299,11 +333,11 @@ impl CvdModelComponent {
             .transform()
             .borrow_mut()
             .set_matrix(*transform.matrix());
-        if self.animation_time.replace(time) == time {
+        if self.mesh_time.replace(mesh_time) == mesh_time {
             return;
         }
         if let Some(component) = self.entity.get_rendering_component() {
-            let frame = sample_mesh_frame(&self.mesh_timestamps, time);
+            let frame = sample_mesh_frame(&self.mesh_timestamps, mesh_time);
             let meshes = self
                 .meshes
                 .iter()
@@ -408,9 +442,42 @@ pub(super) fn set_animation_time(entity: &ComRc<IEntity>, time: f32) {
     // Keep the scene object's placement; only animate its CVD-local children.
     for child in entity.children() {
         if let Some(component) = child.get_component(ICvdModel::uuid()) {
-            component.inner::<CvdModelComponent>().set_time(time);
+            let component = component.inner::<CvdModelComponent>();
+            component.playback.set(Playback::External);
+            component.playback_time.set(f64::from(time));
+            component.set_time(time, time);
         }
         set_animation_time(&child, time);
+    }
+}
+
+pub(super) fn configure_scene_playback(entity: &ComRc<IEntity>, node_type: u16, mode: i32) {
+    // PAL3unpacked.exe 0x424052 startup pause table and 0x4242e4 loop limit.
+    let playback = if matches!(
+        node_type,
+        1 | 2 | 4 | 6 | 12 | 14 | 19 | 23 | 26 | 29 | 32 | 41
+    ) || (node_type == 17 && mode != 0)
+    {
+        Playback::External
+    } else if node_type == 16 {
+        Playback::Once
+    } else {
+        Playback::Loop
+    };
+    configure_playback(entity, playback);
+}
+
+fn configure_playback(entity: &ComRc<IEntity>, playback: Playback) {
+    // The placement root is never animated. Every CVD child owns its clock
+    // and wraps at its own duration, not the longest track in the subtree.
+    for child in entity.children() {
+        if let Some(component) = child.get_component(ICvdModel::uuid()) {
+            component
+                .inner::<CvdModelComponent>()
+                .playback
+                .set(playback);
+        }
+        configure_playback(&child, playback);
     }
 }
 
@@ -552,6 +619,147 @@ mod animation_tests {
         assert_eq!(root.transform().borrow().position().x, 50.);
         assert_eq!(root.transform().borrow().position().y, 60.);
         assert_eq!(root.transform().borrow().position().z, 70.);
+        root.unload();
+    }
+
+    fn playback_node(duration: f32) -> ComRc<IEntity> {
+        let entity = CoreEntity::create("animated node".into(), true);
+        let mut component = CvdModelComponent::new(
+            entity.clone(),
+            Rc::new(super::super::mechanism_tests::UnusedFactory),
+        );
+        component.mesh_timestamps = vec![0., duration];
+        component.meshes = vec![animated_mesh()];
+        entity.add_component(ICvdModel::uuid(), ComRc::from_object(component));
+        entity
+    }
+
+    fn assert_mesh_offset(entity: &ComRc<IEntity>, offset: f32) {
+        for object in entity.get_rendering_component().unwrap().render_objects() {
+            assert_eq!(
+                object.as_dyn().local_aabb(),
+                Some(([offset, 0., 0.], [offset + 2., 0., 0.]))
+            );
+        }
+    }
+
+    #[test]
+    fn ambient_playback_wraps_each_node_independently_without_moving_placement() {
+        let root = CoreEntity::create("placed object".into(), true);
+        root.transform()
+            .borrow_mut()
+            .set_position(&Vec3::new(50., 60., 70.));
+        let short = playback_node(2.);
+        let long = playback_node(5.);
+        short.attach(long.clone());
+        root.attach(short.clone());
+        configure_scene_playback(&root, 0, 0);
+        root.load();
+        root.update(2.5);
+        assert_mesh_offset(&short, 2.5);
+        assert_mesh_offset(&long, 5.);
+        root.update(10.);
+        assert_mesh_offset(&short, 2.5);
+        assert_mesh_offset(&long, 5.);
+        assert_eq!(root.transform().borrow().position().x, 50.);
+        assert_eq!(root.transform().borrow().position().y, 60.);
+        assert_eq!(root.transform().borrow().position().z, 70.);
+        root.unload();
+    }
+
+    #[test]
+    fn native_startup_pause_table_and_script_owned_poses_do_not_autoplay() {
+        for (kind, mode) in [
+            (1, 0),
+            (2, 0),
+            (4, 0),
+            (6, 0),
+            (12, 0),
+            (14, 0),
+            (17, 1),
+            (19, 0),
+            (23, 0),
+            (26, 0),
+            (29, 0),
+            (32, 0),
+            (41, 0),
+        ] {
+            let root = CoreEntity::create("placed object".into(), true);
+            let child = playback_node(2.);
+            root.attach(child.clone());
+            configure_scene_playback(&root, kind, mode);
+            root.load();
+            root.update(1.);
+            assert_mesh_offset(&child, 0.);
+            set_animation_time(&root, 2.);
+            root.update(10.);
+            assert_mesh_offset(&child, 10.);
+            root.unload();
+        }
+
+        let root = CoreEntity::create("placed object".into(), true);
+        let child = playback_node(2.);
+        root.attach(child.clone());
+        configure_scene_playback(&root, 17, 0);
+        root.load();
+        root.update(1.);
+        assert_mesh_offset(&child, 5.);
+        set_animation_time(&root, 1.);
+        root.update(10.);
+        assert_mesh_offset(&child, 5.);
+        root.unload();
+    }
+
+    #[test]
+    fn startup_once_holds_transform_endpoint_but_wraps_mesh_until_externally_owned() {
+        use crate::openpal3::loaders::cvd_loader::CvdPositionKeyFrame;
+        let root = CoreEntity::create("placed object".into(), true);
+        let child = playback_node(2.);
+        let component = child.get_component(ICvdModel::uuid()).unwrap();
+        let key = |timestamp, x| CvdPositionKeyFrame {
+            timestamp,
+            position: Vec3::new(x, 0., 0.),
+            unknown1: 0.,
+            unknown2: 0.,
+            unknown3: 0.,
+            unknown4: 0.,
+            unknown5: 0.,
+            unknown6: 0.,
+            unknown7: 0.,
+            unknown8: 0.,
+            unknown9: 0.,
+            unknown10: 0.,
+        };
+        let mut track_component = CvdModelComponent::new(
+            CoreEntity::create("transform node".into(), true),
+            Rc::new(super::super::mechanism_tests::UnusedFactory),
+        );
+        track_component.position_keyframes = Some(CvdPositionKeyFrames {
+            version: 3,
+            frames: vec![key(0., 0.), key(2., 20.)],
+        });
+        let transform_node = track_component.entity.clone();
+        transform_node.add_component(ICvdModel::uuid(), ComRc::from_object(track_component));
+        child.attach(transform_node.clone());
+        root.attach(child.clone());
+        configure_scene_playback(&root, 16, 0);
+        root.load();
+        root.update(1.);
+        assert_mesh_offset(&child, 5.);
+        assert_eq!(transform_node.transform().borrow().position().x, 10.);
+        root.update(1.);
+        assert_mesh_offset(&child, 0.);
+        assert_eq!(transform_node.transform().borrow().position().x, 20.);
+        root.update(5.);
+        assert_mesh_offset(&child, 0.);
+        assert_eq!(
+            component.inner::<CvdModelComponent>().playback_time.get(),
+            2.
+        );
+        set_animation_time(&root, 2.);
+        root.update(5.);
+        assert_mesh_offset(&child, 10.);
+        assert_eq!(transform_node.transform().borrow().position().x, 20.);
         root.unload();
     }
 

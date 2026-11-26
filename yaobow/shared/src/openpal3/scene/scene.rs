@@ -2268,6 +2268,7 @@ impl ScnScene {
 
         if let Some(p) = &entity {
             Self::apply_position_rotation(p.clone(), &obj.position, obj.rotation.to_radians());
+            cvd_entity::configure_scene_playback(p, obj.node_type, obj.ladder_nav_coord1.1);
             if self.asset_mgr.game() == crate::GameType::PAL3
                 && matches!(
                     obj.node_type,
