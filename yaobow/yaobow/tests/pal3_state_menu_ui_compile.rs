@@ -288,7 +288,7 @@ fn native_mechanism_notice_uses_shipped_note_nine_slice() {
     host.call_void(
         "paint",
         vec![
-            renderer,
+            renderer.clone(),
             host.foreign_box("radiance.comdef.IUiHost", ui_id).unwrap(),
             Data::string("重量不够"),
         ],
@@ -311,6 +311,45 @@ fn native_mechanism_notice_uses_shipped_note_nine_slice() {
             if (*x, *y, *size) == (360.0, 38.5, 20.0)
             && (*r, *g, *b, *a) == (250.0 / 255.0, 1.0, 1.0, 1.0)
             && s == "重量不够")));
+    drop(calls);
+    recorder.calls.borrow_mut().clear();
+    host.call_void(
+        "paint",
+        vec![
+            renderer,
+            host.foreign_box("radiance.comdef.IUiHost", ui_id).unwrap(),
+            Data::string(
+                "得到布袍\n得到铁剑\n得到护腕\n得到草鞋\n得到止血草\n得到蜂王蜜\n经验增加55",
+            ),
+        ],
+    )
+    .unwrap();
+    let calls = recorder.calls.borrow();
+    let bottom = calls
+        .iter()
+        .filter_map(|call| match call {
+            UiCall::ImageRect { y1, .. } => Some(*y1),
+            _ => None,
+        })
+        .fold(0., f32::max);
+    assert!(bottom > 87., "multi-item rewards must grow the note panel");
+    let text = calls
+        .iter()
+        .filter_map(|call| match call {
+            UiCall::TextAt {
+                y,
+                size: Some(size),
+                ..
+            } => Some((*y, *size)),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        text.len(),
+        7,
+        "every granted item and EXP notice must be drawn"
+    );
+    assert!(text.iter().all(|(y, size)| *y >= 10. && y + size <= bottom));
 }
 
 #[test]

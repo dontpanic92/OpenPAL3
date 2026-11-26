@@ -156,8 +156,11 @@ pub struct[openpal3.IPal3StatusRenderer] Pal3StatusRendererImpl(
     }
 
     pub fn render_notice(self: &Self, ui: &radiance.IUiHost, text: string) -> int {
+        let lines = state_menu.description_lines(text);
+        let font_size = if lines.len() == 1 && text.len_chars() <= 10 { 20.0 } else { 16.0 };
         let width = 274.0;
-        let height = 77.0;
+        let content_height = (lines.len() as float) * (font_size + 4.0) - 4.0;
+        let height = if content_height + 40.0 > 77.0 { content_height + 40.0 } else { 77.0 };
         let x0 = (ui.display_size_x() as float - width) * 0.5;
         let y0 = 10.0;
         let x1 = x0 + width;
@@ -174,15 +177,21 @@ pub struct[openpal3.IPal3StatusRenderer] Pal3StatusRendererImpl(
         paint_note_tile(ui, self.note[7], x0 + edge, y0, x1 - edge, y0 + edge);
         paint_note_tile(ui, self.note[8], x0 + edge, y0 + edge, x1 - edge, y1 - edge);
 
-        let font_size = 20.0;
-        let text_width = 20.0 * 4.0;
-        ui.text_at_size(
-            x0 + (width - text_width) * 0.5,
-            y0 + (height - font_size) * 0.5,
-            font_size,
-            250.0 / 255.0, 1.0, 1.0, 1.0,
-            text,
-        );
+        for i in Range(0, lines.len()) {
+            let line = lines[i];
+            let mut units = 0;
+            for j in Range(0, line.len_chars()) {
+                units = units + if line.char_at(j)!.len_bytes() == 1 { 1 } else { 2 };
+            }
+            let text_width = (units as float) * font_size * 0.5;
+            ui.text_at_size(
+                x0 + (width - text_width) * 0.5,
+                y0 + (height - content_height) * 0.5 + (i as float) * (font_size + 4.0),
+                font_size,
+                250.0 / 255.0, 1.0, 1.0, 1.0,
+                line,
+            );
+        }
         0
     }
 

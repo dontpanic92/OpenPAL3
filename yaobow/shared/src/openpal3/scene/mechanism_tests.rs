@@ -1,4 +1,5 @@
 use super::ScnScene;
+use super::mechanism::{ChestPhase, ChestReward, ChestState, Mechanism};
 use crate::openpal3::{
     asset_manager::AssetManager,
     loaders::{
@@ -115,6 +116,70 @@ fn shipped_item_previews_load_variant_textures_and_reject_missing_assets() {
                 "native UI model materials must load their own shipped textures"
             );
         }
+    }
+}
+
+#[test]
+#[ignore = "requires original game assets via PAL3_ASSET_PATH"]
+fn shipped_chest_uses_real_animation_duration_and_broken_model() {
+    use crate::openpal3::comdef::IScnSceneComponent;
+    let path = std::env::var("PAL3_ASSET_PATH").expect("PAL3_ASSET_PATH");
+    let assets = Rc::new(AssetManager::new(
+        Rc::new(UnusedFactory),
+        Rc::new(packfs::init_virtual_fs(std::path::Path::new(&path), None)),
+    ));
+    let root = assets.load_scn("m01", "1");
+    let component = root.get_component(IScnSceneComponent::uuid()).unwrap();
+    component.on_loading();
+    let component = component.query_interface::<IScnSceneComponent>().unwrap();
+    let scene = component.inner::<ScnScene>();
+    let original = scene.get_root_object(14).unwrap();
+    let duration = super::cvd_entity::animation_duration(&original);
+    assert!(duration > 0.);
+    for attempts in [0, 3] {
+        let mut saved = PersistentState::new("OpenPAL3".into());
+        scene.snapshot_mechanisms(&mut saved);
+        let mut states = saved.mechanism_states("m01", "1").unwrap().clone();
+        let chest = states.get_mut(&14).unwrap().chest.as_mut().unwrap();
+        chest.attempts = attempts;
+        chest.phase = ChestPhase::Opening {
+            role: 1,
+            elapsed: 0.,
+        };
+        saved.set_mechanism_states("m01", "1", states);
+        scene.restore_mechanisms(&saved);
+        let entity = scene.get_root_object(14).unwrap();
+        let duration = super::cvd_entity::animation_duration(&entity);
+        if attempts == 3 {
+            assert!(
+                !std::ptr::eq(&*entity, &*original),
+                "breaking must replace the actual CVD, not recolor it"
+            );
+            let expected = assets.load_object_item_cvd("wz20_5.cvd", 14, true).unwrap();
+            assert_eq!(duration, super::cvd_entity::animation_duration(&expected));
+        }
+        if duration > 0. {
+            scene.update_mechanisms(duration * 0.5);
+            assert!(scene.take_chest_rewards().is_empty());
+            assert!(scene.take_pickup_rewards().is_empty());
+        }
+        scene.update_mechanisms(duration * 0.5 + 0.01);
+        assert_eq!(
+            scene.take_pickup_rewards(),
+            if attempts == 0 {
+                vec![(82111, 0), (82202, 0), (84102, 0), (83102, 0), (6201, 0)]
+            } else {
+                vec![]
+            }
+        );
+        assert_eq!(
+            scene.take_chest_rewards(),
+            vec![ChestReward {
+                role: 1,
+                experience: if attempts == 0 { 55 } else { 0 },
+                favor: if attempts == 3 { -2 } else { 0 },
+            }]
+        );
     }
 }
 
@@ -1466,6 +1531,194 @@ fn ground_pickup_queues_reward_once_hides_and_persists_claim() {
     );
     restored.update_mechanisms(1.);
     assert!(restored.take_pickup_rewards().is_empty());
+}
+
+#[test]
+fn ordinary_pickup_uses_native_money_fallback_and_persists_removal() {
+    for (mode, money, expected) in [(0, 200, 200), (1, 200, 200), (23, 200, 23), (-25, 200, -25)] {
+        let mut pickup = node(24, 24, u16::MAX);
+        pickup.ladder_nav_coord1 = (6201, mode);
+        pickup.ladder_nav_coord2.0 = money;
+        let scene = scene(vec![pickup.clone()]);
+        cache_player(&scene, Vec3::new(0., 10., 0.));
+        assert_eq!(
+            scene.interact_mechanism(0, &Vec3::new(0., 10., 0.)),
+            Some(None)
+        );
+        scene.update_mechanisms(0.);
+        assert_eq!(scene.take_pickup_rewards(), vec![(6201, expected)]);
+        assert!(!scene.get_root_object(24).unwrap().visible());
+        let mut saved = PersistentState::new("OpenPAL3".into());
+        scene.snapshot_mechanisms(&mut saved);
+        let restored = self::scene(vec![pickup]);
+        restored.restore_mechanisms(&saved);
+        cache_player(&restored, Vec3::new(0., 10., 0.));
+        assert_eq!(
+            restored.interact_mechanism(0, &Vec3::new(0., 10., 0.)),
+            None
+        );
+        restored.update_mechanisms(1.);
+        assert!(restored.take_pickup_rewards().is_empty());
+    }
+}
+
+#[test]
+fn ordinary_pickup_waits_for_its_script_before_granting() {
+    let mut pickup = node(24, 24, u16::MAX);
+    pickup.ladder_nav_coord1 = (6201, 0);
+    pickup.sce_proc_id = 500;
+    let scene = scene(vec![pickup]);
+    cache_player(&scene, Vec3::new(0., 10., 0.));
+    assert_eq!(
+        scene.interact_mechanism(0, &Vec3::new(0., 10., 0.)),
+        Some(Some(500))
+    );
+    scene.set_mechanism_script_running(true);
+    scene.update_mechanisms(1.);
+    assert!(scene.mechanism_input_locked());
+    assert!(scene.take_pickup_rewards().is_empty());
+    scene.set_mechanism_script_running(false);
+    scene.update_mechanisms(0.);
+    assert!(!scene.mechanism_input_locked());
+    assert_eq!(scene.take_pickup_rewards(), vec![(6201, 0)]);
+}
+
+#[test]
+fn colored_chest_uses_inclusive_native_role_color_thresholds() {
+    let thresholds = [
+        [50, 50, 50, 80, 30],
+        [50, 50, 30, 50, 80],
+        [80, 30, 50, 50, 50],
+        [30, 50, 80, 50, 50],
+        [50, 80, 50, 30, 50],
+    ];
+    for (color, thresholds) in thresholds.iter().enumerate() {
+        for (role, &threshold) in thresholds.iter().enumerate() {
+            let mut chest = ChestState {
+                attempts: 0,
+                phase: ChestPhase::Closed,
+            };
+            assert!(chest.try_open(color, role, threshold + 100));
+            assert_eq!(chest.attempts, 0);
+            assert!(!chest.try_open(color, role, threshold + 1));
+            assert_eq!(chest.attempts, 1);
+        }
+    }
+}
+
+fn restore_chest_phase(scene: &ScnScene, node: &ScnNode, attempts: u8, phase: ChestPhase) {
+    let mut mechanism = Mechanism::from_node(node).unwrap();
+    mechanism.state.chest = Some(ChestState { attempts, phase });
+    let mut saved = PersistentState::new("OpenPAL3".into());
+    saved.set_mechanism_states(
+        "m17",
+        "7",
+        std::collections::HashMap::from([(node.index, mechanism.saved_state())]),
+    );
+    scene.restore_mechanisms(&saved);
+}
+
+#[test]
+fn colored_chest_settles_all_six_items_and_bonus_or_penalty_once() {
+    for role in [0, 1] {
+        for attempts in 0..=3 {
+            let mut chest = node(26, 26, u16::MAX);
+            chest.ladder_nav_coord1 = (82111, 82202);
+            chest.ladder_nav_coord2 = (84102, 83102);
+            chest.ladder_switch_layer = 6201;
+            chest.b49 = 6112_i32.to_le_bytes().to_vec();
+            let scene = scene(vec![chest.clone()]);
+            restore_chest_phase(
+                &scene,
+                &chest,
+                attempts,
+                ChestPhase::Opening { role, elapsed: 0. },
+            );
+            assert!(scene.mechanism_input_locked());
+            scene.update_mechanisms(0.);
+            assert!(!scene.mechanism_input_locked());
+            let items = scene.take_pickup_rewards();
+            if attempts < 3 {
+                assert_eq!(
+                    items,
+                    vec![
+                        (82111, 0),
+                        (82202, 0),
+                        (84102, 0),
+                        (83102, 0),
+                        (6201, 0),
+                        (6112, 0)
+                    ]
+                );
+            } else {
+                assert!(items.is_empty());
+            }
+            assert_eq!(
+                scene.take_chest_rewards(),
+                vec![ChestReward {
+                    role,
+                    experience: [55, 33, 11, 0][attempts as usize],
+                    favor: if attempts == 3 && role != 0 { -2 } else { 0 },
+                }]
+            );
+            let mut saved = PersistentState::new("OpenPAL3".into());
+            scene.snapshot_mechanisms(&mut saved);
+            let saved: PersistentState =
+                serde_json::from_str(&serde_json::to_string(&saved).unwrap()).unwrap();
+            let restored = self::scene(vec![chest]);
+            restored.restore_mechanisms(&saved);
+            cache_player(&restored, Vec3::new(0., 10., 0.));
+            assert_eq!(
+                restored.interact_mechanism(0, &Vec3::new(0., 10., 0.)),
+                None
+            );
+            restored.update_mechanisms(1.);
+            assert!(restored.take_pickup_rewards().is_empty());
+            assert!(restored.take_chest_rewards().is_empty());
+        }
+    }
+}
+
+#[test]
+fn colored_chest_packed_color_does_not_change_navigation_layer() {
+    let mut chest = node(26, 26, u16::MAX);
+    chest.name = "wz02_3.cvd".into();
+    chest.nav_layer = 0x401;
+    let mechanism = Mechanism::from_node(&chest).unwrap();
+    assert_eq!(mechanism.layer, 1);
+    let scene = scene(vec![chest]);
+    cache_player(&scene, Vec3::new(0., 10., 0.));
+    assert_eq!(scene.interact_mechanism(0, &Vec3::new(0., 10., 0.)), None);
+    assert_eq!(
+        scene.interact_mechanism(1, &Vec3::new(0., 10., 0.)),
+        Some(None)
+    );
+    assert!(scene.mechanism_input_locked());
+    scene.set_mechanism_player(None);
+    scene.update_mechanisms(1.);
+    assert!(!scene.mechanism_input_locked());
+    assert!(scene.take_pickup_rewards().is_empty());
+    assert!(scene.take_chest_rewards().is_empty());
+}
+
+#[test]
+fn ordinary_pickup_and_chest_do_not_interact_when_hidden_or_exhausted() {
+    for kind in [24, 26] {
+        let mut object = node(kind, kind, u16::MAX);
+        object.remaining_triggers = 0;
+        let scene = scene(vec![object]);
+        cache_player(&scene, Vec3::new(0., 10., 0.));
+        assert_eq!(scene.interact_mechanism(0, &Vec3::new(0., 10., 0.)), None);
+        let scene = self::scene(vec![node(kind, kind, u16::MAX)]);
+        cache_player(&scene, Vec3::new(0., 10., 0.));
+        scene
+            .get_root_object(kind as i32)
+            .unwrap()
+            .set_visible(false);
+        assert_eq!(scene.interact_mechanism(0, &Vec3::new(0., 10., 0.)), None);
+        scene.update_mechanisms(1.);
+        assert!(scene.take_pickup_rewards().is_empty());
+    }
 }
 
 #[test]

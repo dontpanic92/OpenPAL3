@@ -5,7 +5,7 @@
 //! Types 7/8: 0x4251a4, 0x427edd; type 31: 0x4263c6, 0x42971c.
 //! Type 5 path motion: 0x41f120/0x427444..0x427cda; type 41: 0x426b7e/0x429917.
 //! Plates/hazards: 0x426273/0x429547; linked CVD/movers: 0x42594a/0x42652b.
-//! Type 26 colored chests and other native object types are deliberately not approximated here.
+//! Type 24 pickups: 0x425e36/0x4289e8; type 26 chests: 0x425f40/0x428bac.
 //! Boarding: 0x42b450/0x42b510; manual switch action: 0x425c89/0x42924b.
 //! The switch's special water/effect parameters are not implemented yet.
 //! Native mechanism camera cues and sound actions are not reproduced here.
@@ -36,6 +36,70 @@ pub struct MechanismState {
     pub action: Option<MechanismAction>,
     #[serde(default)]
     pub hazard: Option<HazardState>,
+    #[serde(default)]
+    pub chest: Option<ChestState>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChestState {
+    pub attempts: u8,
+    pub phase: ChestPhase,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ChestPhase {
+    Closed,
+    Approach(ApproachInteraction),
+    Action {
+        player: String,
+        #[serde(skip)]
+        started: bool,
+    },
+    Opening {
+        role: i32,
+        elapsed: f32,
+    },
+    Opened,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct ChestReward {
+    pub role: i32,
+    pub experience: i32,
+    pub favor: i32,
+}
+
+impl ChestState {
+    pub fn try_open(&mut self, color: usize, role: usize, roll: u16) -> bool {
+        // Original 0x428ccb..0x428cf4 indexes the packed SCN color, not the model name.
+        const THRESHOLDS: [[u16; 5]; 5] = [
+            [50, 50, 50, 80, 30],
+            [50, 50, 30, 50, 80],
+            [80, 30, 50, 50, 50],
+            [30, 50, 80, 50, 50],
+            [50, 80, 50, 30, 50],
+        ];
+        let opened = roll % 100 <= THRESHOLDS[color][role];
+        if !opened {
+            self.attempts = self.attempts.saturating_add(1).min(3);
+        }
+        opened
+    }
+
+    pub fn reward(&self, role: i32) -> ChestReward {
+        ChestReward {
+            role,
+            experience: [55, 33, 11]
+                .get(self.attempts as usize)
+                .copied()
+                .unwrap_or(0),
+            favor: if self.attempts >= 3 && role != 0 {
+                -2
+            } else {
+                0
+            },
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -68,6 +132,8 @@ pub struct MechanismAction {
 pub struct PickupState {
     pub claimed: bool,
     pub interaction: Option<ApproachInteraction>,
+    #[serde(skip)]
+    pub waiting_for_script: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -203,10 +269,18 @@ impl Mechanism {
     pub fn from_node(node: &ScnNode) -> Option<Self> {
         if !matches!(
             node.node_type,
-            5 | 7 | 8 | 19 | 22 | 23 | 28 | 29 | 31 | 34 | 41
+            5 | 7 | 8 | 19 | 22 | 23 | 24 | 26 | 28 | 29 | 31 | 34 | 41
         ) {
             return None;
         }
+        if node.node_type == 26 && node.nav_layer >> 8 >= 5 {
+            return None;
+        }
+        let layer = if node.node_type == 26 {
+            node.nav_layer & 0xff
+        } else {
+            node.nav_layer
+        };
         let path = (node.node_type == 5)
             .then(|| Polyline::new(&node.path_waypoints))
             .flatten();
@@ -224,7 +298,7 @@ impl Mechanism {
             id: node.index,
             kind: node.node_type,
             active: node.active != 0,
-            layer: node.nav_layer,
+            layer,
             position: node.position,
             state: MechanismState {
                 remaining: node.remaining_triggers,
@@ -240,13 +314,14 @@ impl Mechanism {
                     movement: None,
                     completed: false,
                 }),
-                layer: Some(node.nav_layer),
-                platform: matches!(node.node_type, 5 | 22 | 41).then_some(PlatformState {
+                layer: Some(layer),
+                platform: matches!(node.node_type, 5 | 22 | 24 | 41).then_some(PlatformState {
                     rider: None,
                     boarding_pending: false,
-                    pickup: (node.node_type == 41).then_some(PickupState {
+                    pickup: matches!(node.node_type, 24 | 41).then_some(PickupState {
                         claimed: false,
                         interaction: None,
+                        waiting_for_script: false,
                     }),
                     transport: (node.node_type == 5).then_some(TransportState {
                         phase: TransportPhase::Start,
@@ -280,6 +355,10 @@ impl Mechanism {
                     elapsed: 0.,
                     swing: 0.,
                 }),
+                chest: (node.node_type == 26).then_some(ChestState {
+                    attempts: 0,
+                    phase: ChestPhase::Closed,
+                }),
             },
             target: node.w148,
             proc_id: node.sce_proc_id,
@@ -312,6 +391,7 @@ impl Mechanism {
         let initial_platform = self.state.platform.clone();
         let initial_action = self.state.action.clone();
         let initial_hazard = self.state.hazard.clone();
+        let initial_chest = self.state.chest.clone();
         self.state = state.clone();
         if self.state.native.is_none() {
             self.state.native = initial_native;
@@ -328,7 +408,10 @@ impl Mechanism {
         if self.state.hazard.is_none() {
             self.state.hazard = initial_hazard;
         }
-        if self.kind == 41
+        if self.state.chest.is_none() {
+            self.state.chest = initial_chest;
+        }
+        if matches!(self.kind, 24 | 41)
             && self
                 .state
                 .platform
@@ -341,6 +424,7 @@ impl Mechanism {
                 pickup: Some(PickupState {
                     claimed: false,
                     interaction: None,
+                    waiting_for_script: false,
                 }),
                 transport: None,
             });
@@ -409,7 +493,7 @@ impl Mechanism {
         if self.state.remaining == 0 || (!scripted && !self.active) {
             return Activation::Ignored;
         }
-        if matches!(self.kind, 5 | 41) {
+        if matches!(self.kind, 5 | 24 | 26 | 41) {
             return Activation::Ignored;
         }
         if self.kind == 28 {
@@ -575,6 +659,8 @@ impl Mechanism {
         }
         match self.kind {
             19 => "Wg001",
+            26 if variant => "wg011",
+            26 => "wa004",
             29 if variant => "We026",
             _ => "Wg005",
         }
@@ -710,7 +796,7 @@ impl Mechanism {
     }
 
     pub fn activation_proc(&self) -> Option<u32> {
-        (matches!(self.kind, 29 | 31) && self.proc_id != 0).then_some(self.proc_id)
+        (matches!(self.kind, 24 | 29 | 31) && self.proc_id != 0).then_some(self.proc_id)
     }
 
     pub fn set_active(&mut self, active: bool) {
@@ -774,6 +860,7 @@ impl Mechanism {
         }
         pickup.claimed = true;
         pickup.interaction = None;
+        pickup.waiting_for_script = false;
         self.active = false;
         true
     }
@@ -864,6 +951,7 @@ mod tests {
                 interaction: None,
                 action: None,
                 hazard: None,
+                chest: None,
             },
             target: 3,
             proc_id: 500,

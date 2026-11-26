@@ -45,6 +45,36 @@ pub struct SceCommandAddMoney {
     amount: i32,
 }
 
+#[derive(Debug, Clone)]
+pub struct SceCommandFavorAdd {
+    role_id: i32,
+    amount: i32,
+}
+
+impl SceCommandFavorAdd {
+    pub fn new(role_id: i32, amount: i32) -> Self {
+        Self { role_id, amount }
+    }
+}
+
+impl SceCommand for SceCommandFavorAdd {
+    fn update(
+        &mut self,
+        _scene_manager: ComRc<ISceneManager>,
+        _ui: &Ui,
+        state: &mut SceState,
+        _delta_sec: f32,
+    ) -> bool {
+        if state.asset_mgr().game() == GameType::PAL3 {
+            state
+                .global_state_mut()
+                .persistent_state_mut()
+                .add_favor(self.role_id, self.amount);
+        }
+        true
+    }
+}
+
 impl SceCommandAddMoney {
     pub fn new(amount: i32) -> Self {
         Self { amount }

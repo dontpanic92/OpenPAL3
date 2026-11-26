@@ -498,6 +498,7 @@ impl AdventureDirectorProps {
                     Some((entity, controller.inner::<RoleController>().nav_layer()))
                 });
             scene.set_mechanism_player(player.clone());
+            scene.set_mechanism_script_running(self.sce_vm.state().context().is_running());
             scene.set_mechanism_party_count(
                 self.sce_vm
                     .global_state()
@@ -510,6 +511,8 @@ impl AdventureDirectorProps {
             let hazard = scene.update_hazard_damage(delta_sec, &mut self.hazard_cooldown);
             let native_pal3 = self.sce_vm.state().asset_mgr().game() == crate::GameType::PAL3;
             let rewards = scene.take_pickup_rewards();
+            let chest_rewards = scene.take_chest_rewards();
+            let mut notices = scene.take_mechanism_notices();
             let stats_data = (!rewards.is_empty() || hazard.is_some())
                 .then(|| self.sce_vm.state().asset_mgr().stats_data());
             let mut damage_delta = 0;
@@ -531,11 +534,27 @@ impl AdventureDirectorProps {
                         let granted =
                             persistent.grant_world_item(item_id, stats_data.as_ref().unwrap());
                         log::info!("PAL3 world pickup item {item_id}: granted={granted}");
+                        if granted {
+                            if let Some(item) = stats_data.as_ref().unwrap().item(item_id as u32) {
+                                notices.push(format!("得到{}", item.name));
+                            }
+                        }
                     }
                     if money != 0 {
                         persistent.add_money(money);
                         log::info!("PAL3 world pickup money: {money}");
+                        notices.push(format!("得到{money}文钱"));
                     }
+                }
+                for reward in chest_rewards {
+                    if reward.experience != 0 {
+                        persistent
+                            .stats_mut()
+                            .add_experience(reward.role, reward.experience);
+                        notices.push(format!("经验增加{}", reward.experience));
+                    }
+                    persistent.add_favor(reward.role, reward.favor);
+                    log::info!("PAL3 chest reward: {reward:?}");
                 }
                 scene.snapshot_mechanisms(&mut persistent);
                 if let Some((entity, _)) = player.filter(|_| native_pal3) {
@@ -545,8 +564,10 @@ impl AdventureDirectorProps {
                     }
                 }
             }
-            for notice in scene.take_mechanism_notices() {
-                self.sce_vm.state_mut().show_mechanism_notice(notice);
+            if !notices.is_empty() {
+                self.sce_vm
+                    .state_mut()
+                    .show_mechanism_notice(notices.join("\n"));
             }
             if damage_delta < 0 {
                 self.sce_vm.state_mut().show_hazard_damage(damage_delta);

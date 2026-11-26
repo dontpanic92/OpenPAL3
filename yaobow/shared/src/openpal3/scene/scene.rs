@@ -2,8 +2,8 @@ use super::{
     collision::OrientedBox,
     cvd_entity,
     mechanism::{
-        ActionPhase, Activation, ApproachInteraction, Mechanism, SwitchInteraction, SwitchPhase,
-        TransportPhase,
+        ActionPhase, Activation, ApproachInteraction, ChestPhase, ChestReward, Mechanism,
+        SwitchInteraction, SwitchPhase, TransportPhase,
     },
 };
 use crate::openpal3::asset_manager::AssetManager;
@@ -37,6 +37,9 @@ pub struct ScnScene {
     mechanisms: RefCell<Vec<Mechanism>>,
     mechanism_procs: RefCell<Vec<u32>>,
     pickup_rewards: RefCell<Vec<(i32, i32)>>,
+    chest_rewards: RefCell<Vec<ChestReward>>,
+    broken_chest_models: RefCell<HashSet<u16>>,
+    mechanism_script_running: Cell<bool>,
     mechanism_player: RefCell<Option<(ComRc<IEntity>, usize)>>,
     party_count: Cell<usize>,
     mechanism_notices: RefCell<Vec<String>>,
@@ -98,6 +101,9 @@ impl ScnScene {
             mechanisms: RefCell::new(mechanisms),
             mechanism_procs: RefCell::new(vec![]),
             pickup_rewards: RefCell::new(vec![]),
+            chest_rewards: RefCell::new(vec![]),
+            broken_chest_models: RefCell::new(HashSet::new()),
+            mechanism_script_running: Cell::new(false),
             mechanism_player: RefCell::new(None),
             party_count: Cell::new(1),
             mechanism_notices: RefCell::new(vec![]),
@@ -185,6 +191,8 @@ impl ScnScene {
     pub fn restore_mechanisms(&self, state: &PersistentState) {
         self.mechanism_procs.borrow_mut().clear();
         self.pickup_rewards.borrow_mut().clear();
+        self.chest_rewards.borrow_mut().clear();
+        self.broken_chest_models.borrow_mut().clear();
         self.mechanism_notices.borrow_mut().clear();
         self.mechanism_sounds.borrow_mut().clear();
         self.nav.enabled_groups.borrow_mut().clear();
@@ -227,6 +235,15 @@ impl ScnScene {
     }
 
     fn apply_mechanism_pose(&self, mechanism: &Mechanism, end: bool) {
+        if mechanism
+            .state
+            .chest
+            .as_ref()
+            .is_some_and(|c| c.attempts >= 3)
+            && self.broken_chest_models.borrow_mut().insert(mechanism.id)
+        {
+            self.replace_broken_chest(mechanism);
+        }
         if mechanism.kind == 31
             && self.name().eq_ignore_ascii_case("m09")
             && mechanism.state.native.as_ref().is_some_and(|s| s.completed)
@@ -234,8 +251,15 @@ impl ScnScene {
             self.nav.enabled_groups.borrow_mut().insert(2);
         }
         if let Some(entity) = self.get_root_object(mechanism.id as i32) {
-            if mechanism.kind == 41 {
+            if matches!(mechanism.kind, 24 | 41) {
                 entity.set_visible(mechanism.active && !mechanism.pickup_claimed());
+            } else if let Some(chest) = &mechanism.state.chest {
+                let time = match chest.phase {
+                    ChestPhase::Opening { elapsed, .. } => elapsed,
+                    ChestPhase::Opened => cvd_entity::animation_duration(&entity),
+                    _ => 0.,
+                };
+                cvd_entity::set_animation_time(&entity, time);
             } else if mechanism.kind == 5 {
                 if let (Some(path), Some(state)) = (mechanism.path(), mechanism.transport()) {
                     let position = if mechanism.mode() == 1 {
@@ -510,7 +534,12 @@ impl ScnScene {
         self.mechanisms.borrow().iter().any(|m| {
             m.action_locked()
                 || m.state.interaction.is_some()
-                || m.pickup().is_some_and(|p| p.interaction.is_some())
+                || m.pickup()
+                    .is_some_and(|p| p.interaction.is_some() || p.waiting_for_script)
+                || m.state
+                    .chest
+                    .as_ref()
+                    .is_some_and(|c| !matches!(c.phase, ChestPhase::Closed | ChestPhase::Opened))
                 || m.transport().is_some_and(|p| {
                     !matches!(p.phase, TransportPhase::Start | TransportPhase::End)
                         && p.rider.is_some()
@@ -552,6 +581,14 @@ impl ScnScene {
         std::mem::take(&mut *self.pickup_rewards.borrow_mut())
     }
 
+    pub fn take_chest_rewards(&self) -> Vec<ChestReward> {
+        std::mem::take(&mut *self.chest_rewards.borrow_mut())
+    }
+
+    pub fn set_mechanism_script_running(&self, running: bool) {
+        self.mechanism_script_running.set(running);
+    }
+
     pub fn switch_state(&self, id: u16) -> u8 {
         self.mechanisms
             .borrow()
@@ -578,7 +615,7 @@ impl ScnScene {
                 .get_root_object(mechanism.id as i32)
                 .map(|e| e.visible())
                 .unwrap_or(mechanism.active);
-            if !matches!(mechanism.kind, 5 | 23 | 29 | 41)
+            if !matches!(mechanism.kind, 5 | 23 | 24 | 26 | 29 | 41)
                 || !visible
                 || mechanism.layer as usize != layer
                 || Vec3::sub(
@@ -612,18 +649,45 @@ impl ScnScene {
                 mechanism.begin_plate(player.name());
                 return Some(mechanism.activation_proc());
             }
-            if mechanism.kind == 41 {
-                if mechanism.pickup_claimed() {
+            if matches!(mechanism.kind, 24 | 41) {
+                if mechanism.pickup_claimed() || mechanism.state.remaining == 0 {
                     continue;
                 }
                 let Some((player, _)) = self.mechanism_player.borrow().as_ref().cloned() else {
                     continue;
                 };
+                if let Some(proc_id) = mechanism.activation_proc() {
+                    mechanism.pickup_mut().unwrap().waiting_for_script = true;
+                    return Some(Some(proc_id));
+                }
                 let target = self.mechanism_approach_target(mechanism, position);
                 mechanism.pickup_mut().unwrap().interaction = Some(ApproachInteraction {
                     player: player.name(),
                     target,
                 });
+                return Some(None);
+            }
+            if mechanism.kind == 26 {
+                if mechanism.state.remaining == 0
+                    || !matches!(
+                        mechanism.state.chest.as_ref().unwrap().phase,
+                        ChestPhase::Closed
+                    )
+                {
+                    continue;
+                }
+                let Some((player, _)) = self.mechanism_player.borrow().as_ref().cloned() else {
+                    continue;
+                };
+                if Self::chest_role(&player.name()).is_none() {
+                    continue;
+                }
+                let target = self.mechanism_approach_target(mechanism, position);
+                mechanism.state.chest.as_mut().unwrap().phase =
+                    ChestPhase::Approach(ApproachInteraction {
+                        player: player.name(),
+                        target,
+                    });
                 return Some(None);
             }
             if mechanism.kind == 5 {
@@ -744,7 +808,11 @@ impl ScnScene {
         if distance > 0. {
             let target = Vec3::add(
                 position,
-                &Vec3::scalar_mul((distance - radius).max(0.) / distance, &direction),
+                &Vec3::scalar_mul(
+                    (distance - radius - if mechanism.kind == 26 { 6. } else { 0. }).max(0.)
+                        / distance,
+                    &direction,
+                ),
             );
             Vec3::new(target.x, position.y, target.z)
         } else {
@@ -817,8 +885,13 @@ impl ScnScene {
                 self.apply_mechanism_pose(mechanism, false);
                 continue;
             }
-            if mechanism.kind == 41 {
+            if matches!(mechanism.kind, 24 | 41) {
                 self.update_pickup(mechanism, delta_sec.max(0.));
+                self.apply_mechanism_pose(mechanism, false);
+                continue;
+            }
+            if mechanism.kind == 26 {
+                self.update_chest(mechanism, delta_sec.max(0.));
                 self.apply_mechanism_pose(mechanism, false);
                 continue;
             }
@@ -951,6 +1024,12 @@ impl ScnScene {
     }
 
     fn update_pickup(&self, mechanism: &mut Mechanism, delta_sec: f32) {
+        if mechanism.pickup().is_some_and(|p| p.waiting_for_script) {
+            if !self.mechanism_script_running.get() {
+                self.claim_pickup(mechanism);
+            }
+            return;
+        }
         let interaction = mechanism.pickup().and_then(|p| p.interaction.clone());
         let Some(interaction) = interaction else {
             return;
@@ -982,19 +1061,214 @@ impl ScnScene {
                 }
             }
             PickupWalk::Arrived => {
-                if mechanism.claim_pickup() {
-                    if let Some(node) = self.scn_file.nodes.iter().find(|n| n.index == mechanism.id)
-                    {
-                        self.pickup_rewards
-                            .borrow_mut()
-                            .push((node.ladder_nav_coord1.0, node.ladder_nav_coord2.0));
-                    }
-                }
+                self.claim_pickup(mechanism);
                 if let Some(controller) = RoleController::get_role_controller(player) {
                     controller.inner::<RoleController>().idle();
                 }
             }
         }
+    }
+
+    fn claim_pickup(&self, mechanism: &mut Mechanism) {
+        if mechanism.claim_pickup() {
+            if let Some(node) = self.scn_file.nodes.iter().find(|n| n.index == mechanism.id) {
+                self.pickup_rewards.borrow_mut().push((
+                    node.ladder_nav_coord1.0,
+                    if mechanism.kind == 24 && !matches!(node.ladder_nav_coord1.1, 0 | 1) {
+                        node.ladder_nav_coord1.1
+                    } else {
+                        node.ladder_nav_coord2.0
+                    },
+                ));
+            }
+        }
+    }
+
+    fn chest_role(name: &str) -> Option<usize> {
+        name.strip_prefix("ROLE_")?
+            .parse()
+            .ok()
+            .filter(|&id| id < 5)
+    }
+
+    fn update_chest(&self, mechanism: &mut Mechanism, delta_sec: f32) {
+        let mut chest = mechanism.state.chest.take().unwrap();
+        let phase = std::mem::replace(&mut chest.phase, ChestPhase::Closed);
+        chest.phase = match phase {
+            ChestPhase::Approach(interaction) => {
+                if let Some(player) = self.controlled_mechanism_role(&interaction.player) {
+                    match self.walk_pickup_to(
+                        &player,
+                        mechanism.layer as usize,
+                        &interaction.target,
+                        delta_sec,
+                    ) {
+                        PickupWalk::Moving => ChestPhase::Approach(interaction),
+                        PickupWalk::Blocked => {
+                            Self::idle_mechanism_role(player);
+                            ChestPhase::Closed
+                        }
+                        PickupWalk::Arrived => {
+                            Self::idle_mechanism_role(player.clone());
+                            let position = player.transform().borrow().position();
+                            let to = self
+                                .get_root_object(mechanism.id as i32)
+                                .map(|e| e.transform().borrow().position())
+                                .unwrap_or(mechanism.position);
+                            if position.x != to.x || position.z != to.z {
+                                player
+                                    .transform()
+                                    .borrow_mut()
+                                    .look_at(&Vec3::new(to.x, position.y, to.z));
+                            }
+                            ChestPhase::Action {
+                                player: interaction.player,
+                                started: false,
+                            }
+                        }
+                    }
+                } else {
+                    ChestPhase::Closed
+                }
+            }
+            ChestPhase::Action {
+                player: name,
+                started,
+            } => {
+                if let Some(player) = self.controlled_mechanism_role(&name) {
+                    let playing = RoleController::get_role_controller(player.clone()).is_some_and(
+                        |controller| {
+                            let controller = controller.inner::<RoleController>();
+                            if !controller.is_active() {
+                                false
+                            } else if !started {
+                                controller.try_play_anim("c07", RoleAnimationRepeatMode::Repeat(1))
+                            } else {
+                                matches!(
+                                    controller.state(),
+                                    RoleState::PlayingAnimation | RoleState::AnimationHolding
+                                )
+                            }
+                        },
+                    );
+                    if playing {
+                        ChestPhase::Action {
+                            player: name,
+                            started: true,
+                        }
+                    } else {
+                        Self::idle_mechanism_role(player);
+                        let role = Self::chest_role(&name).unwrap();
+                        let node = self
+                            .scn_file
+                            .nodes
+                            .iter()
+                            .find(|n| n.index == mechanism.id)
+                            .unwrap();
+                        let opened = chest.try_open(
+                            (node.nav_layer >> 8) as usize,
+                            role,
+                            rand::random::<u16>() & 0x7fff,
+                        );
+                        self.mechanism_sounds
+                            .borrow_mut()
+                            .push(mechanism.action_sound(opened).into());
+                        if opened || chest.attempts >= 3 {
+                            if !opened {
+                                self.mechanism_notices
+                                    .borrow_mut()
+                                    .push("连续三次没有打开,宝箱被破坏了...".into());
+                                self.mechanism_sounds
+                                    .borrow_mut()
+                                    .push(mechanism.action_sound(false).into());
+                            }
+                            ChestPhase::Opening {
+                                role: role as i32,
+                                elapsed: 0.,
+                            }
+                        } else {
+                            self.mechanism_notices
+                                .borrow_mut()
+                                .push("没能打开宝箱".into());
+                            ChestPhase::Closed
+                        }
+                    }
+                } else {
+                    if let Some(player) = self.mechanism_role(&name) {
+                        Self::idle_mechanism_role(player);
+                    }
+                    ChestPhase::Closed
+                }
+            }
+            ChestPhase::Opening { role, elapsed } => {
+                let duration = self
+                    .get_root_object(mechanism.id as i32)
+                    .map(|e| cvd_entity::animation_duration(&e))
+                    .unwrap_or(0.);
+                let elapsed = elapsed + delta_sec;
+                if elapsed >= duration {
+                    if chest.attempts < 3 {
+                        if let Some(node) =
+                            self.scn_file.nodes.iter().find(|n| n.index == mechanism.id)
+                        {
+                            self.pickup_rewards.borrow_mut().extend(
+                                node.chest_items()
+                                    .into_iter()
+                                    .filter(|&id| id != 0)
+                                    .map(|id| (id, 0)),
+                            );
+                        }
+                    } else if role != 0 {
+                        self.mechanism_sounds.borrow_mut().push("wa048".into());
+                    }
+                    self.chest_rewards.borrow_mut().push(chest.reward(role));
+                    ChestPhase::Opened
+                } else {
+                    ChestPhase::Opening { role, elapsed }
+                }
+            }
+            phase => phase,
+        };
+        mechanism.state.chest = Some(chest);
+    }
+
+    fn controlled_mechanism_role(&self, name: &str) -> Option<ComRc<IEntity>> {
+        self.mechanism_player
+            .borrow()
+            .as_ref()
+            .filter(|(player, _)| player.name() == name)
+            .and_then(|_| self.mechanism_role(name))
+    }
+
+    fn idle_mechanism_role(player: ComRc<IEntity>) {
+        if let Some(controller) = RoleController::get_role_controller(player) {
+            controller.inner::<RoleController>().idle();
+        }
+    }
+
+    fn replace_broken_chest(&self, mechanism: &Mechanism) {
+        let Some(node) = self.scn_file.nodes.iter().find(|n| n.index == mechanism.id) else {
+            return;
+        };
+        let Some(digit) = node
+            .name
+            .len()
+            .checked_sub(5)
+            .and_then(|i| node.name.as_bytes().get(i))
+            .filter(|b| b.is_ascii_digit())
+        else {
+            return;
+        };
+        let Some(entity) = self.asset_mgr.load_object_item_cvd(
+            &format!("wz20_{}.cvd", char::from(*digit)),
+            mechanism.id,
+            mechanism.active,
+        ) else {
+            return;
+        };
+        Self::apply_position_rotation(entity.clone(), &node.position, node.rotation.to_radians());
+        self.scene.remove_entities_by_name(&entity.name());
+        self.scene.add_entity(entity);
     }
 
     fn update_transport(&self, mechanism: &mut Mechanism, delta_sec: f32) {
@@ -1962,7 +2236,7 @@ impl ScnScene {
             if self.asset_mgr.game() == crate::GameType::PAL3
                 && matches!(
                     obj.node_type,
-                    5 | 7 | 8 | 11 | 16 | 19 | 22 | 23 | 28 | 29 | 31 | 33 | 34 | 41
+                    5 | 7 | 8 | 11 | 16 | 19 | 22 | 23 | 24 | 26 | 28 | 29 | 31 | 33 | 34 | 41
                 )
             {
                 p.set_visible(obj.active != 0);

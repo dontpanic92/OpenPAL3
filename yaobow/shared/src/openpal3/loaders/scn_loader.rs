@@ -43,6 +43,22 @@ pub struct ScnNode {
     pub b: Vec<u8>,
 }
 
+impl ScnNode {
+    pub(crate) fn chest_items(&self) -> [i32; 6] {
+        [
+            self.ladder_nav_coord1.0,
+            self.ladder_nav_coord1.1,
+            self.ladder_nav_coord2.0,
+            self.ladder_nav_coord2.1,
+            self.ladder_switch_layer,
+            self.b49
+                .get(..4)
+                .map(|b| i32::from_le_bytes(b.try_into().unwrap()))
+                .unwrap_or(0),
+        ]
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct ScnRole {
     pub index: u8,

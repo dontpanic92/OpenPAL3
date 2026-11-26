@@ -496,7 +496,7 @@ impl SceProcContext {
             }
             43 => {
                 // FavorAdd
-                nop_command!(self, FavorAdd, i32, i32)
+                command!(self, SceCommandFavorAdd, role_id: i32, amount: i32)
             }
             46 => {
                 // AddItem
@@ -1014,6 +1014,11 @@ mod gameplay_tests {
         for value in [153u16, 0] {
             inst.extend_from_slice(&value.to_le_bytes());
         }
+        for value in [43u16, 0] {
+            inst.extend_from_slice(&value.to_le_bytes());
+        }
+        inst.extend_from_slice(&(-2i32).to_le_bytes());
+        inst.extend_from_slice(&1i32.to_le_bytes());
         for value in [46u16, 0] {
             inst.extend_from_slice(&value.to_le_bytes());
         }
@@ -1053,6 +1058,7 @@ mod gameplay_tests {
             "SceCommandFullRoleAtt { role_id: 6, attribute: 2 }",
             "SceCommandAverageLv { role_id: 1, offset: -2 }",
             "SceCommandFullTeamAtt",
+            "SceCommandFavorAdd { role_id: 1, amount: -2 }",
             "SceCommandAddItem { item_id: 6123, count: 3 }",
             "SceCommandRemoveItem { item_id: 6123 }",
             "SceCommandHaveItem { item_id: 6123 }",

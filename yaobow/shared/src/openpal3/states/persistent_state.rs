@@ -24,6 +24,8 @@ pub struct PersistentState {
     role_controlled: i32,
     party: PartyState,
     money: i32,
+    #[serde(default)]
+    favor: [i32; 5],
     play_seconds: f64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     thumbnail_png: Option<Vec<u8>>,
@@ -47,6 +49,7 @@ impl PersistentState {
             role_controlled: 0,
             party: PartyState::default(),
             money: 0,
+            favor: [0; 5],
             play_seconds: 0.0,
             thumbnail_png: None,
             stats: StatsState::default(),
@@ -179,6 +182,16 @@ impl PersistentState {
     pub fn add_money(&mut self, amount: i32) {
         // Native 0x40fc90 adds signed 32-bit values before clamping below zero.
         self.money = self.money.wrapping_add(amount).max(0);
+    }
+
+    pub fn add_favor(&mut self, role: i32, amount: i32) {
+        if let Some(value) = usize::try_from(role)
+            .ok()
+            .and_then(|role| self.favor.get_mut(role))
+        {
+            // Original 0x40eb10 performs an unclamped signed addition.
+            *value = value.wrapping_add(amount);
+        }
     }
 
     pub fn stats(&self) -> &StatsState {
@@ -964,6 +977,7 @@ mod mechanism_tests {
                     interaction: None,
                     action: None,
                     hazard: None,
+                    chest: None,
                 },
             )]),
         );
@@ -974,6 +988,7 @@ mod mechanism_tests {
                 .unwrap()
                 .remove(field);
         }
+
         let restored: PersistentState = serde_json::from_value(json).unwrap();
         assert_eq!(restored.role_controlled(), 1);
         assert_eq!(restored.nav_layer(), 1);
@@ -983,5 +998,22 @@ mod mechanism_tests {
         assert_eq!(mechanism.height, 25.);
         assert_eq!(mechanism.motion, Some(40.));
         assert!(restored.mechanism_states("m18", "d1").is_none());
+    }
+
+    #[test]
+    fn favor_penalties_wrap_and_roundtrip_without_breaking_old_saves() {
+        let mut state = PersistentState::new("OpenPAL3".into());
+        state.add_favor(1, -2);
+        state.add_favor(2, i32::MAX);
+        state.add_favor(2, 1);
+        state.add_favor(-1, 20);
+        state.add_favor(5, 20);
+        let json = serde_json::to_string(&state).unwrap();
+        let restored: PersistentState = serde_json::from_str(&json).unwrap();
+        assert_eq!(restored.favor, [0, -2, i32::MIN, 0, 0]);
+        let mut old = serde_json::to_value(state).unwrap();
+        old.as_object_mut().unwrap().remove("favor");
+        let restored: PersistentState = serde_json::from_value(old).unwrap();
+        assert_eq!(restored.favor, [0; 5]);
     }
 }
