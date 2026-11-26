@@ -5,6 +5,7 @@ use radiance::math::Transform;
 use radiance::math::Vec3;
 use serde::{Deserialize, Serialize};
 
+use crate::openpal4::gameplay::{CharacterStats, GameplayCatalog, PlayerEquipment};
 use crate::ydirs;
 
 /// Number of fixed party slots in PAL4 (YunTianhe / HanLingsha /
@@ -19,8 +20,7 @@ pub const PLAYER_COUNT: usize = 4;
 /// load screen peeks the same slot files).
 pub const PAL4_APP_NAME: &str = "OpenPAL4";
 
-/// Per-player progression record. All fields default so older save
-/// files (or partially populated states) still deserialize cleanly.
+/// Per-player progression, separate from scene visibility.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlayerState {
     #[serde(default)]
@@ -38,7 +38,13 @@ pub struct PlayerState {
     #[serde(default)]
     pub skills: Vec<i32>,
     #[serde(default)]
-    pub equipment: Vec<i32>,
+    pub equipment: PlayerEquipment,
+    #[serde(default)]
+    pub experience: i32,
+    #[serde(default)]
+    pub base_stats: CharacterStats,
+    #[serde(default)]
+    pub effective_stats: CharacterStats,
 }
 
 impl Default for PlayerState {
@@ -51,7 +57,10 @@ impl Default for PlayerState {
             max_mp: 0,
             in_team: false,
             skills: Vec::new(),
-            equipment: Vec::new(),
+            equipment: PlayerEquipment::default(),
+            experience: 0,
+            base_stats: CharacterStats::default(),
+            effective_stats: CharacterStats::default(),
         }
     }
 }
@@ -257,8 +266,58 @@ impl Pal4PersistentState {
         self.players.entry(slot).or_default()
     }
 
-    pub fn set_player_level(&mut self, slot: usize, level: i32) {
-        self.player_mut(slot).level = level;
+    pub fn initialize_players(&mut self, catalog: &GameplayCatalog) -> anyhow::Result<()> {
+        for slot in 0..PLAYER_COUNT {
+            self.player_mut(slot).base_stats = catalog.roles[&slot].stats.clone();
+            self.set_player_level(slot, 1, catalog)?;
+        }
+        self.set_in_team(0, true);
+        Ok(())
+    }
+
+    pub fn set_player_level(
+        &mut self,
+        slot: usize,
+        level: i32,
+        catalog: &GameplayCatalog,
+    ) -> anyhow::Result<()> {
+        anyhow::ensure!(slot < PLAYER_COUNT, "invalid PAL4 player {slot}");
+        let definition = catalog
+            .levels
+            .get(&(slot, level))
+            .ok_or_else(|| anyhow::anyhow!("missing PAL4 player {slot}, level {level}"))?;
+        let lower = catalog
+            .levels
+            .get(&(slot, level - 1))
+            .map(|row| row.experience)
+            .unwrap_or(0);
+        let upper = definition.experience.saturating_sub(1);
+        anyhow::ensure!(
+            lower <= upper,
+            "invalid PAL4 experience bounds for level {level}"
+        );
+        let player = self.player_mut(slot);
+        let previous = player.base_stats.clone();
+        player.base_stats = definition.stats.clone();
+        // Native level assignment preserves learned elemental affinities.
+        for name in [
+            "EFE_WATER",
+            "EFE_FIRE",
+            "EFE_THUNDER",
+            "EFE_AIR",
+            "EFE_EARTH",
+        ] {
+            player
+                .base_stats
+                .integers
+                .insert(name.to_string(), previous.integer(name));
+        }
+        player.level = level;
+        player.experience = player.experience.clamp(lower, upper);
+        self.recalculate_player(slot, catalog)?;
+        self.set_full_hp(slot);
+        self.set_full_mp(slot);
+        Ok(())
     }
 
     pub fn player_level(&self, slot: usize) -> i32 {
@@ -266,7 +325,9 @@ impl Pal4PersistentState {
     }
 
     pub fn set_in_team(&mut self, slot: usize, in_team: bool) {
-        self.player_mut(slot).in_team = in_team;
+        if slot < PLAYER_COUNT {
+            self.player_mut(slot).in_team = in_team;
+        }
     }
 
     pub fn add_skill(&mut self, slot: usize, skill_id: i32) {
@@ -276,11 +337,127 @@ impl Pal4PersistentState {
         }
     }
 
-    /// Attach an equipment id to a specific player slot.
-    pub fn add_player_equip(&mut self, slot: usize, equip_id: i32) {
+    /// Script grants create an equipped copy, without consuming backpack stock.
+    pub fn add_player_equip(
+        &mut self,
+        slot: usize,
+        equip_id: i32,
+        catalog: &GameplayCatalog,
+    ) -> anyhow::Result<()> {
+        anyhow::ensure!(slot < PLAYER_COUNT, "invalid PAL4 player {slot}");
+        let definition = catalog
+            .equipment
+            .get(&equip_id)
+            .ok_or_else(|| anyhow::anyhow!("unknown PAL4 equipment {equip_id}"))?;
+        let position = self.player_mut(slot).equipment.script_slot(definition.kind);
+        let previous = *self.player_mut(slot).equipment.at_mut(position);
+        if let Some(previous) = previous {
+            anyhow::ensure!(
+                self.equipment_count(previous) < i32::MAX,
+                "PAL4 backpack quantity overflow for {previous}"
+            );
+        }
+        *self.player_mut(slot).equipment.at_mut(position) = Some(equip_id);
+        if let Some(previous) = previous {
+            self.add_equipment(previous, 1);
+        }
+        self.recalculate_player(slot, catalog)
+    }
+
+    pub fn recalculate_player(
+        &mut self,
+        slot: usize,
+        catalog: &GameplayCatalog,
+    ) -> anyhow::Result<()> {
+        anyhow::ensure!(slot < PLAYER_COUNT, "invalid PAL4 player {slot}");
         let player = self.player_mut(slot);
-        if !player.equipment.contains(&equip_id) {
-            player.equipment.push(equip_id);
+        let mut effective = player.base_stats.clone();
+        for id in player.equipment.ids() {
+            let equipment = catalog
+                .equipment
+                .get(&id)
+                .ok_or_else(|| anyhow::anyhow!("unknown equipped PAL4 item {id}"))?;
+            effective.add(&equipment.stats);
+        }
+        player.max_hp = effective.integer("CA_MAX_HP").max(0);
+        player.max_mp = effective.integer("CA_MAX_MP").max(0);
+        player.hp = player.hp.clamp(0, player.max_hp);
+        player.mp = player.mp.clamp(0, player.max_mp);
+        player.effective_stats = effective;
+        Ok(())
+    }
+
+    pub fn equip_from_inventory(
+        &mut self,
+        slot: usize,
+        id: i32,
+        catalog: &GameplayCatalog,
+    ) -> anyhow::Result<()> {
+        anyhow::ensure!(slot < PLAYER_COUNT, "invalid PAL4 player {slot}");
+        let player = self
+            .player(slot)
+            .ok_or_else(|| anyhow::anyhow!("missing PAL4 player {slot}"))?;
+        anyhow::ensure!(
+            catalog.can_equip(slot, player.level, id),
+            "player {slot} cannot equip {id}"
+        );
+        anyhow::ensure!(
+            self.equipment_count(id) > 0,
+            "PAL4 equipment {id} is not in the backpack"
+        );
+
+        // Validate on a copy so a failed replacement cannot consume either item.
+        let mut candidate = self.clone();
+        let position = candidate
+            .player_mut(slot)
+            .equipment
+            .script_slot(catalog.equipment[&id].kind);
+        let previous = candidate
+            .player_mut(slot)
+            .equipment
+            .at_mut(position)
+            .replace(id);
+        candidate.remove_equipment(id, 1);
+        if let Some(previous) = previous {
+            anyhow::ensure!(
+                candidate.equipment_count(previous) < i32::MAX,
+                "PAL4 backpack quantity overflow for {previous}"
+            );
+            candidate.add_equipment(previous, 1);
+        }
+        candidate.recalculate_player(slot, catalog)?;
+        *self = candidate;
+        Ok(())
+    }
+
+    pub fn set_player_resource_percent(&mut self, player_id: i32, attribute: i32, percent: i32) {
+        if !(-1..=1).contains(&attribute) {
+            return;
+        }
+        for slot in 0..PLAYER_COUNT {
+            if player_id >= 0 && player_id as usize != slot {
+                continue;
+            }
+            let player = self.player_mut(slot);
+            let ratio = percent as f32 * 0.01;
+            if attribute == -1 || attribute == 0 {
+                player.hp =
+                    ((f64::from(player.max_hp) * f64::from(ratio)) as i32).clamp(0, player.max_hp);
+            }
+            if attribute == -1 || attribute == 1 {
+                player.mp =
+                    ((f64::from(player.max_mp) * f64::from(ratio)) as i32).clamp(0, player.max_mp);
+            }
+        }
+    }
+
+    pub fn restore_party_resources(&mut self, hp: bool) {
+        for player in self.players.values_mut().filter(|player| player.in_team) {
+            if hp {
+                player.hp = player.max_hp;
+            } else {
+                player.mp = player.max_mp;
+            }
         }
     }
 
@@ -298,14 +475,33 @@ impl Pal4PersistentState {
 
     pub fn add_equipment(&mut self, equip_id: i32, count: i32) {
         let entry = self.inventory.entry(equip_id).or_insert(0);
-        *entry = (*entry + count).max(0);
+        *entry = entry.saturating_add(count).max(0);
         if *entry == 0 {
             self.inventory.remove(&equip_id);
         }
     }
 
     pub fn remove_equipment(&mut self, equip_id: i32, count: i32) {
-        self.add_equipment(equip_id, -count);
+        self.add_equipment(equip_id, count.saturating_neg());
+    }
+
+    pub fn add_property(
+        &mut self,
+        id: i32,
+        count: i32,
+        catalog: &GameplayCatalog,
+    ) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            catalog.properties.contains_key(&id),
+            "unknown PAL4 property {id}"
+        );
+        let quantity = self.equipment_count(id).saturating_add(count).clamp(0, 99);
+        if quantity == 0 {
+            self.inventory.remove(&id);
+        } else {
+            self.inventory.insert(id, quantity);
+        }
+        Ok(())
     }
 
     pub fn has_equipment(&self, equip_id: i32) -> bool {
@@ -410,6 +606,223 @@ impl Pal4PersistentState {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::openpal4::gameplay::{
+        EquipmentDefinition, EquipmentType, LevelDefinition, RoleDefinition,
+    };
+
+    fn catalog() -> GameplayCatalog {
+        let mut catalog = GameplayCatalog::default();
+        let stats = |hp, mp, physical| CharacterStats {
+            integers: [
+                ("CA_MAX_HP".to_string(), hp),
+                ("CA_MAX_MP".to_string(), mp),
+                ("CA_PHYSICAL".to_string(), physical),
+                ("EFE_WATER".to_string(), 0),
+            ]
+            .into(),
+            ..Default::default()
+        };
+        for slot in 0..PLAYER_COUNT {
+            catalog.roles.insert(
+                slot,
+                RoleDefinition {
+                    id: 1001 + slot as i32,
+                    name: format!("role {slot}"),
+                    model: String::new(),
+                    stats: stats(90, 30, 18),
+                },
+            );
+            for (level, hp, mp, physical, experience) in
+                [(1, 210, 30, 24, 54), (2, 250, 40, 30, 150)]
+            {
+                catalog.levels.insert(
+                    (slot, level),
+                    LevelDefinition {
+                        experience,
+                        stats: stats(hp, mp, physical),
+                    },
+                );
+            }
+        }
+        for (id, kind, hp, physical) in [
+            (3501, EquipmentType::Sword, 0, 10),
+            (3502, EquipmentType::Sword, 0, 20),
+            (3671, EquipmentType::Accessory, 50, 0),
+            (3672, EquipmentType::Accessory, 20, 0),
+        ] {
+            catalog.equipment.insert(
+                id,
+                EquipmentDefinition {
+                    id,
+                    kind,
+                    name: String::new(),
+                    description: String::new(),
+                    model: String::new(),
+                    texture: String::new(),
+                    level_limits: [1, 0, 0, 1],
+                    price: 0,
+                    skill_id: 0,
+                    stats: stats(hp, 0, physical),
+                },
+            );
+        }
+        catalog
+    }
+
+    #[test]
+    fn progression_replaces_role_stats_and_refills_without_losing_affinity_or_equipment() {
+        let catalog = catalog();
+        let mut state = Pal4PersistentState::new(PAL4_APP_NAME.to_string());
+        state.initialize_players(&catalog).unwrap();
+        assert_eq!(
+            (state.player(0).unwrap().hp, state.player(0).unwrap().mp),
+            (210, 30)
+        );
+        assert!(state.player(0).unwrap().in_team);
+        assert!(!state.player(1).unwrap().in_team);
+        state.add_player_equip(0, 3501, &catalog).unwrap();
+        let player = state.player_mut(0);
+        player
+            .base_stats
+            .integers
+            .insert("EFE_WATER".to_string(), 12);
+        player.hp = 1;
+        player.mp = 2;
+        state.set_player_level(0, 2, &catalog).unwrap();
+        let player = state.player(0).unwrap();
+        assert_eq!(
+            (player.hp, player.max_hp, player.mp, player.experience),
+            (250, 250, 40, 54)
+        );
+        assert_eq!(player.effective_stats.integer("CA_PHYSICAL"), 40);
+        assert_eq!(player.effective_stats.integer("EFE_WATER"), 12);
+        assert!(state.set_player_level(0, 100, &catalog).is_err());
+        assert!(state.set_player_level(usize::MAX, 1, &catalog).is_err());
+        assert_eq!(state.player(0).unwrap().level, 2);
+    }
+
+    #[test]
+    fn script_equipment_uses_six_slots_without_consuming_backpack_copies() {
+        let catalog = catalog();
+        let mut state = Pal4PersistentState::new(PAL4_APP_NAME.to_string());
+        state.initialize_players(&catalog).unwrap();
+        state.add_equipment(3501, 2);
+        state.add_player_equip(0, 3501, &catalog).unwrap();
+        state.add_player_equip(0, 3502, &catalog).unwrap();
+        state.add_player_equip(0, 3671, &catalog).unwrap();
+        state.add_player_equip(0, 3671, &catalog).unwrap();
+        let player = state.player(0).unwrap();
+        assert_eq!(player.equipment.weapon, Some(3502));
+        assert_eq!(player.equipment.accessories, [Some(3671), Some(3671)]);
+        assert_eq!(player.effective_stats.integer("CA_PHYSICAL"), 44);
+        assert_eq!((player.hp, player.max_hp), (210, 310));
+        assert_eq!(state.equipment_count(3501), 3);
+        state.add_player_equip(0, 3672, &catalog).unwrap();
+        assert_eq!(
+            state.player(0).unwrap().equipment.accessories,
+            [Some(3672), Some(3671)]
+        );
+        assert_eq!(state.player(0).unwrap().max_hp, 280);
+        assert!(state.add_player_equip(0, 123, &catalog).is_err());
+        let restored: Pal4PersistentState =
+            serde_json::from_str(&serde_json::to_string(&state).unwrap()).unwrap();
+        assert_eq!(
+            restored.player(0).unwrap().equipment,
+            state.player(0).unwrap().equipment
+        );
+        assert_eq!(
+            restored.player(0).unwrap().effective_stats,
+            state.player(0).unwrap().effective_stats
+        );
+        assert_eq!(restored.equipment_count(3501), 3);
+    }
+
+    #[test]
+    fn percentages_target_all_characters_but_full_restoration_targets_only_party() {
+        let catalog = catalog();
+        let mut state = Pal4PersistentState::new(PAL4_APP_NAME.to_string());
+        state.initialize_players(&catalog).unwrap();
+        state.set_in_team(1, true);
+        state.set_player_resource_percent(-1, -1, 50);
+        for slot in 0..PLAYER_COUNT {
+            let player = state.player(slot).unwrap();
+            assert_eq!((player.hp, player.mp), (105, 15));
+        }
+        state.restore_party_resources(true);
+        state.restore_party_resources(false);
+        assert_eq!(
+            (state.player(1).unwrap().hp, state.player(1).unwrap().mp),
+            (210, 30)
+        );
+        assert_eq!(
+            (state.player(2).unwrap().hp, state.player(2).unwrap().mp),
+            (105, 15)
+        );
+        state.set_player_resource_percent(2, 0, 200);
+        state.set_player_resource_percent(2, 1, -10);
+        assert_eq!(
+            (state.player(2).unwrap().hp, state.player(2).unwrap().mp),
+            (210, 0)
+        );
+        let before = serde_json::to_string(&state.player(2)).unwrap();
+        state.set_player_resource_percent(2, 9, 0);
+        state.set_player_resource_percent(99, -1, 0);
+        state.set_in_team(99, true);
+        assert_eq!(serde_json::to_string(&state.player(2)).unwrap(), before);
+        assert!(state.player(99).is_none());
+    }
+
+    #[test]
+    fn inventory_arithmetic_cannot_overflow_or_create_negative_stacks() {
+        let mut state = Pal4PersistentState::new(PAL4_APP_NAME.to_string());
+        state.add_equipment(3501, i32::MAX);
+        state.add_equipment(3501, 1);
+        assert_eq!(state.equipment_count(3501), i32::MAX);
+        state.remove_equipment(3501, i32::MAX);
+        assert!(!state.has_equipment(3501));
+        assert!(state.inventory_iter().next().is_none());
+    }
+
+    #[test]
+    fn backpack_equipping_checks_eligibility_and_swaps_owned_copies_atomically() {
+        let mut catalog = catalog();
+        catalog.equipment.get_mut(&3502).unwrap().level_limits[0] = 2;
+        let mut state = Pal4PersistentState::new(PAL4_APP_NAME.to_string());
+        state.initialize_players(&catalog).unwrap();
+        state.add_player_equip(0, 3501, &catalog).unwrap();
+        state.add_equipment(3502, 1);
+        assert!(state.equip_from_inventory(0, 3502, &catalog).is_err());
+        assert!(state.equip_from_inventory(1, 3502, &catalog).is_err());
+        assert!(state.equip_from_inventory(99, 3502, &catalog).is_err());
+        assert_eq!(state.equipment_count(3502), 1);
+        assert_eq!(state.player(0).unwrap().equipment.weapon, Some(3501));
+
+        state.set_player_level(0, 2, &catalog).unwrap();
+        state.equip_from_inventory(0, 3502, &catalog).unwrap();
+        assert_eq!(state.player(0).unwrap().equipment.weapon, Some(3502));
+        assert_eq!(state.equipment_count(3501), 1);
+        assert_eq!(state.equipment_count(3502), 0);
+        assert_eq!(
+            state
+                .player(0)
+                .unwrap()
+                .effective_stats
+                .integer("CA_PHYSICAL"),
+            50
+        );
+        assert!(state.equip_from_inventory(0, 3502, &catalog).is_err());
+
+        state.add_equipment(3501, 1);
+        state.add_equipment(3502, i32::MAX);
+        let before = serde_json::to_string(state.player(0).unwrap()).unwrap();
+        assert!(state.equip_from_inventory(0, 3501, &catalog).is_err());
+        assert_eq!(
+            serde_json::to_string(state.player(0).unwrap()).unwrap(),
+            before
+        );
+        assert_eq!(state.equipment_count(3501), 2);
+        assert_eq!(state.equipment_count(3502), i32::MAX);
+    }
 
     #[test]
     fn summary_with_scene_and_block() {

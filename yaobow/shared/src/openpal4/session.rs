@@ -22,6 +22,7 @@ use std::rc::Rc;
 
 use radiance::math::{Transform, Vec3};
 
+use super::gameplay::GameplayCatalog;
 use super::states::persistent_state::{PAL4_APP_NAME, Pal4PersistentState};
 
 /// Plain-data snapshot of the live runtime world captured at save time
@@ -117,6 +118,7 @@ pub struct Pal4SessionTransient {
 pub struct Pal4Session {
     state: Pal4PersistentState,
     transient: Pal4SessionTransient,
+    catalog: Option<Rc<GameplayCatalog>>,
 }
 
 impl Pal4Session {
@@ -125,6 +127,7 @@ impl Pal4Session {
         Self {
             state: Pal4PersistentState::new(PAL4_APP_NAME.to_string()),
             transient: Pal4SessionTransient::default(),
+            catalog: None,
         }
     }
 
@@ -133,6 +136,7 @@ impl Pal4Session {
         Self {
             state,
             transient: Pal4SessionTransient::default(),
+            catalog: None,
         }
     }
 
@@ -142,6 +146,35 @@ impl Pal4Session {
 
     pub fn state_mut(&mut self) -> &mut Pal4PersistentState {
         &mut self.state
+    }
+
+    pub fn catalog(&self) -> Rc<GameplayCatalog> {
+        self.catalog
+            .as_ref()
+            .expect("PAL4 gameplay catalog not installed")
+            .clone()
+    }
+
+    pub fn install_catalog(&mut self, catalog: Rc<GameplayCatalog>) -> anyhow::Result<()> {
+        if self.catalog.is_none()
+            && self
+                .state
+                .player(0)
+                .is_some_and(|player| player.base_stats.integers.is_empty())
+        {
+            self.state.initialize_players(&catalog)?;
+        }
+        self.catalog = Some(catalog);
+        Ok(())
+    }
+
+    pub fn new_game(&mut self) -> anyhow::Result<()> {
+        let catalog = self.catalog();
+        let mut state = Pal4PersistentState::new(self.app_name().to_string());
+        state.initialize_players(&catalog)?;
+        self.state = state;
+        self.reset_transient();
+        Ok(())
     }
 
     /// Overwrite the entire durable state (used when loading a slot via

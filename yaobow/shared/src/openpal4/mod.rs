@@ -17,6 +17,7 @@ pub mod actor;
 pub mod agent;
 pub mod director;
 pub mod game_context;
+pub mod gameplay;
 pub mod launch;
 pub mod modes;
 pub mod object_component;

@@ -1073,10 +1073,10 @@ fn map_player_slot(vm: &ScriptVm<Pal4VmContext>, player_id: i32) -> usize {
 fn new_game(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
     // Start from a clean slate so a fresh playthrough doesn't inherit
     // money / inventory / plot flags from a previous session.
-    let app_name = vm.vm_context.persistent_state().app_name().to_string();
-    vm.vm_context.set_persistent_state(
-        crate::openpal4::states::persistent_state::Pal4PersistentState::new(app_name),
-    );
+    vm.vm_context
+        .session_mut()
+        .new_game()
+        .expect("Cannot initialize PAL4 new game");
     Pal4FunctionState::Completed
 }
 
@@ -1406,26 +1406,37 @@ fn set_object_visible(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4Function
 }
 
 fn add_property(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
-    // PAL4 "property" (道具) maps to our persistent inventory.
-    // _is_persistent is always 1 in shipped scripts; ignore for now.
-    as_params!(vm, property_id: i32, property_value: i32, _is_persistent: i32);
-    vm.vm_context
-        .persistent_state_mut()
-        .add_equipment(property_id, property_value);
+    as_params!(vm, property_id: i32, property_value: i32, _show_notice: i32);
+    let catalog = vm.vm_context.session().catalog();
+    if let Err(error) =
+        vm.vm_context
+            .persistent_state_mut()
+            .add_property(property_id, property_value, &catalog)
+    {
+        log::warn!("giAddProperty: {error:#}");
+    }
     Pal4FunctionState::Completed
 }
 
 fn del_property(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
-    as_params!(vm, property_id: i32, property_value: i32, _is_persistent: i32);
-    vm.vm_context
-        .persistent_state_mut()
-        .remove_equipment(property_id, property_value);
+    as_params!(vm, property_id: i32, property_value: i32, _show_notice: i32);
+    let catalog = vm.vm_context.session().catalog();
+    if let Err(error) = vm.vm_context.persistent_state_mut().add_property(
+        property_id,
+        property_value.saturating_neg(),
+        &catalog,
+    ) {
+        log::warn!("giDelProperty: {error:#}");
+    }
     Pal4FunctionState::Completed
 }
 
 fn player_in_team(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
     as_params!(vm, player_id: i32, _is_in_team: i32);
     let slot = map_player_slot(vm, player_id);
+    if slot >= super::states::persistent_state::PLAYER_COUNT {
+        return Pal4FunctionState::Completed;
+    }
     vm.vm_context.persistent_state_mut().set_in_team(slot, true);
     vm.vm_context.enable_player(slot, true);
     Pal4FunctionState::Completed
@@ -1434,6 +1445,9 @@ fn player_in_team(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionStat
 fn player_out_team(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
     as_params!(vm, player_id: i32, _is_in_team: i32);
     let slot = map_player_slot(vm, player_id);
+    if slot >= super::states::persistent_state::PLAYER_COUNT {
+        return Pal4FunctionState::Completed;
+    }
     vm.vm_context
         .persistent_state_mut()
         .set_in_team(slot, false);
@@ -1462,7 +1476,10 @@ fn camera_auto_seek(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionSt
 }
 
 fn player_set_attr(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
-    as_params!(vm, _attr1: i32, _attr2: i32, _attr3: i32);
+    as_params!(vm, player_id: i32, attribute: i32, percent: i32);
+    vm.vm_context
+        .persistent_state_mut()
+        .set_player_resource_percent(player_id, attribute, percent);
     Pal4FunctionState::Completed
 }
 
@@ -1473,19 +1490,31 @@ fn player_get_leader(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionS
 
 fn set_player_level(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
     as_params!(vm, player_id: i32, level: i32);
-    let slot = map_player_slot(vm, player_id);
-    vm.vm_context
-        .persistent_state_mut()
-        .set_player_level(slot, level);
+    let catalog = vm.vm_context.session().catalog();
+    if player_id >= 0 {
+        if let Err(error) = vm.vm_context.persistent_state_mut().set_player_level(
+            player_id as usize,
+            level,
+            &catalog,
+        ) {
+            log::warn!("giSetPlayerLevel: {error:#}");
+        }
+    }
     Pal4FunctionState::Completed
 }
 
 fn add_player_equip(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
     as_params!(vm, player_id: i32, equip_id: i32);
-    let slot = map_player_slot(vm, player_id);
-    vm.vm_context
-        .persistent_state_mut()
-        .add_player_equip(slot, equip_id);
+    let catalog = vm.vm_context.session().catalog();
+    if player_id >= 0 {
+        if let Err(error) = vm.vm_context.persistent_state_mut().add_player_equip(
+            player_id as usize,
+            equip_id,
+            &catalog,
+        ) {
+            log::warn!("giAddPlayerEquip: {error:#}");
+        }
+    }
     Pal4FunctionState::Completed
 }
 
@@ -1503,15 +1532,14 @@ fn add_quest_complete_percentage(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> P
 }
 
 fn add_equipment(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
-    as_params!(vm, equipment_id: i32, is_add: i32);
-    if is_add != 0 {
+    as_params!(vm, equipment_id: i32, _show_notice: i32);
+    let catalog = vm.vm_context.session().catalog();
+    if catalog.equipment.contains_key(&equipment_id) {
         vm.vm_context
             .persistent_state_mut()
             .add_equipment(equipment_id, 1);
     } else {
-        vm.vm_context
-            .persistent_state_mut()
-            .remove_equipment(equipment_id, 1);
+        log::warn!("giAddEquipment: unknown equipment {equipment_id}");
     }
     Pal4FunctionState::Completed
 }
@@ -1524,14 +1552,16 @@ fn player_current_set_visible(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4
 }
 
 fn set_full_hp(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
-    let leader = vm.vm_context.leader();
-    vm.vm_context.persistent_state_mut().set_full_hp(leader);
+    vm.vm_context
+        .persistent_state_mut()
+        .restore_party_resources(true);
     Pal4FunctionState::Completed
 }
 
 fn set_full_mp(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
-    let leader = vm.vm_context.leader();
-    vm.vm_context.persistent_state_mut().set_full_mp(leader);
+    vm.vm_context
+        .persistent_state_mut()
+        .restore_party_resources(false);
     Pal4FunctionState::Completed
 }
 
@@ -2119,8 +2149,9 @@ fn check_equip_in_inventory(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4Fu
 }
 
 fn remove_equipment(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
-    as_params!(vm, equip_id: i32, remove_equip: i32);
-    if remove_equip != 0 {
+    as_params!(vm, equip_id: i32, _show_notice: i32);
+    let catalog = vm.vm_context.session().catalog();
+    if catalog.equipment.contains_key(&equip_id) {
         vm.vm_context
             .persistent_state_mut()
             .remove_equipment(equip_id, 1);

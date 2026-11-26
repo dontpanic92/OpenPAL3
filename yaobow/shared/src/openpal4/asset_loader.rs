@@ -1,5 +1,5 @@
 use std::{
-    cell::RefCell,
+    cell::{OnceCell, RefCell},
     collections::HashMap,
     io::{BufReader, Cursor},
     rc::Rc,
@@ -39,6 +39,7 @@ use crate::{
 use super::{
     actor::{IPal4ActorAnimationControllerExt, Pal4ActorAnimationController},
     comdef::IPal4ActorAnimationController,
+    gameplay::GameplayCatalog,
     uv_anim::attach_uv_anim,
 };
 
@@ -62,6 +63,7 @@ pub struct AssetLoader {
     input: Rc<RefCell<dyn InputEngine>>,
     texture_resolver: Pal4TextureResolver,
     portraits: HashMap<String, ImageSetImage>,
+    gameplay_catalog: OnceCell<Rc<GameplayCatalog>>,
 }
 
 impl AssetLoader {
@@ -80,6 +82,7 @@ impl AssetLoader {
             vfs,
             texture_resolver: Pal4TextureResolver {},
             portraits,
+            gameplay_catalog: OnceCell::new(),
         })
     }
 
@@ -97,6 +100,15 @@ impl AssetLoader {
 
     pub fn vfs_rc(&self) -> Rc<MiniFs> {
         self.vfs.clone()
+    }
+
+    pub fn gameplay_catalog(&self) -> anyhow::Result<Rc<GameplayCatalog>> {
+        if let Some(catalog) = self.gameplay_catalog.get() {
+            return Ok(catalog.clone());
+        }
+        let catalog = Rc::new(GameplayCatalog::load(&self.vfs)?);
+        let _ = self.gameplay_catalog.set(catalog.clone());
+        Ok(catalog)
     }
 
     /// Build the ZJM start-menu backdrop scene: BSP + optional water +

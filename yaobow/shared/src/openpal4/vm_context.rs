@@ -215,6 +215,13 @@ impl Pal4VmContext {
         moving_entities: Rc<RefCell<HashMap<ActorId, MovingEntity>>>,
         rotating_entities: Rc<RefCell<HashMap<ActorId, RotatingEntity>>>,
     ) -> Self {
+        let catalog = loader
+            .gameplay_catalog()
+            .expect("Cannot load PAL4 gameplay catalog");
+        session
+            .borrow_mut()
+            .install_catalog(catalog)
+            .expect("Cannot initialize PAL4 gameplay state");
         // Scene/block/leader/player_locked are owned solely by the
         // session (single source of truth, shared by Rc handle). A
         // fresh session already starts control-locked via

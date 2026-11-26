@@ -2,9 +2,10 @@
 
 This reference records clean-room inspection of shipped binary assets and
 compiled scripts for the PAL4 gameplay/UI work. It distinguishes stored facts
-from runtime behavior that still needs verification. No original executable
-code, third-party reimplementation, or internal development material was used.
-The decoder and inspector do not change game state.
+from runtime behavior that still needs verification. The initial data survey
+used assets only; the follow-up native-state trace below inspects the installed
+executable's loaded machine code. No third-party reimplementation or internal
+development material was used. The decoder and inspector do not change game state.
 
 ## Reproducing the inspection
 
@@ -104,8 +105,11 @@ Its `GoodsType` enum distinguishes equipment (0), properties (1), and recipes
 are **not the same as `Role`'s base values**. For role 1001, `Role` stores
 `CA_MAX_HP=90`, whereas level-one `UpgradeData` stores `CA_MAX_HP=210`;
 both store `CA_MAX_MP=30`. Do not add these together or select one silently.
-The native initialization/level-change policy, experience interpretation,
-rounding, and whether growth parameters are used at runtime remain unverified.
+The initial survey did not establish the native initialization/level-change
+policy or experience interpretation. The follow-up native trace below resolves
+initialization, explicit level assignment, and experience bounds for the
+inspected executable. Combat progression and growth-parameter use are not yet
+implemented.
 
 Preserve separate base/progression/equipment contributions in the eventual
 model. A stored field name establishes its data meaning, not the game's exact
@@ -280,6 +284,63 @@ character/equipment models. Before committing native gameplay rules, resolve:
 - Native 3D item previews, font metrics, selection behavior, and save-list rows.
 
 No native-game interaction capture or screenshot comparison was performed in
-this pass. Static layouts establish controls and geometry, not click behavior,
+the initial survey. Static layouts establish controls and geometry, not click behavior,
 timing, calculation formulas, or full visual parity. Phase-two state work
 must preserve unresolved fields instead of converting hypotheses into rules.
+
+## Follow-up native-state trace
+
+The installed `pal4.exe` has SHA-256
+`ed168442c54f1f48332dcb25986c3de85a64c5aef423cdcc61aae2845bb8beee`.
+Its on-disk executable is packed. The game was launched normally, and only
+its own main executable mapping was read with `ReadProcessMemory` after
+initialization. No game memory was modified, no protection was patched, and
+the pre-existing analysis database was not consulted. The original save files
+were not loaded into the reimplementation or overwritten.
+
+Addresses below are virtual addresses in that executable at image base
+`0x00400000`, not portable offsets or assumed signatures for other releases.
+AngelScript registration records connect the public script declarations to
+their native callbacks; the trace follows those callbacks into state methods.
+This establishes implementation behavior for this binary, not a complete
+combat model or a visual-parity result.
+
+| Native path | Verified behavior |
+| --- | --- |
+| `giNewGame` callback `0x005d2180` -> `0x00440a60` / `0x00440b70` -> character reset `0x0043e470` | Four character records are prepared from `Role`; reset then calls the progression setter with level 1. Player zero is enabled as the initial party member. |
+| `giSetPlayerLevel` callback `0x005d42d0` -> `0x00580800` -> `0x0057cde0` | Negative player IDs are ignored, not mapped to leader. Valid explicit levels are 1..99. `UpgradeData` is selected by `ROLE_ID=1001+slot` and level, replacing the progression stat block rather than adding `Role` stats. Existing elemental affinities are preserved; equipment contributions are recomputed, then HP/MP are filled. Tianhe therefore starts at 210 HP and 30 MP. |
+| Experience helpers `0x004e97f0` / `0x004e96b0` | On explicit level assignment, existing cumulative EXP is clamped between the preceding level's `CA_EXPERIENCE` (zero at level one) and the current level's value minus one. The database value is not the character's initial EXP. |
+| `giPlayerSetAttr` callback `0x005d4060` | First argument <0 targets all four characters, including those outside the party. Second argument 0 selects HP, 1 selects MP, -1 selects both; other selectors do nothing. Third argument is percentage of the effective maximum, converted to an integer and clamped by the resource setter. |
+| `giSetFullHP` / `giSetFullMP` callbacks `0x005d4610` / `0x005d4660` | Restore every current party member, not only the leader. Non-party characters are unchanged. |
+| `giAddPlayerEquip` callback `0x005d4350` -> `0x004c3d20` / `0x0042e5e0` | Creates a new equipment instance and writes its instance ID into a character position. It does not consume a backpack copy or use the menu's level eligibility path. Replaced instances remain owned and become available in the backpack. Negative player IDs are ignored. |
+| Position selection `0x0042e540` | Weapon/head/body/feet occupy positions 0..3. An accessory uses position 4 if empty, otherwise 5 if empty, otherwise replaces position 4. Two copies of the same equipment definition can occupy both accessory positions because native state stores instance IDs, not definition IDs. |
+| Menu eligibility `0x00450806..0x0045082d`, replacement `0x0044f970` | The character-specific level limit must be positive and no greater than the character's level. Menu equipping writes an existing owned instance into the selected position, leaving the replaced instance owned but unequipped. The foundation exposes a validated backpack-to-equipped transaction separately from script grants. |
+| Recalculation `0x0043ecc0` -> `0x0042e630` / `0x004ce900` | Copy base stats, add equipped-instance integer/rate modifiers, then apply active effects and constrain resources. The current foundation implements unmodified database equipment contributions; forging, injected equipment skills, and combat status effects are not implemented. |
+| `giAddProperty` / `giDelProperty` callbacks `0x005d3840` / `0x005d3970` | Third argument is a boolean controlling acquisition/removal notification, not persistence. The inventory mutation happens before that branch. Negative amounts reverse add/remove direction. |
+| Property storage `0x004c6860` / `0x004c6a30` | A property stack is capped at 99, for both new and existing stacks; removal deletes exhausted stacks. |
+| `giAddEquipment` / `giRemoveEquipment` callbacks `0x005d4440` / `0x005d75a0` | Second argument is also a notification boolean. False must not reverse or suppress the mutation. Add creates one instance; remove selects one matching unequipped instance, leaving equipped copies alone. |
+
+`GameplayCatalog` loads metadata and all numeric `CA_*` / `EFE_*` contributions
+from the mounted database. The persistent model keeps progression/base and
+effective contributions separate, represents six equipped positions, and
+keeps backpack counts separate from script-equipped grants. Save JSON includes
+these fields; this schema change intentionally has no legacy-save migration.
+
+The current state work does **not** expose an in-game equipment menu, establish
+standalone unequip interactions, preserve forged instance properties, implement
+attached-skill effects, or infer consumable healing from skill IDs. Attached-skill
+references are loaded as data for later work, not silently treated as completed
+gameplay.
+
+Run the original-data integration check without committing extracted data:
+
+```powershell
+$env:PAL4_ASSET_ROOT = 'F:\PAL4'
+cargo test --release -p shared --test pal4_gameplay_data -- --ignored
+```
+
+A live agent-driven check also reached the idle Q01 opening with Tianhe at
+210/30 HP/MP, verified the original opening's equipment grants (3501 and 3586)
+in a newly written temporary save, and reloaded that save with identical party
+resources. The temporary slot was removed afterwards; no existing slot was
+overwritten. This is a state/persistence check, not native UI parity.
