@@ -19,6 +19,414 @@ use radiance::{
 };
 use std::rc::Rc;
 
+#[test]
+#[ignore = "requires original game assets via PAL3_ASSET_PATH"]
+fn shipped_plate_bridge_geometry() {
+    use crate::openpal3::comdef::IScnSceneComponent;
+    use radiance::comdef::IScene;
+    let path = std::env::var("PAL3_ASSET_PATH").expect("PAL3_ASSET_PATH");
+    let assets = Rc::new(AssetManager::new(
+        Rc::new(UnusedFactory),
+        Rc::new(packfs::init_virtual_fs(std::path::Path::new(&path), None)),
+    ));
+    for (name, block, pairs) in [
+        ("m01", "1", &[(10, 11)][..]),
+        ("m10", "3", &[(3, 4), (5, 6), (7, 8), (9, 10)][..]),
+    ] {
+        let root: crosscom::ComRc<IScene> = assets.load_scn(name, block);
+        let component = root
+            .get_component(IScnSceneComponent::uuid())
+            .unwrap()
+            .query_interface::<IScnSceneComponent>()
+            .unwrap();
+        let scene = component.inner::<ScnScene>();
+        scene.load_objects_for_test();
+        scene.set_mechanism_party_count(4);
+        for &(plate, bridge) in pairs {
+            let position = scene
+                .get_root_object(plate)
+                .unwrap()
+                .transform()
+                .borrow()
+                .position();
+            let player = CoreEntity::create("test-player".into(), true);
+            player.transform().borrow_mut().set_position(&position);
+            scene.set_mechanism_player(Some((player, 0)));
+            scene.update_mechanisms(0.);
+            assert_eq!(
+                scene.interact_mechanism(0, &position),
+                Some(None),
+                "{name}/{block} plate{plate}"
+            );
+            for _ in 0..600 {
+                scene.update_mechanisms(1. / 60.);
+            }
+            assert!(
+                !scene.mechanism_input_locked(),
+                "{name}/{block} bridge{bridge}"
+            );
+            let mut saved = PersistentState::new("OpenPAL3".into());
+            scene.snapshot_mechanisms(&mut saved);
+            let state = &saved.mechanism_states(name, block).unwrap()[&(bridge as u16)];
+            assert!(state.action.as_ref().unwrap().animation_complete);
+            let entity = scene.get_root_object(bridge).unwrap();
+            let bounds = super::cvd_entity::model_bounds(&entity).unwrap();
+            assert!(bounds.0.x.is_finite() && bounds.1.z.is_finite());
+            let start = scene.scene_coord_to_nav_coord(0, &position);
+            let end = scene.scene_coord_to_nav_coord(0, &entity.transform().borrow().position());
+            let start = (start.0 as i32, start.1 as i32);
+            let end = (end.0 as i32, end.1 as i32);
+            let mut todo = std::collections::VecDeque::from([start]);
+            let mut seen = std::collections::HashSet::from([start]);
+            while let Some(p) = todo.pop_front() {
+                if p == end {
+                    break;
+                }
+                for (dx, dz) in [(0, 1), (0, -1), (1, 0), (-1, 0)] {
+                    let q = (p.0 + dx, p.1 + dz);
+                    if seen.contains(&q) {
+                        continue;
+                    }
+                    if scene
+                        .nav()
+                        .get(0, q.0, q.1)
+                        .is_some_and(|p| p.distance_to_border > 0)
+                    {
+                        seen.insert(q);
+                        todo.push_back(q);
+                    }
+                }
+            }
+            assert!(
+                seen.contains(&end),
+                "{name}/{block} bridge{bridge} must connect to its plate's bank"
+            );
+        }
+    }
+}
+
+#[test]
+#[ignore = "requires original game assets via PAL3_ASSET_PATH"]
+fn shipped_hazard_geometry_hits_grounded_actor_and_rejects_distant_actor() {
+    use crate::openpal3::comdef::IScnSceneComponent;
+    use common::store_ext::StoreExt2;
+    let path = std::env::var("PAL3_ASSET_PATH").expect("PAL3_ASSET_PATH");
+    let assets = Rc::new(AssetManager::new(
+        Rc::new(UnusedFactory),
+        Rc::new(packfs::init_virtual_fs(std::path::Path::new(&path), None)),
+    ));
+    let model = fileformats::mv3::read_mv3(&mut std::io::Cursor::new(
+        assets
+            .vfs()
+            .read_to_end(assets.mv3_path("101", "C01"))
+            .unwrap(),
+    ))
+    .unwrap();
+    let model = &model.models[0];
+    let actor = CoreEntity::create("test-player".into(), true);
+    attach_bounds(
+        &actor,
+        Vec3::new(-model.aabb_max[0], model.aabb_min[1], -model.aabb_max[2]),
+        Vec3::new(-model.aabb_min[0], model.aabb_max[1], -model.aabb_min[2]),
+    );
+    for (block, ids, fraction) in [
+        ("1", &[6, 7, 8, 9][..], 0.1),
+        ("2", &[5, 6, 7, 8, 9][..], 0.15),
+    ] {
+        let root = assets.load_scn("m24", block);
+        let component = root
+            .get_component(IScnSceneComponent::uuid())
+            .unwrap()
+            .query_interface::<IScnSceneComponent>()
+            .unwrap();
+        let scene = component.inner::<ScnScene>();
+        scene.load_objects_for_test();
+        scene.set_mechanism_player(Some((actor.clone(), 0)));
+        for &id in ids {
+            for &other in ids {
+                scene.set_mechanism_active(other, other == id);
+            }
+            if block == "2" {
+                scene.trigger_mechanism(id);
+            }
+            let mut position = scene
+                .get_root_object(id as i32)
+                .unwrap()
+                .transform()
+                .borrow()
+                .position();
+            let coord = scene.scene_coord_to_nav_coord(0, &position);
+            position.y = scene.get_height(0, coord);
+            actor.transform().borrow_mut().set_position(&position);
+            let mut hit = false;
+            for _ in 0..400 {
+                scene.update_mechanisms(1. / 60.);
+                if let Some(actual) = scene.update_hazard_damage(0., &mut 2.) {
+                    assert_eq!(actual, fraction);
+                    hit = true;
+                    break;
+                }
+            }
+            assert!(hit, "m24/{block} hazard{id} must hit a grounded actor");
+            position.x += 10000.;
+            actor.transform().borrow_mut().set_position(&position);
+            assert_eq!(scene.update_hazard_damage(0., &mut 2.), None);
+        }
+    }
+}
+
+#[test]
+#[ignore = "requires original game assets via PAL3_ASSET_PATH"]
+fn shipped_mover_removes_and_rebuilds_its_navigation_footprint() {
+    use crate::openpal3::comdef::IScnSceneComponent;
+    let path = std::env::var("PAL3_ASSET_PATH").expect("PAL3_ASSET_PATH");
+    let assets = Rc::new(AssetManager::new(
+        Rc::new(UnusedFactory),
+        Rc::new(packfs::init_virtual_fs(std::path::Path::new(&path), None)),
+    ));
+    let root = assets.load_scn("m24", "3");
+    let component = root
+        .get_component(IScnSceneComponent::uuid())
+        .unwrap()
+        .query_interface::<IScnSceneComponent>()
+        .unwrap();
+    let scene = component.inner::<ScnScene>();
+    scene.load_objects_for_test();
+    scene.update_mechanisms(0.);
+    let navigation = || {
+        let (width, height) = scene.nav().get_map_size(0);
+        (0..height)
+            .flat_map(|z| (0..width).map(move |x| (x, z)))
+            .map(|(x, z)| {
+                let point = scene.nav().get(0, x as i32, z as i32).unwrap();
+                (point.height.to_bits(), point.distance_to_border)
+            })
+            .collect::<Vec<_>>()
+    };
+    let before = navigation();
+    scene.trigger_mechanism(17);
+    let moving = navigation();
+    assert_ne!(before, moving, "moving object17 must release its floor");
+    scene.update_mechanisms(4.);
+    scene.update_mechanisms(4.);
+    let after = navigation();
+    assert_ne!(after, moving, "finished linked movers must rebuild floors");
+    assert_ne!(after, before, "floors must follow their translated models");
+    let mut saved = PersistentState::new("OpenPAL3".into());
+    scene.snapshot_mechanisms(&mut saved);
+    scene.restore_mechanisms(&saved);
+    assert_eq!(navigation(), after);
+}
+
+#[test]
+fn plate_checks_party_and_horizontal_range_then_links_once_and_restores_lowered_pose() {
+    let mut plate = node(10, 29, 11);
+    plate.position.y = 123.;
+    plate.ladder_nav_coord1.0 = 3;
+    plate.sce_proc_id = 506;
+    let nodes = vec![plate, node(11, 19, u16::MAX)];
+    let scene = scene(nodes.clone());
+    cache_player(&scene, Vec3::new(0., 123., 0.));
+    scene.set_mechanism_party_count(2);
+    assert_eq!(
+        scene.interact_mechanism(0, &Vec3::new(0., 123., 0.)),
+        Some(None)
+    );
+    assert_eq!(scene.take_mechanism_notices(), vec!["重量不够"]);
+    assert!(!scene.mechanism_input_locked());
+    scene.set_mechanism_party_count(3);
+    assert_eq!(
+        scene.interact_mechanism(0, &Vec3::new(36.01, 123., 0.)),
+        None
+    );
+    assert_eq!(
+        scene.interact_mechanism(0, &Vec3::new(36., 123., 0.)),
+        Some(Some(506))
+    );
+    assert!(scene.mechanism_input_locked());
+    scene.update_mechanisms(0.); // Already standing on the plate.
+    assert_eq!(scene.take_mechanism_sounds(), vec!["We026"]);
+    scene.update_mechanisms(0.); // Finish the zero-length test CVD.
+    assert_eq!(scene.take_mechanism_sounds(), vec!["Wg005"]);
+    scene.update_mechanisms(1.25);
+    assert_eq!(
+        scene
+            .get_root_object(10)
+            .unwrap()
+            .transform()
+            .borrow()
+            .position()
+            .y,
+        119.5
+    );
+    let mut saved = PersistentState::new("OpenPAL3".into());
+    scene.snapshot_mechanisms(&mut saved);
+    let mut saved: PersistentState =
+        serde_json::from_str(&serde_json::to_string(&saved).unwrap()).unwrap();
+    let restored = self::scene(nodes.clone());
+    restored.restore_mechanisms(&saved);
+    restored.update_mechanisms(1.25);
+    assert_eq!(
+        restored
+            .get_root_object(10)
+            .unwrap()
+            .transform()
+            .borrow()
+            .position()
+            .y,
+        116.
+    );
+    // The plate releases its lock only after starting its linked CVD's lock.
+    assert!(restored.mechanism_input_locked());
+    assert_eq!(restored.take_mechanism_sounds(), vec!["Wg001"]);
+    restored.update_mechanisms(0.);
+    assert!(!restored.mechanism_input_locked());
+    assert_eq!(
+        restored.interact_mechanism(0, &Vec3::new(0., 123., 0.)),
+        None
+    );
+    restored.snapshot_mechanisms(&mut saved);
+    let again = self::scene(nodes);
+    again.restore_mechanisms(&saved);
+    again.update_mechanisms(100.);
+    assert_eq!(
+        again
+            .get_root_object(10)
+            .unwrap()
+            .transform()
+            .borrow()
+            .position()
+            .y,
+        116.
+    );
+    assert!(!again.mechanism_input_locked());
+    assert_eq!(
+        saved.mechanism_states("m17", "7").unwrap()[&10].remaining,
+        255
+    );
+}
+
+#[test]
+fn native_moving_target_uses_raw_yaw_easing_and_persists_full_position() {
+    let mut mover = node(17, 34, 3);
+    mover.position = Vec3::new(100., 123., 200.);
+    mover.rotation = 82.;
+    mover.ladder_nav_coord1.0 = 0;
+    let mut gate = node(3, 22, u16::MAX);
+    gate.sce_proc_id = 507;
+    let nodes = vec![mover, gate];
+    let scene = scene(nodes.clone());
+    scene.trigger_mechanism(17);
+    scene.update_mechanisms(2.);
+    let halfway = scene
+        .get_root_object(17)
+        .unwrap()
+        .transform()
+        .borrow()
+        .position();
+    assert!((halfway.x - 156.980667).abs() < 0.0001);
+    assert!((halfway.z - 218.793724).abs() < 0.0001);
+    let mut saved = PersistentState::new("OpenPAL3".into());
+    scene.snapshot_mechanisms(&mut saved);
+    let restored = self::scene(nodes);
+    restored.restore_mechanisms(&saved);
+    restored.update_mechanisms(2.);
+    let end = restored
+        .get_root_object(17)
+        .unwrap()
+        .transform()
+        .borrow()
+        .position();
+    assert_eq!(end.x, 213.961334);
+    assert_eq!(end.z, 237.587448);
+    assert_eq!(restored.update_mechanisms(1.), vec![507]);
+    restored.trigger_mechanism(17);
+    restored.update_mechanisms(4.);
+    let second = restored
+        .get_root_object(17)
+        .unwrap()
+        .transform()
+        .borrow()
+        .position();
+    assert!((second.x - (end.x + 113.961334)).abs() < 0.0001);
+}
+
+#[test]
+fn native_hazards_share_strict_cooldown_and_disabled_hammer_keeps_phase_and_height() {
+    let mut hammer = node(5, 28, u16::MAX);
+    hammer.position = Vec3::new(0., 10., 0.);
+    hammer.ladder_nav_coord1 = (1, 145);
+    let nodes = vec![hammer.clone(), ScnNode { index: 6, ..hammer }];
+    let scene = scene(nodes.clone());
+    cache_player(&scene, Vec3::new(0., 10., 0.));
+    let actor = scene.get_role_entity(0).unwrap();
+    attach_bounds(&actor, Vec3::new(-1., 0., -1.), Vec3::new(1., 1., 1.));
+    for id in [5, 6] {
+        attach_bounds(
+            &scene.get_root_object(id).unwrap(),
+            Vec3::new(-2., -200., -2.),
+            Vec3::new(2., 200., 2.),
+        );
+    }
+    let mut timer = 2.;
+    assert_eq!(scene.update_hazard_damage(0., &mut timer), None);
+    scene.trigger_mechanism(5);
+    scene.trigger_mechanism(6);
+    scene.update_mechanisms(0.5);
+    timer = 1.2;
+    assert_eq!(scene.update_hazard_damage(0., &mut timer), None);
+    assert_eq!(scene.update_hazard_damage(0.001, &mut timer), Some(0.15));
+    assert_eq!(scene.update_hazard_damage(0., &mut timer), None);
+    let height = scene
+        .get_root_object(5)
+        .unwrap()
+        .transform()
+        .borrow()
+        .position()
+        .y;
+    scene.trigger_mechanism(5);
+    scene.update_mechanisms(0.5);
+    assert_eq!(
+        scene
+            .get_root_object(5)
+            .unwrap()
+            .transform()
+            .borrow()
+            .position()
+            .y,
+        height
+    );
+    let mut saved = PersistentState::new("OpenPAL3".into());
+    scene.snapshot_mechanisms(&mut saved);
+    let restored = self::scene(nodes);
+    restored.restore_mechanisms(&saved);
+    assert_eq!(
+        restored
+            .get_root_object(5)
+            .unwrap()
+            .transform()
+            .borrow()
+            .position()
+            .y,
+        height
+    );
+    restored.trigger_mechanism(5);
+    restored.update_mechanisms(0.5);
+    let expected = 10. + (1.5f32.sin() + 1.) * 145. * 0.5;
+    assert!(
+        (restored
+            .get_root_object(5)
+            .unwrap()
+            .transform()
+            .borrow()
+            .position()
+            .y
+            - expected)
+            .abs()
+            < 0.0001
+    );
+}
+
 struct UnusedFactory;
 
 impl ComponentFactory for UnusedFactory {
@@ -373,7 +781,95 @@ fn bridge_scene() -> ScnScene {
     floor_scene(7)
 }
 
+#[test]
+fn linked_cvd_bridge_opens_navigation_only_after_animation_and_restores_once() {
+    let scene = floor_scene(19);
+    scene.update_mechanisms(0.);
+    assert_eq!(scene.nav().get(0, 7, 12).unwrap().distance_to_border, 0);
+    scene.trigger_mechanism(2);
+    assert!(scene.mechanism_input_locked());
+    scene.update_mechanisms(0.);
+    assert!(!scene.mechanism_input_locked());
+    assert_eq!(scene.nav().get(0, 7, 12).unwrap().distance_to_border, 2);
+    assert_eq!(scene.nav().get(0, 9, 7).unwrap().distance_to_border, 0);
+    assert_eq!(scene.nav().get(1, 7, 12).unwrap().distance_to_border, 0);
+    let mut saved = PersistentState::new("OpenPAL3".into());
+    scene.snapshot_mechanisms(&mut saved);
+    let restored = floor_scene(19);
+    restored.restore_mechanisms(&saved);
+    assert_eq!(restored.nav().get(0, 7, 12).unwrap().distance_to_border, 2);
+    restored.trigger_mechanism(2);
+    assert!(!restored.mechanism_input_locked());
+    restored.set_mechanism_active(2, false);
+    assert_eq!(restored.nav().get(0, 7, 12).unwrap().distance_to_border, 0);
+}
+
+#[test]
+fn plate_floor_has_inset_native_height_and_lowers_the_grounded_player() {
+    let scene = floor_scene(29);
+    let player = CoreEntity::create("test-player".into(), true);
+    player
+        .transform()
+        .borrow_mut()
+        .set_position(&Vec3::new(150., 34., 150.));
+    scene.set_mechanism_player(Some((player.clone(), 0)));
+    scene.set_mechanism_party_count(40);
+    scene.update_mechanisms(0.);
+    assert_eq!(scene.nav().get(0, 7, 7).unwrap().height, 34.);
+    assert_eq!(scene.nav().get(0, 5, 7).unwrap().distance_to_border, 0);
+    assert_eq!(scene.nav().get(0, 7, 2).unwrap().distance_to_border, 0);
+    assert_eq!(
+        scene.interact_mechanism(0, &player.transform().borrow().position()),
+        Some(None)
+    );
+    scene.update_mechanisms(0.);
+    scene.update_mechanisms(0.);
+    scene.update_mechanisms(1.25);
+    assert_eq!(scene.nav().get(0, 7, 7).unwrap().height, 30.5);
+    assert_eq!(player.transform().borrow().position().y, 30.5);
+    scene.update_mechanisms(1.25);
+    assert_eq!(scene.nav().get(0, 7, 7).unwrap().height, 27.);
+    assert_eq!(player.transform().borrow().position().y, 27.);
+    let mut saved = PersistentState::new("OpenPAL3".into());
+    scene.snapshot_mechanisms(&mut saved);
+    let restored = floor_scene(29);
+    restored.restore_mechanisms(&saved);
+    assert_eq!(restored.nav().get(0, 7, 7).unwrap().height, 27.);
+}
+
+#[test]
+fn platform_and_mover_floors_never_lower_authored_nav_ground() {
+    for kind in [22, 34] {
+        for ground in [0., 42.] {
+            let scene = floor_scene_with_height(kind, ground);
+            scene.update_mechanisms(0.);
+            assert_eq!(scene.nav().get(0, 7, 7).unwrap().height, ground.max(10.));
+        }
+    }
+}
+
+#[test]
+fn plate_approach_cancels_when_controlled_player_is_replaced() {
+    let mut plate = node(10, 29, u16::MAX);
+    plate.ladder_nav_coord1.0 = 1;
+    let scene = scene(vec![plate]);
+    cache_player(&scene, Vec3::new(0., 10., 0.));
+    assert_eq!(
+        scene.interact_mechanism(0, &Vec3::new(0., 10., 0.)),
+        Some(None)
+    );
+    assert!(scene.mechanism_input_locked());
+    scene.set_mechanism_player(None);
+    scene.update_mechanisms(1.);
+    assert!(!scene.mechanism_input_locked());
+    assert!(scene.take_mechanism_sounds().is_empty());
+}
+
 fn floor_scene(kind: u16) -> ScnScene {
+    floor_scene_with_height(kind, 0.)
+}
+
+fn floor_scene_with_height(kind: u16, height: f32) -> ScnScene {
     let mut bridge = node(2, kind, u16::MAX);
     bridge.position = Vec3::new(150., 10., 150.);
     let mut nodes = vec![];
@@ -395,7 +891,7 @@ fn floor_scene(kind: u16) -> ScnScene {
                 map: vec![
                     vec![
                         NavMapPoint {
-                            height: 0.,
+                            height,
                             distance_to_border: 0,
                         };
                         15
@@ -410,8 +906,8 @@ fn floor_scene(kind: u16) -> ScnScene {
     let entity = scene.get_root_object(2).unwrap();
     attach_bounds(
         &entity,
-        Vec3::new(-40., 0., -100.),
-        Vec3::new(40., 1., 100.),
+        Vec3::new(if kind == 19 { -80. } else { -40. }, 0., -100.),
+        Vec3::new(if kind == 19 { 80. } else { 40. }, 1., 100.),
     );
     scene
 }

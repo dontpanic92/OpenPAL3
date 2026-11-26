@@ -4,6 +4,7 @@
 //! Type 22: 0x4259d9..0x425a88, motion: 0x428a66..0x428ba7 (30 units/s).
 //! Types 7/8: 0x4251a4, 0x427edd; type 31: 0x4263c6, 0x42971c.
 //! Type 5 path motion: 0x41f120/0x427444..0x427cda; type 41: 0x426b7e/0x429917.
+//! Plates/hazards: 0x426273/0x429547; linked CVD/movers: 0x42594a/0x42652b.
 //! Type 26 colored chests and other native object types are deliberately not approximated here.
 //! Boarding: 0x42b450/0x42b510; manual switch action: 0x425c89/0x42924b.
 //! The switch's special water/effect parameters are not implemented yet.
@@ -31,6 +32,36 @@ pub struct MechanismState {
     pub platform: Option<PlatformState>,
     #[serde(default)]
     pub interaction: Option<SwitchInteraction>,
+    #[serde(default)]
+    pub action: Option<MechanismAction>,
+    #[serde(default)]
+    pub hazard: Option<HazardState>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HazardState {
+    pub elapsed: f32,
+    pub swing: f32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ActionPhase {
+    Idle,
+    Approach,
+    Animating,
+    Moving,
+    Complete,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MechanismAction {
+    pub phase: ActionPhase,
+    pub player: Option<String>,
+    pub position: Vec3,
+    origin: Vec3,
+    target: Vec3,
+    elapsed: f32,
+    pub animation_complete: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -155,6 +186,9 @@ pub struct Mechanism {
     persistent_switch: bool,
     target_height: f32,
     path: Option<Polyline>,
+    rotation: f32,
+    amplitude: f32,
+    sound: String,
 }
 
 #[derive(Debug, PartialEq)]
@@ -167,7 +201,10 @@ pub enum Activation {
 
 impl Mechanism {
     pub fn from_node(node: &ScnNode) -> Option<Self> {
-        if !matches!(node.node_type, 5 | 7 | 8 | 22 | 23 | 31 | 41) {
+        if !matches!(
+            node.node_type,
+            5 | 7 | 8 | 19 | 22 | 23 | 28 | 29 | 31 | 34 | 41
+        ) {
             return None;
         }
         let path = (node.node_type == 5)
@@ -230,10 +267,23 @@ impl Mechanism {
                     }),
                 }),
                 interaction: None,
+                action: matches!(node.node_type, 19 | 29 | 34).then_some(MechanismAction {
+                    phase: ActionPhase::Idle,
+                    player: None,
+                    position: node.position,
+                    origin: node.position,
+                    target: node.position,
+                    elapsed: 0.,
+                    animation_complete: false,
+                }),
+                hazard: (node.node_type == 28).then_some(HazardState {
+                    elapsed: 0.,
+                    swing: 0.,
+                }),
             },
             target: node.w148,
             proc_id: node.sce_proc_id,
-            mode: if node.node_type == 5 {
+            mode: if matches!(node.node_type, 5 | 28) {
                 node.ladder_nav_coord1.0
             } else {
                 node.ladder_nav_coord1.1
@@ -241,12 +291,27 @@ impl Mechanism {
             persistent_switch: node.ladder_nav_coord1.0 != 0,
             target_height: node.ladder_nav_coord1.0 as f32,
             path,
+            rotation: node.rotation,
+            amplitude: node.ladder_nav_coord1.1 as f32,
+            sound: {
+                let bytes: Vec<_> = node
+                    .dw184
+                    .iter()
+                    .skip(1)
+                    .take(4)
+                    .flat_map(|v| v.to_le_bytes())
+                    .take_while(|&b| b != 0)
+                    .collect();
+                String::from_utf8_lossy(&bytes).into_owned()
+            },
         })
     }
 
     pub fn restore(&mut self, state: &MechanismState) {
         let initial_native = self.state.native.clone();
         let initial_platform = self.state.platform.clone();
+        let initial_action = self.state.action.clone();
+        let initial_hazard = self.state.hazard.clone();
         self.state = state.clone();
         if self.state.native.is_none() {
             self.state.native = initial_native;
@@ -256,6 +321,12 @@ impl Mechanism {
         }
         if self.state.platform.is_none() {
             self.state.platform = initial_platform;
+        }
+        if self.state.action.is_none() {
+            self.state.action = initial_action;
+        }
+        if self.state.hazard.is_none() {
+            self.state.hazard = initial_hazard;
         }
         if self.kind == 41
             && self
@@ -341,6 +412,54 @@ impl Mechanism {
         if matches!(self.kind, 5 | 41) {
             return Activation::Ignored;
         }
+        if self.kind == 28 {
+            if !scripted || self.mode != 1 {
+                return Activation::Ignored;
+            }
+            self.state.switched = u8::from(self.state.switched == 0);
+            return Activation::Started;
+        }
+        if let Some(action) = &mut self.state.action {
+            if action.phase != ActionPhase::Idle {
+                return Activation::Ignored;
+            }
+            if self.kind == 29 {
+                return if scripted {
+                    Activation::Ignored
+                } else {
+                    Activation::Interact
+                };
+            }
+            if !scripted {
+                return Activation::Ignored;
+            }
+            action.elapsed = 0.;
+            if self.kind == 19 {
+                action.phase = ActionPhase::Animating;
+                self.state.animation_time = Some(0.);
+            } else {
+                action.phase = ActionPhase::Moving;
+                action.origin = action.position;
+                // 0x426570 uses the authored value directly in x87 sin/cos,
+                // unlike the degree-to-radian conversion in the model transform.
+                let distance = if self.target_height > 0. {
+                    self.target_height
+                } else {
+                    120.
+                };
+                let (sin, cos) = (self.rotation as f64).sin_cos();
+                // Native spills sin, but keeps the Z product extended through translation.
+                action.target = Vec3::new(
+                    action.position.x + (cos * distance as f64) as f32,
+                    action.position.y,
+                    (action.position.z as f64 + sin as f32 as f64 * distance as f64) as f32,
+                );
+                if self.state.remaining != u8::MAX {
+                    self.state.remaining -= 1;
+                }
+            }
+            return Activation::Started;
+        }
         if self.kind == 23 {
             if self.state.animation_time.is_some() || self.state.interaction.is_some() {
                 return Activation::Ignored;
@@ -417,12 +536,120 @@ impl Mechanism {
     }
 
     pub fn pose_at_end(&self) -> bool {
+        if let Some(action) = &self.state.action {
+            return action.animation_complete;
+        }
         self.state.remaining == 0 || (self.persistent_switch && self.state.switched != 0)
+    }
+
+    pub fn plate_requirement(&self) -> usize {
+        self.target_height.max(0.) as usize
+    }
+
+    pub fn begin_plate(&mut self, player: String) {
+        let action = self.state.action.as_mut().unwrap();
+        action.player = Some(player);
+        action.phase = ActionPhase::Approach;
+    }
+
+    pub fn finish_plate_approach(&mut self) {
+        let action = self.state.action.as_mut().unwrap();
+        action.player = None;
+        action.phase = ActionPhase::Animating;
+        self.state.animation_time = Some(0.);
+    }
+
+    pub fn action_locked(&self) -> bool {
+        self.kind != 34
+            && self.state.action.as_ref().is_some_and(|action| {
+                matches!(
+                    action.phase,
+                    ActionPhase::Approach | ActionPhase::Animating | ActionPhase::Moving
+                )
+            })
+    }
+
+    pub fn action_sound(&self, variant: bool) -> &str {
+        if !self.sound.is_empty() {
+            return &self.sound;
+        }
+        match self.kind {
+            19 => "Wg001",
+            29 if variant => "We026",
+            _ => "Wg005",
+        }
+    }
+
+    pub fn update_hazard(&mut self, delta_sec: f32, ground: Option<f32>) {
+        if !self.active {
+            return;
+        }
+        let Some(hazard) = &mut self.state.hazard else {
+            return;
+        };
+        hazard.elapsed += delta_sec.max(0.);
+        if self.mode == 0 {
+            hazard.swing = hazard.elapsed.sin() * 24.;
+        } else if self.state.switched != 0 {
+            self.state.height =
+                self.position.y + (hazard.elapsed.sin() + 1.) * self.amplitude * 0.5;
+            if let Some(ground) = ground {
+                self.state.height = self.state.height.max(ground);
+            }
+        }
+    }
+
+    pub fn hazard_damage(&self) -> Option<f32> {
+        (self.active && self.kind == 28 && (self.mode != 1 || self.state.switched != 0))
+            .then_some(if self.mode == 1 { 0.15 } else { 0.1 })
     }
 
     /// Returns true once when a mechanism completes, allowing its link/proc to run.
     pub fn update(&mut self, delta_sec: f32, animation_duration: f32) -> bool {
         let delta_sec = delta_sec.max(0.);
+        if let Some(action) = &mut self.state.action {
+            if !self.active {
+                return false;
+            }
+            match action.phase {
+                ActionPhase::Animating => {
+                    let time = self.state.animation_time.get_or_insert(0.);
+                    *time = (*time + delta_sec * 2.).min(animation_duration);
+                    if *time >= animation_duration {
+                        self.state.animation_time = None;
+                        action.animation_complete = true;
+                        if self.kind == 19 {
+                            action.phase = ActionPhase::Complete;
+                        } else {
+                            action.phase = ActionPhase::Moving;
+                            action.origin = action.position;
+                            action.target = action.position;
+                            action.target.y -= 7.;
+                            action.elapsed = 0.;
+                        }
+                    }
+                }
+                ActionPhase::Moving => {
+                    let duration = if self.kind == 29 { 2.5 } else { 4. };
+                    action.elapsed = (action.elapsed + delta_sec).min(duration);
+                    let weight =
+                        (1. - (std::f32::consts::PI * action.elapsed / duration).cos()) * 0.5;
+                    action.position = Vec3::lerp(&action.origin, &action.target, weight);
+                    self.state.height = action.position.y;
+                    if action.elapsed >= duration {
+                        action.position = action.target;
+                        action.phase = if self.kind == 29 {
+                            ActionPhase::Complete
+                        } else {
+                            ActionPhase::Idle
+                        };
+                        return true;
+                    }
+                }
+                _ => {}
+            }
+            return false;
+        }
         if let Some(native) = &mut self.state.native {
             if !self.active {
                 return false;
@@ -483,7 +710,7 @@ impl Mechanism {
     }
 
     pub fn activation_proc(&self) -> Option<u32> {
-        (self.kind == 31 && self.proc_id != 0).then_some(self.proc_id)
+        (matches!(self.kind, 29 | 31) && self.proc_id != 0).then_some(self.proc_id)
     }
 
     pub fn set_active(&mut self, active: bool) {
@@ -500,6 +727,19 @@ impl Mechanism {
                     matches!(s.phase, TransportPhase::Start | TransportPhase::End)
                 })
                 || self.kind == 22
+                || self.kind == 29
+                || self.kind == 19
+                    && self
+                        .state
+                        .action
+                        .as_ref()
+                        .is_some_and(|a| a.animation_complete)
+                || self.kind == 34
+                    && self
+                        .state
+                        .action
+                        .as_ref()
+                        .is_some_and(|a| a.phase == ActionPhase::Idle)
                 || self.kind == 7
                     && self
                         .state
@@ -622,6 +862,8 @@ mod tests {
                 layer: Some(0),
                 platform: None,
                 interaction: None,
+                action: None,
+                hazard: None,
             },
             target: 3,
             proc_id: 500,
@@ -629,6 +871,9 @@ mod tests {
             persistent_switch: true,
             target_height: 40.,
             path: None,
+            rotation: 0.,
+            amplitude: 0.,
+            sound: String::new(),
         }
     }
 
@@ -712,6 +957,40 @@ mod tests {
             completed: false,
         });
         mechanism
+    }
+
+    #[test]
+    fn plate_model_animation_is_blocking_and_inactive_actions_do_not_advance() {
+        let mut plate = mechanism(29);
+        plate.state.action = Some(MechanismAction {
+            phase: ActionPhase::Idle,
+            player: None,
+            position: plate.position,
+            origin: plate.position,
+            target: plate.position,
+            elapsed: 0.,
+            animation_complete: false,
+        });
+        assert_eq!(plate.activate(true), Activation::Ignored);
+        assert_eq!(plate.activate(false), Activation::Interact);
+        plate.begin_plate("ROLE_0".into());
+        plate.finish_plate_approach();
+        plate.set_active(false);
+        assert!(!plate.update(10., 2.));
+        assert_eq!(plate.animation_time(), Some(0.));
+        plate.set_active(true);
+        assert!(!plate.update(0.5, 2.));
+        assert_eq!(plate.state.height, 10.);
+        assert_eq!(plate.animation_time(), Some(1.));
+        assert!(!plate.update(0.5, 2.));
+        assert_eq!(plate.state.height, 10.);
+        assert!(!plate.update(1.25, 2.));
+        assert!((plate.state.height - 6.5).abs() < 0.0001);
+        assert!(plate.update(1.25, 2.));
+        assert_eq!(plate.state.height, 3.);
+        assert!(!plate.action_locked());
+        assert_eq!(plate.activate(false), Activation::Ignored);
+        assert_eq!(plate.state.remaining, 1);
     }
 
     #[test]

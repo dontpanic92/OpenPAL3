@@ -951,6 +951,8 @@ mod mechanism_tests {
                     layer: None,
                     platform: None,
                     interaction: None,
+                    action: None,
+                    hazard: None,
                 },
             )]),
         );

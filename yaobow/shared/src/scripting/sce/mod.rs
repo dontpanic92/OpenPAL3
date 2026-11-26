@@ -8,13 +8,18 @@ use std::{
 use crosscom::ComRc;
 use imgui::Ui;
 use radiance::{
-    audio::AudioEngine, comdef::ISceneManager, input::InputEngine, radiance::UiManager,
+    audio::AudioEngine,
+    comdef::{IEntityExt, ISceneExt, ISceneManager},
+    input::InputEngine,
+    math::{Mat44, Vec3},
+    radiance::UiManager,
 };
 use radiance_scripting::UiManagerImmediateExt;
 
 use crate::openpal3::{
     asset_manager::AssetManager,
     comdef::{IPal3DialogRenderer, IPal3StatusRenderer},
+    directors::SceneManagerExtensions,
     loaders::sce_loader::SceFile,
     states::global_state::GlobalState,
 };
@@ -55,6 +60,41 @@ impl<T: SceCommand + std::fmt::Debug> SceCommandDebug for T {
     }
 }
 
+#[cfg(test)]
+mod native_feedback_tests {
+    use super::*;
+
+    #[test]
+    fn damage_number_uses_native_anchor_motion_and_horizontal_offset() {
+        let projected = project_damage_number(
+            &Mat44::new_identity(),
+            Vec3::new(0., -64., 0.),
+            0.,
+            800.,
+            600.,
+        )
+        .unwrap();
+        assert_eq!(projected, (360., 300.));
+
+        let risen = project_damage_number(
+            &Mat44::new_identity(),
+            Vec3::new(0., -64., 0.),
+            0.5,
+            800.,
+            600.,
+        )
+        .unwrap();
+        assert_eq!(risen, (360., -2700.));
+    }
+
+    #[test]
+    fn damage_number_fades_for_native_two_and_a_half_seconds() {
+        assert_eq!(damage_number_alpha(0.), 1.);
+        assert!((damage_number_alpha(1.5) - 0.4).abs() < f32::EPSILON);
+        assert_eq!(damage_number_alpha(2.5), 0.);
+    }
+}
+
 pub struct SceState {
     asset_mgr: Rc<AssetManager>,
     global_state: GlobalState,
@@ -89,6 +129,43 @@ pub struct SceState {
     // dialog renderer.
     status_renderer: ComRc<crate::openpal3::comdef::IPal3StatusRenderer>,
     menu_state: ComRc<crate::openpal3::comdef::IPal3MenuState>,
+    mechanism_notice: Option<(String, f32)>,
+    hazard_damage_feedback: Vec<HazardDamageFeedback>,
+}
+
+#[derive(Clone, Debug)]
+struct HazardDamageFeedback {
+    delta: i32,
+    elapsed: f32,
+}
+
+fn project_damage_number(
+    view_projection: &Mat44,
+    role_position: Vec3,
+    elapsed: f32,
+    width: f32,
+    height: f32,
+) -> Option<(f32, f32)> {
+    let position = Vec3::new(
+        role_position.x,
+        role_position.y + 64. + elapsed * 20.,
+        role_position.z,
+    );
+    let m = view_projection.floats();
+    let clip_x = m[0][0] * position.x + m[0][1] * position.y + m[0][2] * position.z + m[0][3];
+    let clip_y = m[1][0] * position.x + m[1][1] * position.y + m[1][2] * position.z + m[1][3];
+    let clip_w = m[3][0] * position.x + m[3][1] * position.y + m[3][2] * position.z + m[3][3];
+    if !clip_w.is_finite() || clip_w <= 0. {
+        return None;
+    }
+
+    let ndc_x = clip_x / clip_w;
+    let ndc_y = clip_y / clip_w;
+    Some(((ndc_x * 0.5 + 0.45) * width, (1. - ndc_y) * 0.5 * height))
+}
+
+fn damage_number_alpha(elapsed: f32) -> f32 {
+    (1. - elapsed * 0.4).clamp(0., 1.)
 }
 
 impl SceState {
@@ -121,6 +198,8 @@ impl SceState {
             dialog_renderer,
             status_renderer,
             menu_state,
+            mechanism_notice: None,
+            hazard_damage_feedback: vec![],
         }
     }
 
@@ -244,11 +323,71 @@ impl SceState {
 
     /// Compose the top-right status indicator for this frame. Called only
     /// when the player has control (no SCE proc running).
-    pub fn render_status(&mut self, delta_sec: f32) {
+    pub fn render_status(&mut self, delta_sec: f32, scene_manager: ComRc<ISceneManager>) {
         let renderer = self.status_renderer.clone();
+        let role_position = scene_manager
+            .get_resolved_role(self, -1)
+            .map(|role| role.transform().borrow().position());
+        let view_projection = scene_manager.scene().map(|scene| {
+            let camera = scene.camera();
+            Mat44::multiplied(
+                camera.projection_matrix(),
+                &Mat44::inversed(&camera.transform().matrix()),
+            )
+        });
         self.ui.with_ui_host(|ui_host| {
             renderer.render_status(ui_host.clone(), delta_sec, self.menu_state.clone());
+            if let Some((text, _)) = &self.mechanism_notice {
+                renderer.render_notice(ui_host.clone(), text);
+            }
+            if let (Some(position), Some(view_projection)) = (role_position, view_projection) {
+                let width = ui_host.display_size_x() as f32;
+                let height = ui_host.display_size_y() as f32;
+                for feedback in &self.hazard_damage_feedback {
+                    if let Some((x, y)) = project_damage_number(
+                        &view_projection,
+                        position,
+                        feedback.elapsed,
+                        width,
+                        height,
+                    ) {
+                        ui_host.text_at_size(
+                            x,
+                            y,
+                            32.,
+                            20. / 255.,
+                            20. / 255.,
+                            230. / 255.,
+                            damage_number_alpha(feedback.elapsed),
+                            &feedback.delta.to_string(),
+                        );
+                    }
+                }
+            }
         });
+        let elapsed = delta_sec.max(0.);
+        if let Some((_, remaining)) = &mut self.mechanism_notice {
+            *remaining -= elapsed;
+            if *remaining <= 0. {
+                self.mechanism_notice = None;
+            }
+        }
+        for feedback in &mut self.hazard_damage_feedback {
+            feedback.elapsed += elapsed;
+        }
+        self.hazard_damage_feedback
+            .retain(|feedback| feedback.elapsed < 2.5);
+    }
+
+    pub fn show_mechanism_notice(&mut self, text: String) {
+        self.mechanism_notice = Some((text, 4.));
+    }
+
+    pub fn show_hazard_damage(&mut self, delta: i32) {
+        if delta < 0 {
+            self.hazard_damage_feedback
+                .push(HazardDamageFeedback { delta, elapsed: 0. });
+        }
     }
 
     /// The scripted status indicator/menu renderer. Exposed so the agent

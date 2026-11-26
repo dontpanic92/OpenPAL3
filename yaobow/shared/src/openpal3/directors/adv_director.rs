@@ -74,6 +74,7 @@ impl AdventureDirector {
                 sce_vm,
                 camera_rotation: 0.,
                 layer_switch_triggered: false,
+                hazard_cooldown: 0.,
                 agent_bridge: None,
             }),
         }
@@ -196,6 +197,7 @@ impl AdventureDirector {
                 sce_vm,
                 camera_rotation: 0.,
                 layer_switch_triggered: false,
+                hazard_cooldown: 0.,
                 agent_bridge: None,
             }),
         })
@@ -305,6 +307,7 @@ struct AdventureDirectorProps {
     sce_vm: SceVm,
     camera_rotation: f32,
     layer_switch_triggered: bool,
+    hazard_cooldown: f32,
     /// Agent-server bridge. `None` when the embedded HTTP listener
     /// is not running; `Some(_)` gates pause/step + provides the
     /// synthetic-input overlay backing `/v1/input/*`.
@@ -312,6 +315,17 @@ struct AdventureDirectorProps {
 }
 
 impl AdventureDirectorProps {
+    fn play_mechanism_sound(&mut self, sound: &str) {
+        if let Ok(data) = self.sce_vm.state().asset_mgr().load_snd_data(sound) {
+            let mut source = self.sce_vm.global_state().create_sound_source();
+            source.set_data(data, radiance::audio::Codec::Wav);
+            source.play(false);
+            self.sce_vm
+                .global_state_mut()
+                .add_sound_source(Rc::new(RefCell::new(source)));
+        }
+    }
+
     fn test_save(&self) {
         let input = self.input_engine.borrow_mut();
         let save_slot = if input.get_key_state(Key::Num1).pressed() {
@@ -428,14 +442,34 @@ impl AdventureDirectorProps {
                     Some((entity, controller.inner::<RoleController>().nav_layer()))
                 });
             scene.set_mechanism_player(player.clone());
+            scene.set_mechanism_party_count(
+                self.sce_vm
+                    .global_state()
+                    .persistent_state()
+                    .party()
+                    .members()
+                    .count(),
+            );
             let procs = scene.update_mechanisms(delta_sec);
+            let hazard = scene.update_hazard_damage(delta_sec, &mut self.hazard_cooldown);
             let native_pal3 = self.sce_vm.state().asset_mgr().game() == crate::GameType::PAL3;
             let rewards = scene.take_pickup_rewards();
-            let stats_data =
-                (!rewards.is_empty()).then(|| self.sce_vm.state().asset_mgr().stats_data());
+            let stats_data = (!rewards.is_empty() || hazard.is_some())
+                .then(|| self.sce_vm.state().asset_mgr().stats_data());
+            let mut damage_delta = 0;
             {
                 let state = self.sce_vm.global_state_mut();
                 let mut persistent = state.persistent_state_mut();
+                if let Some(fraction) = hazard {
+                    let party = persistent.party().clone();
+                    let role = persistent.role_controlled();
+                    let deltas = persistent.stats_mut().hazard_damage(
+                        &party,
+                        fraction,
+                        stats_data.as_ref().unwrap(),
+                    );
+                    damage_delta = deltas.get(role as usize).copied().unwrap_or(0);
+                }
                 for (item_id, money) in rewards {
                     if item_id != 0 {
                         let granted =
@@ -454,6 +488,21 @@ impl AdventureDirectorProps {
                         persistent.set_nav_layer(controller.inner::<RoleController>().nav_layer());
                     }
                 }
+            }
+            for notice in scene.take_mechanism_notices() {
+                self.sce_vm.state_mut().show_mechanism_notice(notice);
+            }
+            if damage_delta < 0 {
+                self.sce_vm.state_mut().show_hazard_damage(damage_delta);
+                let role = self.sce_vm.global_state().role_controlled();
+                if let Some(sound) =
+                    ["we015", "we016", "we017", "we018", "we019"].get(role as usize)
+                {
+                    self.play_mechanism_sound(sound);
+                }
+            }
+            for sound in scene.take_mechanism_sounds() {
+                self.play_mechanism_sound(&sound);
             }
             for proc_id in procs {
                 self.sce_vm.call_proc(proc_id);

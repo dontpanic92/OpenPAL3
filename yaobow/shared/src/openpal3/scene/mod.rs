@@ -1,3 +1,4 @@
+mod collision;
 mod cvd_entity;
 mod effect;
 mod error;

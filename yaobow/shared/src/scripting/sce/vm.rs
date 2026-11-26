@@ -89,7 +89,8 @@ impl SceVm {
                     }
                     None => {
                         self.state.global_state_mut().set_adv_input_enabled(true);
-                        self.state.render_status(delta_sec);
+                        self.state
+                            .render_status(delta_sec, self.scene_manager.clone());
                         return None;
                     }
                 };

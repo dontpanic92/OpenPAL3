@@ -258,6 +258,10 @@ interface IPal3StatusRenderer: IUnknown {
     // avatar) for the current frame. `dt` advances any blink/timers.
     void render_status(IUiHost ui, float dt, IPal3MenuState gameplay);
 
+    // Paint PAL3's native fixed note panel (`ui/flex/Note0..8.tga`) with
+    // centered text. Lifetime is owned by the SCE host.
+    void render_notice(IUiHost ui, &str text);
+
     // Open (`true`) or close (`false`) the full-screen character-status
     // (状态) menu overlay. Lets the agent server pop the menu without a
     // synthetic avatar click. Idempotent.

@@ -228,6 +228,26 @@ impl Default for StatsState {
 }
 
 impl StatsState {
+    pub fn hazard_damage(
+        &mut self,
+        party: &PartyState,
+        fraction: f32,
+        data: &StatsData,
+    ) -> [i32; 5] {
+        let mut deltas = [0; 5];
+        for role in party.members() {
+            let character = &mut self.characters[role as usize];
+            let maximum = character.attributes(data, &self.magic_sword).hp;
+            let old = character.current.hp;
+            // 0x4101f0 keeps the subtraction in x87 precision; 0x553514
+            // truncates the FINAL value. 100 HP with native 0.1f becomes 89.
+            let hp = ((old as f64 - maximum as f64 * fraction as f64).trunc() as i32).max(1);
+            character.current.hp = hp;
+            deltas[role as usize] = hp - old;
+        }
+        deltas
+    }
+
     pub(crate) fn set_equipment(
         &mut self,
         role: i32,
@@ -510,6 +530,46 @@ mod tests {
     use super::*;
     use crate::openpal3::loaders::stats::test_data;
 
+    #[test]
+    fn hazard_damage_matches_native_final_truncation_party_filter_and_nonfatal_clamp() {
+        let data = test_data();
+        for (fraction, expected) in [(0.1, 89), (0.15, 84)] {
+            let mut stats = StatsState::default();
+            let mut party = PartyState::default();
+            party.set_in_team(2, true);
+            for character in &mut stats.characters {
+                character.base.hp = 100;
+                character.equipment = [None; 6];
+                character.current = Resources {
+                    hp: 100,
+                    qi: 7,
+                    mp: 11,
+                };
+            }
+            stats.characters[2].current.hp = 0;
+            let deltas = stats.hazard_damage(&party, fraction, &data);
+            assert_eq!(deltas, [expected - 100, 0, 1, 0, 0]);
+            assert_eq!(
+                stats.characters[0].current,
+                Resources {
+                    hp: expected,
+                    qi: 7,
+                    mp: 11
+                }
+            );
+            assert_eq!(stats.characters[1].current.hp, 100);
+            assert_eq!(stats.characters[2].current.hp, 1);
+            stats.hazard_damage(&party, fraction, &data);
+            assert_eq!(stats.characters[2].current.hp, 1);
+        }
+        let mut stats = StatsState::default();
+        let mut party = PartyState::default();
+        party.set_in_team(1, true);
+        stats.fill_all_resources(&data);
+        stats.hazard_damage(&party, 0.15, &data);
+        // Xuejian's equipment raises max HP from 82 to 87.
+        assert_eq!(stats.characters[1].current.hp, 73);
+    }
     #[test]
     fn equipped_item_cleanup_distinguishes_all_slots_from_linked_accessories() {
         let mut stats = StatsState::default();

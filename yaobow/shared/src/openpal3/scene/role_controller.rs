@@ -171,6 +171,13 @@ impl RoleController {
         *self.is_active.borrow()
     }
 
+    pub fn collision_bounds(&self) -> Option<(Vec3, Vec3)> {
+        let name = self.active_anim_name.borrow();
+        self.animations
+            .get(name.as_str())
+            .and_then(|animation| animation.inner::<AnimatedMeshComponent>().model_bounds())
+    }
+
     pub fn set_active(&self, active: bool) {
         *self.is_active.borrow_mut() = active;
         if active {
@@ -514,6 +521,21 @@ pub fn create_animated_mesh_from_mv3<P: AsRef<Path>>(
     }
 
     let animated_mesh = AnimatedMeshComponent::new(entity, component_factory.clone());
+    // MV3 bounds are already in world units, unlike its packed frame vertices.
+    // Reflect X/Z exactly as the frame parser does.
+    if let Some(first) = mv3file.models.first() {
+        let mut min = Vec3::new(-first.aabb_max[0], first.aabb_min[1], -first.aabb_max[2]);
+        let mut max = Vec3::new(-first.aabb_min[0], first.aabb_max[1], -first.aabb_min[2]);
+        for model in mv3file.models.iter().skip(1) {
+            min.x = min.x.min(-model.aabb_max[0]);
+            min.y = min.y.min(model.aabb_min[1]);
+            min.z = min.z.min(-model.aabb_max[2]);
+            max.x = max.x.max(-model.aabb_min[0]);
+            max.y = max.y.max(model.aabb_max[1]);
+            max.z = max.z.max(-model.aabb_min[2]);
+        }
+        animated_mesh.set_model_bounds((min, max));
+    }
     animated_mesh.set_morph_targets(morph_targets, hold_time);
 
     Ok(ComRc::from_object(animated_mesh))

@@ -10,7 +10,7 @@ use crosscom::ComRc;
 use p7::interpreter::context::Data;
 use radiance_scripting::{
     ScriptHost,
-    comdef::services::{ISprite, ISpriteImpl},
+    comdef::services::{IAtlasPage, ISprite, ISpriteImpl, ISpriteService, ISpriteServiceImpl},
     services::ui_host_recording::{RecordingUiHost, UiCall},
 };
 use shared::openpal3::{
@@ -28,6 +28,74 @@ fn pal3_status_ui_and_state_menu_compile() {
     host.set_script_assets(install_script_assets());
     host.load_source_from_path("/yaobow/openpal3/status_ui.p7")
         .expect("openpal3/status_ui.p7 (+ state_menu.p7) must compile");
+}
+
+#[test]
+fn native_mechanism_notice_uses_shipped_note_nine_slice() {
+    let host = ScriptHost::new();
+    host.set_script_assets(install_script_assets());
+    host.load_source(
+        r#"
+        import radiance;
+        import scripting_services;
+        import shared.openpal3;
+        import yaobow.openpal3.status_ui;
+        pub fn make(sprites: &scripting_services.ISpriteService,
+            atlas: &openpal3.IPal3UiAtlas) -> &openpal3.IPal3StatusRenderer {
+            status_ui.make_pal3_status_renderer(sprites, atlas)
+        }
+        pub fn paint(renderer: &openpal3.IPal3StatusRenderer,
+            ui: &radiance.IUiHost, text: string) {
+            renderer.render_notice(ui, text);
+        }
+        "#,
+    )
+    .unwrap();
+    let (recorder, ui) = RecordingUiHost::create();
+    recorder.set_display_size(800, 600);
+    let ui_id = host.intern(ui);
+    let sprites_id = host.intern(ComRc::<ISpriteService>::from_object(TestSprites));
+    let atlas_id = host.intern(ComRc::<IPal3UiAtlas>::from_object(TestAtlas));
+    let renderer = host
+        .call_returning_data(
+            "make",
+            vec![
+                host.foreign_box(
+                    "radiance_scripting.comdef.services.ISpriteService",
+                    sprites_id,
+                )
+                .unwrap(),
+                host.foreign_box("shared.openpal3.comdef.IPal3UiAtlas", atlas_id)
+                    .unwrap(),
+            ],
+        )
+        .unwrap();
+    host.call_void(
+        "paint",
+        vec![
+            renderer,
+            host.foreign_box("radiance.comdef.IUiHost", ui_id).unwrap(),
+            Data::string("重量不够"),
+        ],
+    )
+    .unwrap();
+
+    let calls = recorder.calls.borrow();
+    assert_eq!(
+        calls
+            .iter()
+            .filter(|call| matches!(call, UiCall::ImageRect { .. }))
+            .count(),
+        9
+    );
+    assert!(calls.iter().any(|call| matches!(call,
+        UiCall::ImageRect { x0, y0, x1, y1, .. }
+            if (*x0, *y0, *x1, *y1) == (263.0, 10.0, 295.0, 42.0))));
+    assert!(calls.iter().any(|call| matches!(call,
+        UiCall::TextAt { x, y, size: Some(size), r, g, b, a, s }
+            if (*x, *y, *size) == (360.0, 38.5, 20.0)
+            && (*r, *g, *b, *a) == (250.0 / 255.0, 1.0, 1.0, 1.0)
+            && s == "重量不够")));
 }
 
 #[test]
@@ -450,6 +518,18 @@ impl ISpriteImpl for TestSprite {
     }
     fn v1(&self) -> f32 {
         0.875
+    }
+}
+
+struct TestSprites;
+radiance_scripting::ComObject_SpriteService!(crate::TestSprites);
+impl ISpriteServiceImpl for TestSprites {
+    fn load_sprite(&self, path: &str) -> Option<ComRc<ISprite>> {
+        Some(ComRc::from_object(TestSprite(sprite_id(path))))
+    }
+
+    fn load_atlas_page(&self, _: &str) -> Option<ComRc<IAtlasPage>> {
+        None
     }
 }
 

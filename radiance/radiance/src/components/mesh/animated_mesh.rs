@@ -29,6 +29,7 @@ pub enum MorphAnimationState {
 
 struct AnimatedMeshComponentProps {
     morph_targets: Vec<MorphTarget>,
+    model_bounds: Option<(Vec3, Vec3)>,
     morph_animation_state: MorphAnimationState,
     last_time: f32,
     hold_time: f32,
@@ -46,6 +47,7 @@ impl AnimatedMeshComponent {
             component_factory,
             props: RefCell::new(AnimatedMeshComponentProps {
                 morph_targets: vec![],
+                model_bounds: None,
                 morph_animation_state: MorphAnimationState::NotStarted,
                 last_time: 0.,
                 hold_time: 0.,
@@ -69,6 +71,14 @@ impl AnimatedMeshComponent {
             .morph_targets
             .last()
             .and_then(|m| Some(m.timestamp))
+    }
+
+    pub fn model_bounds(&self) -> Option<(Vec3, Vec3)> {
+        self.props().model_bounds
+    }
+
+    pub fn set_model_bounds(&self, bounds: (Vec3, Vec3)) {
+        self.props_mut().model_bounds = Some(bounds);
     }
 
     pub fn add_morph_last_time(&self, time: f32) {

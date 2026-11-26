@@ -1,7 +1,9 @@
 use super::{
+    collision::OrientedBox,
     cvd_entity,
     mechanism::{
-        Activation, ApproachInteraction, Mechanism, SwitchInteraction, SwitchPhase, TransportPhase,
+        ActionPhase, Activation, ApproachInteraction, Mechanism, SwitchInteraction, SwitchPhase,
+        TransportPhase,
     },
 };
 use crate::openpal3::asset_manager::AssetManager;
@@ -16,7 +18,7 @@ use radiance::comdef::{
 };
 use radiance::components::mesh::StaticMeshComponent;
 use radiance::math::Vec3;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, HashSet};
 use std::rc::Rc;
 
@@ -35,6 +37,10 @@ pub struct ScnScene {
     mechanism_procs: RefCell<Vec<u32>>,
     pickup_rewards: RefCell<Vec<(i32, i32)>>,
     mechanism_player: RefCell<Option<(ComRc<IEntity>, usize)>>,
+    party_count: Cell<usize>,
+    mechanism_notices: RefCell<Vec<String>>,
+    mechanism_sounds: RefCell<Vec<String>>,
+    hazard_bounds: RefCell<BTreeMap<u16, (Vec3, Vec3)>>,
 }
 
 enum PickupWalk {
@@ -89,6 +95,10 @@ impl ScnScene {
             mechanism_procs: RefCell::new(vec![]),
             pickup_rewards: RefCell::new(vec![]),
             mechanism_player: RefCell::new(None),
+            party_count: Cell::new(1),
+            mechanism_notices: RefCell::new(vec![]),
+            mechanism_sounds: RefCell::new(vec![]),
+            hazard_bounds: RefCell::new(BTreeMap::new()),
         }
     }
 
@@ -119,6 +129,8 @@ impl ScnScene {
     pub fn restore_mechanisms(&self, state: &PersistentState) {
         self.mechanism_procs.borrow_mut().clear();
         self.pickup_rewards.borrow_mut().clear();
+        self.mechanism_notices.borrow_mut().clear();
+        self.mechanism_sounds.borrow_mut().clear();
         self.nav.enabled_groups.borrow_mut().clear();
         self.nav.floors.borrow_mut().clear();
         let saved = state.mechanism_states(self.name(), self.sub_name());
@@ -185,6 +197,59 @@ impl ScnScene {
                         .unwrap_or(0.);
                     self.update_mechanism_floor(mechanism, &entity, rotation);
                 }
+            } else if let Some(action) = &mechanism.state.action {
+                entity
+                    .transform()
+                    .borrow_mut()
+                    .set_position(&action.position);
+                let time = mechanism.animation_time().unwrap_or_else(|| {
+                    if action.animation_complete {
+                        cvd_entity::animation_duration(&entity)
+                    } else {
+                        0.
+                    }
+                });
+                cvd_entity::set_animation_time(&entity, time);
+                if matches!(mechanism.kind, 29 | 34)
+                    || (mechanism.kind == 19 && action.animation_complete)
+                {
+                    let rotation = self
+                        .scn_file
+                        .nodes
+                        .iter()
+                        .find(|n| n.index == mechanism.id)
+                        .map(|n| n.rotation)
+                        .unwrap_or(0.);
+                    self.update_mechanism_floor(mechanism, &entity, rotation);
+                    if mechanism.kind == 29
+                        && matches!(action.phase, ActionPhase::Moving | ActionPhase::Complete)
+                    {
+                        if let Some((player, layer)) = self.mechanism_player.borrow().as_ref() {
+                            let mut position = player.transform().borrow().position();
+                            if self.nav.floor_at(*layer, &position) == Some(mechanism.id) {
+                                position.y = mechanism.state.height + 24.;
+                                player.transform().borrow_mut().set_position(&position);
+                            }
+                        }
+                    }
+                }
+            } else if let Some(hazard) = &mechanism.state.hazard {
+                let rotation = self
+                    .scn_file
+                    .nodes
+                    .iter()
+                    .find(|n| n.index == mechanism.id)
+                    .map(|n| n.rotation)
+                    .unwrap_or(0.);
+                let mut position = mechanism.position;
+                position.y = mechanism.state.height;
+                entity
+                    .transform()
+                    .borrow_mut()
+                    .set_position(&position)
+                    .clear_rotation()
+                    .rotate_axis_angle_local(&Vec3::UP, rotation.to_radians())
+                    .rotate_axis_angle_local(&Vec3::new(0., 0., 1.), hazard.swing.to_radians());
             } else if let Some(native) = &mechanism.state.native {
                 let transform = entity.transform();
                 let mut transform = transform.borrow_mut();
@@ -245,7 +310,9 @@ impl ScnScene {
             floor.layer = mechanism.layer as usize;
             floor.rotation = rotation.to_radians();
             floor.enabled = mechanism.provides_floor();
-        } else if let Some((min, max)) = Self::mechanism_bounds(entity) {
+        } else if let Some((min, max)) =
+            Self::mechanism_bounds(entity).or_else(|| cvd_entity::model_bounds(entity))
+        {
             if let Some(block) = self.nav.block_sizes.get(mechanism.layer as usize) {
                 let center = Vec3::scalar_mul(0.5, &Vec3::add(&min, &max));
                 let mut size = Vec3::sub(&max, &min);
@@ -255,7 +322,14 @@ impl ScnScene {
                 } else {
                     (1.5, 1.5)
                 };
-                if size.x > size.z {
+                if mechanism.kind == 19 {
+                    // Native 0x42a17c handles these CVD bridges in fixed local axes.
+                    size.x -= 3.5 * block.0;
+                    size.z += 1.5 * block.1;
+                } else if mechanism.kind == 29 {
+                    size.x -= 1.5 * block.0;
+                    size.z -= 1.5 * block.1;
+                } else if size.x > size.z {
                     size.x += extend * block.0;
                     size.z -= inset * block.1;
                 } else {
@@ -266,6 +340,7 @@ impl ScnScene {
                 floors.insert(
                     mechanism.id,
                     MechanismFloor {
+                        kind: mechanism.kind,
                         layer: mechanism.layer as usize,
                         position,
                         rotation: rotation.to_radians(),
@@ -329,6 +404,21 @@ impl ScnScene {
         let mut mechanisms = self.mechanisms.borrow_mut();
         if let Some(mechanism) = mechanisms.iter_mut().find(|m| m.id == id) {
             if mechanism.activate(true) == Activation::Started {
+                if matches!(mechanism.kind, 19 | 34) {
+                    self.mechanism_sounds
+                        .borrow_mut()
+                        .push(mechanism.action_sound(false).into());
+                }
+                if mechanism.kind == 19 {
+                    if let Some((player, _)) = self.mechanism_player.borrow().as_ref() {
+                        let position = player.transform().borrow().position();
+                        let target =
+                            Vec3::new(mechanism.position.x, position.y, mechanism.position.z);
+                        if Vec3::sub(&target, &position).norm2() > 0.000025 {
+                            player.transform().borrow_mut().look_at(&target);
+                        }
+                    }
+                }
                 if let Some(proc_id) = mechanism.activation_proc() {
                     self.mechanism_procs.borrow_mut().push(proc_id);
                 }
@@ -348,9 +438,22 @@ impl ScnScene {
         *self.mechanism_player.borrow_mut() = player;
     }
 
+    pub fn set_mechanism_party_count(&self, count: usize) {
+        self.party_count.set(count);
+    }
+
+    pub fn take_mechanism_notices(&self) -> Vec<String> {
+        std::mem::take(&mut *self.mechanism_notices.borrow_mut())
+    }
+
+    pub fn take_mechanism_sounds(&self) -> Vec<String> {
+        std::mem::take(&mut *self.mechanism_sounds.borrow_mut())
+    }
+
     pub fn mechanism_input_locked(&self) -> bool {
         self.mechanisms.borrow().iter().any(|m| {
-            m.state.interaction.is_some()
+            m.action_locked()
+                || m.state.interaction.is_some()
                 || m.pickup().is_some_and(|p| p.interaction.is_some())
                 || m.transport().is_some_and(|p| {
                     !matches!(p.phase, TransportPhase::Start | TransportPhase::End)
@@ -419,7 +522,7 @@ impl ScnScene {
                 .get_root_object(mechanism.id as i32)
                 .map(|e| e.visible())
                 .unwrap_or(mechanism.active);
-            if !matches!(mechanism.kind, 5 | 23 | 41)
+            if !matches!(mechanism.kind, 5 | 23 | 29 | 41)
                 || !visible
                 || mechanism.layer as usize != layer
                 || Vec3::sub(
@@ -435,6 +538,24 @@ impl ScnScene {
                 continue;
             }
             mechanism.active = visible;
+            if mechanism.kind == 29 {
+                if mechanism.activate(false) != Activation::Interact {
+                    continue;
+                }
+                if self.party_count.get() < mechanism.plate_requirement() {
+                    self.mechanism_notices.borrow_mut().push("重量不够".into());
+                    return Some(None);
+                }
+                let target = mechanism.state.action.as_ref().unwrap().position;
+                if (position.x - target.x).hypot(position.z - target.z) > 36. {
+                    continue;
+                }
+                let Some((player, _)) = self.mechanism_player.borrow().as_ref().cloned() else {
+                    continue;
+                };
+                mechanism.begin_plate(player.name());
+                return Some(mechanism.activation_proc());
+            }
             if mechanism.kind == 41 {
                 if mechanism.pickup_claimed() {
                     continue;
@@ -579,6 +700,67 @@ impl ScnScene {
         let mut procs = self.take_mechanism_procs();
         let mut links = vec![];
         for mechanism in self.mechanisms.borrow_mut().iter_mut() {
+            if mechanism.kind == 28 {
+                let ground = self
+                    .nav
+                    .point_at(mechanism.layer as usize, &mechanism.position)
+                    .map(|p| p.height);
+                mechanism.update_hazard(delta_sec, ground);
+                self.apply_mechanism_pose(mechanism, false);
+                continue;
+            }
+            if mechanism.kind == 29
+                && mechanism
+                    .state
+                    .action
+                    .as_ref()
+                    .is_some_and(|a| a.phase == ActionPhase::Approach)
+            {
+                if !mechanism.active {
+                    continue;
+                }
+                let action = mechanism.state.action.as_ref().unwrap();
+                let player = action.player.as_ref().and_then(|name| {
+                    self.mechanism_player
+                        .borrow()
+                        .as_ref()
+                        .filter(|(player, _)| player.name() == *name)
+                        .map(|(player, _)| player.clone())
+                });
+                if let Some(player) = player {
+                    match self.walk_pickup_to(
+                        &player,
+                        mechanism.layer as usize,
+                        &action.position,
+                        delta_sec.max(0.),
+                    ) {
+                        PickupWalk::Moving => continue,
+                        PickupWalk::Blocked => {
+                            if let Some(controller) = RoleController::get_role_controller(player) {
+                                controller.inner::<RoleController>().idle();
+                            }
+                            let action = mechanism.state.action.as_mut().unwrap();
+                            action.phase = ActionPhase::Idle;
+                            action.player = None;
+                        }
+                        PickupWalk::Arrived => {
+                            if let Some(controller) = RoleController::get_role_controller(player) {
+                                controller.inner::<RoleController>().idle();
+                            }
+                            mechanism.finish_plate_approach();
+                            self.mechanism_sounds
+                                .borrow_mut()
+                                .push(mechanism.action_sound(true).into());
+                        }
+                    }
+                } else {
+                    let action = mechanism.state.action.as_mut().unwrap();
+                    action.phase = ActionPhase::Idle;
+                    action.player = None;
+                }
+                self.apply_mechanism_pose(mechanism, false);
+                continue;
+            }
             if mechanism.kind == 41 {
                 self.update_pickup(mechanism, delta_sec.max(0.));
                 self.apply_mechanism_pose(mechanism, false);
@@ -600,7 +782,16 @@ impl ScnScene {
                 .unwrap_or(0.);
             let animating = mechanism.animation_time().is_some();
             let completed = mechanism.update(delta_sec, duration);
-            if mechanism.kind == 22 || mechanism.state.native.is_some() || animating {
+            if mechanism.kind == 29 && animating && mechanism.state.animation_time.is_none() {
+                self.mechanism_sounds
+                    .borrow_mut()
+                    .push(mechanism.action_sound(false).into());
+            }
+            if mechanism.kind == 22
+                || mechanism.state.native.is_some()
+                || mechanism.state.action.is_some()
+                || animating
+            {
                 self.apply_mechanism_pose(mechanism, completed);
             }
             if completed {
@@ -655,6 +846,52 @@ impl ScnScene {
         }
         procs.extend(self.take_mechanism_procs());
         procs
+    }
+
+    pub fn update_hazard_damage(&self, delta_sec: f32, cooldown: &mut f32) -> Option<f32> {
+        *cooldown += delta_sec.max(0.);
+        if *cooldown <= 1.2 {
+            return None;
+        }
+        let player = self.mechanism_player.borrow();
+        let (player, _) = player.as_ref()?;
+        let bounds = RoleController::get_role_controller(player.clone())
+            .and_then(|c| c.inner::<RoleController>().collision_bounds())
+            .or_else(|| Self::mechanism_bounds(player))?;
+        let actor = OrientedBox::from_bounds(
+            bounds.0,
+            bounds.1,
+            player.transform().borrow().matrix(),
+            0.6,
+        );
+        for mechanism in self.mechanisms.borrow().iter() {
+            let Some(fraction) = mechanism.hazard_damage() else {
+                continue;
+            };
+            let Some(entity) = self.get_root_object(mechanism.id as i32) else {
+                continue;
+            };
+            let bounds = {
+                let mut cache = self.hazard_bounds.borrow_mut();
+                if let Some(&bounds) = cache.get(&mechanism.id) {
+                    Some(bounds)
+                } else {
+                    let bounds = Self::mechanism_bounds(&entity);
+                    if let Some(bounds) = bounds {
+                        cache.insert(mechanism.id, bounds);
+                    }
+                    bounds
+                }
+            };
+            let Some((min, max)) = bounds else { continue };
+            let hazard =
+                OrientedBox::from_bounds(min, max, entity.transform().borrow().matrix(), 1.);
+            if actor.intersects(&hazard) {
+                *cooldown = 0.;
+                return Some(fraction);
+            }
+        }
+        None
     }
 
     fn update_pickup(&self, mechanism: &mut Mechanism, delta_sec: f32) {
@@ -1650,7 +1887,10 @@ impl ScnScene {
             if let Some(p) = entity {
                 Self::apply_position_rotation(p.clone(), &obj.position, obj.rotation.to_radians());
                 if self.asset_mgr.game() == crate::GameType::PAL3
-                    && matches!(obj.node_type, 5 | 7 | 8 | 11 | 16 | 22 | 23 | 31 | 33 | 41)
+                    && matches!(
+                        obj.node_type,
+                        5 | 7 | 8 | 11 | 16 | 19 | 22 | 23 | 28 | 29 | 31 | 33 | 34 | 41
+                    )
                 {
                     p.set_visible(obj.active != 0);
                 }
@@ -1800,6 +2040,7 @@ pub struct Nav {
 }
 
 struct MechanismFloor {
+    kind: u16,
     layer: usize,
     position: Vec3,
     rotation: f32,
@@ -1962,7 +2203,11 @@ impl Nav {
                             self.block_sizes[layer],
                         )
                     {
-                        point.height = floor.position.y;
+                        point.height = match floor.kind {
+                            22 | 34 => point.height.max(floor.position.y),
+                            29 => floor.position.y + 24.,
+                            _ => floor.position.y,
+                        };
                         point.distance_to_border = point.distance_to_border.max(2);
                     }
                 }
