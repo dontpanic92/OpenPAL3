@@ -660,3 +660,48 @@ failure. Live original-asset checks use isolated saves/configuration to exercise
 creation, overwrite cancel/accept, successful position restoration, failed
 scene loading with the original world still rendered, unwritable destinations,
 audio persistence, and return-to-title. Existing user saves are not overwritten.
+
+### Verified adventure-item effects
+
+The next native trace used only the owned original game's executable mapping,
+with the same read-only inspection policy and image base described above.
+Recovery callback `0x0057fbe0` routes proportional HP/MP through
+`0x005806f0`. Its mode-4 paths at `0x00580798` and `0x005807c2` store the
+maximum-times-rate result as a 32-bit float before resource application.
+Recovery now follows that float arithmetic instead of truncating an extended
+precision product too early: 45% of 200 HP restores 90, not 89. Food still
+requires a living eligible party member, applies both resource groups, clamps
+at effective maxima, and consumes once only when a resource changes.
+
+Revival properties 3029–3031 and condition-removal properties 3032–3033,
+3035–3040 and 3049–3055 have `CANUSE_IN_SYSUI=0` in this corpus. They are
+not enabled as adventure cures; adding combat conditions or revival semantics
+to make them usable here would invent behavior. Their attached chains remain
+unsupported by the adventure recovery decoder.
+
+Portable-save property 3182 (元祖星空) is the remaining menu-enabled support
+item: category 2, target 0, skill 7294, function 9120. The function registration
+at `0x005893a5` points to the no-op `0x004ee840`: this is **not** an ordinary
+stat skill. Inventory use at `0x004728a3` explicitly recognizes item 3182 and
+calls `0x00473740`. That handler removes one copy through `0x004c6a30` before
+dispatching `show_save_ui` (descriptor `0x008a66a4`). Cancellation does not
+refund it. The bridge now opens the existing native System save page and
+spends one copy, with live availability, story locks and menu grants checked
+before either change. No file is written merely by opening the page.
+Unknown or modified attached effects are not silently ignored.
+
+Earth-pearl property 3067 is a separate native special case despite its
+zero menu-use flag. Its `0x004735c0` handler starts an `EarthBall` scripted
+continuation rather than function 9121, which is also registered to the no-op.
+Return-destination and continuation handling remain unverified/unimplemented;
+the item stays disabled rather than teleporting to a guessed entrance.
+
+Validation includes recorded-host item use, save-page entry/cancellation,
+one-copy consumption and rejected duplicate use, story/menu gating, food
+rounding, and original-database recovery/adventure integration tests.
+Live Q01 checks with isolated slots verified portable-save entry and
+cancellation, 45%-HP/15%-MP food restoring 90 HP/4 MP from the controlled
+200-HP fixture, refusal to consume a battle-only revival item, and persistence
+of recovered resources and spent quantities through save/reload. Existing user
+saves were untouched; owned test slots/configuration and the executable
+inspection copy were removed.

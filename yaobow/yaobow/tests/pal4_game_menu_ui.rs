@@ -90,7 +90,13 @@ fn catalog() -> Rc<GameplayCatalog> {
             },
         );
     }
-    for (id, skill, category) in [(3000, 7200, 0), (3001, 7201, 0), (3100, 0, 3)] {
+    for (id, skill, category) in [
+        (3000, 7200, 0),
+        (3001, 7201, 0),
+        (3013, 7213, 0),
+        (3100, 0, 3),
+        (3182, 7294, 2),
+    ] {
         catalog.properties.insert(
             id,
             PropertyDefinition {
@@ -99,7 +105,7 @@ fn catalog() -> Rc<GameplayCatalog> {
                 description: "Recovery description".into(),
                 detail: String::new(),
                 category,
-                target: 1,
+                target: if id == 3182 { 0 } else { 1 },
                 model: String::new(),
                 texture: String::new(),
                 usable_by: [true; 4],
@@ -110,6 +116,32 @@ fn catalog() -> Rc<GameplayCatalog> {
             },
         );
     }
+    catalog.skills.insert(
+        7213,
+        SkillDefinition {
+            kind: 2,
+            trigger: 2,
+            duration: 0,
+            function: 9118,
+            parameters: [1., 0., 0., 2., 0.45, 4., 6., 0.15, 4.],
+            attached: 0,
+            mutex: 0,
+            status: 0,
+        },
+    );
+    catalog.skills.insert(
+        7294,
+        SkillDefinition {
+            kind: 2,
+            trigger: 2,
+            duration: 0,
+            function: 9120,
+            parameters: [0.; 9],
+            attached: 0,
+            mutex: 0,
+            status: 0,
+        },
+    );
     for (id, function) in [(7200, 9118), (7201, 9999)] {
         catalog.skills.insert(
             id,
@@ -379,6 +411,97 @@ fn system_pages_distinguish_empty_corrupt_and_valid_saves_and_gate_overwrites() 
         h.bridge.system_busy(),
         "explicit checkmark submits the occupied slot"
     );
+}
+
+#[test]
+fn portable_save_opens_native_system_page_and_spends_once_even_when_cancelled() {
+    let saves = SystemSaves::new();
+    let h = Harness::in_namespace(saves.namespace());
+    let catalog = h.state.borrow().catalog();
+    h.state
+        .borrow_mut()
+        .state_mut()
+        .add_property(3182, 2, &catalog)
+        .unwrap();
+    h.key(38);
+    h.key(28);
+    assert!(h.bridge.can_use(0, 3182));
+    // The newest backpack row is the portable-save item.
+    h.key(0);
+    assert_eq!(h.bridge.active_tab(), 6);
+    assert_eq!(h.bridge.item_quantity(3182), 1);
+    assert!(
+        !h.bridge.use_item(0, 3182),
+        "no repeated use after switching tabs"
+    );
+    h.key(-1);
+    h.key(38);
+    assert_eq!(h.bridge.active_tab(), -1);
+    assert_eq!(
+        h.bridge.item_quantity(3182),
+        1,
+        "cancelling does not refund native use"
+    );
+    assert!(
+        !saves.0.join("Save").exists(),
+        "opening save UI does not create a save"
+    );
+}
+
+#[test]
+fn portable_save_respects_story_locks_menu_grants_and_live_availability() {
+    let h = Harness::new();
+    let catalog = h.state.borrow().catalog();
+    h.state
+        .borrow_mut()
+        .state_mut()
+        .add_property(3182, 1, &catalog)
+        .unwrap();
+    h.key(38);
+    h.key(28);
+    h.state.borrow_mut().state_mut().grant_menu(6, false);
+    assert!(!h.bridge.use_item(0, 3182));
+    h.state.borrow_mut().state_mut().grant_menu(6, true);
+    h.state.borrow_mut().state_mut().set_player_locked(true);
+    assert!(!h.bridge.use_item(0, 3182));
+    h.state.borrow_mut().state_mut().set_player_locked(false);
+    h.bridge.inner::<Pal4MenuState>().set_available(false);
+    assert!(!h.bridge.use_item(0, 3182));
+    assert!(h.state.borrow().request_menu(1, true));
+    assert!(
+        !h.bridge.use_item(0, 3182),
+        "forced script menus cannot navigate away"
+    );
+    h.bridge.inner::<Pal4MenuState>().set_available(true);
+    assert!(!h.bridge.can_use(0, 3182));
+    assert_eq!(h.bridge.item_quantity(3182), 1);
+}
+
+#[test]
+fn adventure_food_rounds_scaled_recovery_as_native_float_before_consumption() {
+    let h = Harness::new();
+    let catalog = h.state.borrow().catalog();
+    {
+        let mut session = h.state.borrow_mut();
+        session.state_mut().add_property(3013, 2, &catalog).unwrap();
+        let player = session.state_mut().player_mut(0);
+        player.max_hp = 200;
+        player.hp = 1;
+        player.mp = 0;
+    }
+    h.key(38);
+    h.key(28);
+    h.key(0);
+    let player = h.state.borrow().state().player(0).unwrap().clone();
+    assert_eq!((player.hp, player.mp), (91, 4));
+    assert_eq!(h.bridge.item_quantity(3013), 1);
+    h.state.borrow_mut().state_mut().player_mut(0).hp = 0;
+    assert!(
+        !h.bridge.use_item(0, 3013),
+        "ordinary food cannot revive or heal a dead role"
+    );
+    assert_eq!(h.bridge.item_quantity(3013), 1);
+    assert_eq!(h.state.borrow().state().player(0).unwrap().mp, 4);
 }
 
 #[test]

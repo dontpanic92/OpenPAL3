@@ -319,11 +319,11 @@ impl Pal4PersistentState {
                     (&mut mp, player.max_mp)
                 };
                 let amount = if effect.proportional {
-                    maximum as f64 * f64::from(effect.amount)
+                    maximum as f32 * effect.amount
                 } else {
-                    f64::from(effect.amount)
+                    effect.amount
                 };
-                *value = value.saturating_add(amount as i32).clamp(0, maximum);
+                *value = ((*value as f32 + amount) as i32).clamp(0, maximum);
             }
             if hp != player.hp || mp != player.mp {
                 changes.push((slot, hp, mp));

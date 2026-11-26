@@ -193,6 +193,28 @@ pub struct GameplayCatalog {
 }
 
 impl GameplayCatalog {
+    pub fn is_portable_save_item(&self, id: i32) -> bool {
+        // The native inventory dispatcher special-cases this item, not function 9120.
+        let Some(item) = self.properties.get(&id) else {
+            return false;
+        };
+        let Some(skill) = self.skills.get(&item.skill_id) else {
+            return false;
+        };
+        id == 3182
+            && item.usable_in_menu
+            && item.category == 2
+            && item.target == 0
+            && skill.kind == 2
+            && skill.trigger == 2
+            && skill.duration == 0
+            && skill.function == 9120
+            && skill.parameters == [0.0; 9]
+            && skill.attached == 0
+            && skill.mutex == 0
+            && skill.status == 0
+    }
+
     pub fn recovery_effects(&self, mut id: i32) -> Option<Vec<RecoveryEffect>> {
         let mut visited = Vec::new();
         let mut effects = Vec::new();

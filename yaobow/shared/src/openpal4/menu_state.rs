@@ -414,20 +414,40 @@ impl IPal4MenuStateImpl for Pal4MenuState {
                 .is_ok()
     }
     fn can_use(&self, role: i32, id: i32) -> bool {
-        self.action_allowed(1)
-            && self
-                .session
-                .borrow()
-                .state()
-                .can_use_property(role as usize, id, &self.catalog)
+        if !(0..super::states::persistent_state::PLAYER_COUNT as i32).contains(&role)
+            || !self.action_allowed(1)
+        {
+            return false;
+        }
+        let session = self.session.borrow();
+        if self.catalog.is_portable_save_item(id) {
+            return self.available.get()
+                && !session.menu_forced()
+                && !session.system_busy()
+                && !session.state().player_locked()
+                && session.state().menu_enabled(6)
+                && session.state().has_equipment(id);
+        }
+        session
+            .state()
+            .can_use_property(role as usize, id, &self.catalog)
     }
     fn use_item(&self, role: i32, id: i32) -> bool {
-        self.action_allowed(1)
-            && self
-                .session
-                .borrow_mut()
-                .state_mut()
-                .use_property(role as usize, id, &self.catalog)
+        if !self.can_use(role, id) {
+            return false;
+        }
+        let mut session = self.session.borrow_mut();
+        if self.catalog.is_portable_save_item(id) {
+            if !session.request_menu(6, false) {
+                return false;
+            }
+            // Native use spends the item when opening save UI, even if cancelled.
+            session.state_mut().remove_equipment(id, 1);
+            return true;
+        }
+        session
+            .state_mut()
+            .use_property(role as usize, id, &self.catalog)
     }
 }
 

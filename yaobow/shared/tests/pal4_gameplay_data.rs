@@ -1,8 +1,9 @@
-use std::rc::Rc;
+use std::{cell::RefCell, rc::Rc};
 
 use packfs::init_virtual_fs;
 use shared::openpal4::{
     gameplay::GameplayCatalog,
+    menu_state::Pal4MenuState,
     session::Pal4Session,
     states::persistent_state::{PAL4_APP_NAME, Pal4PersistentState},
 };
@@ -83,6 +84,7 @@ fn original_recovery_skills_use_verified_parameters_and_consume_once() {
     for id in [3000, 3003, 3004, 3006] {
         state.add_property(id, 2, &catalog).unwrap();
     }
+
     state.set_player_resource_percent(-1, -1, 0);
     assert!(!state.use_property(0, 3000, &catalog)); // Not a revival effect.
     assert_eq!(state.equipment_count(3000), 2);
@@ -109,4 +111,51 @@ fn original_recovery_skills_use_verified_parameters_and_consume_once() {
     assert!(!restored.menu_enabled(1));
     assert!(restored.menu_enabled(2));
     assert_eq!(restored.equipment_count(3004), 1);
+}
+
+#[test]
+#[ignore = "requires original PAL4 assets; set PAL4_ASSET_ROOT"]
+fn original_adventure_items_route_portable_save_without_enabling_battle_only_cures() {
+    let root = std::env::var("PAL4_ASSET_ROOT").unwrap();
+    let mut catalog = GameplayCatalog::load(&init_virtual_fs(&root, None)).unwrap();
+    assert!(catalog.is_portable_save_item(3182));
+    catalog.skills.get_mut(&7294).unwrap().attached = 7200;
+    assert!(
+        !catalog.is_portable_save_item(3182),
+        "unknown attached effects must not be discarded"
+    );
+    catalog.skills.get_mut(&7294).unwrap().attached = 0;
+    let catalog = Rc::new(catalog);
+    let session = Rc::new(RefCell::new(Pal4Session::new()));
+    {
+        let mut session = session.borrow_mut();
+        session.install_catalog(catalog.clone()).unwrap();
+        session.set_menu_host_available(true);
+        session.state_mut().set_player_locked(false);
+        for id in [
+            3029, 3030, 3031, 3032, 3033, 3035, 3036, 3037, 3038, 3039, 3040, 3049, 3050, 3051,
+            3052, 3053, 3054, 3055, 3067, 3182,
+        ] {
+            session.state_mut().add_property(id, 2, &catalog).unwrap();
+        }
+    }
+    let menu = Pal4MenuState::create(session.clone());
+    menu.inner::<Pal4MenuState>().set_available(true);
+    assert!(menu.open(1));
+    for id in [
+        3029, 3030, 3031, 3032, 3033, 3035, 3036, 3037, 3038, 3039, 3040, 3049, 3050, 3051, 3052,
+        3053, 3054, 3055, 3067,
+    ] {
+        assert!(
+            !menu.can_use(0, id),
+            "battle-only or unimplemented adventure item {id}"
+        );
+        assert!(!menu.use_item(0, id));
+        assert_eq!(menu.item_quantity(id), 2);
+    }
+    assert!(menu.use_item(0, 3182));
+    assert_eq!(menu.active_tab(), 6);
+    assert_eq!(menu.item_quantity(3182), 1);
+    menu.close();
+    assert_eq!(menu.item_quantity(3182), 1);
 }
