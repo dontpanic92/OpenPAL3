@@ -363,6 +363,12 @@ fn handle_save_slot(ctx: &Pal3DispatchCtx, params: SlotParams) -> AgentResponse 
             params.slot
         )));
     }
+    if let Some(engine) = ctx.bridge.rendering_engine.borrow().clone() {
+        director
+            .sce_vm()
+            .state()
+            .capture_save_thumbnail(&mut *engine.borrow_mut());
+    }
     match director
         .sce_vm()
         .global_state()

@@ -1101,6 +1101,53 @@ impl IUiHostImpl for ImguiUiHost {
         });
     }
 
+    fn image_rotated(
+        &self,
+        texture_com_id: i32,
+        x0: f32,
+        y0: f32,
+        x1: f32,
+        y1: f32,
+        pivot_x: f32,
+        pivot_y: f32,
+        radians: f32,
+        u0: f32,
+        v0: f32,
+        u1: f32,
+        v1: f32,
+    ) {
+        let _ = with_frame("image_rotated", |f| {
+            let texture_id = f
+                .textures
+                .borrow_mut()
+                .resolve(texture_com_id as i64)
+                .or_else(|| {
+                    (texture_com_id >= 0).then(|| imgui::TextureId::new(texture_com_id as usize))
+                });
+            let Some(texture_id) = texture_id else {
+                return;
+            };
+            let scale = if f.dpi_scale > 0.0 { f.dpi_scale } else { 1.0 };
+            let (sin, cos) = radians.sin_cos();
+            let point = |x: f32, y: f32| {
+                [
+                    (pivot_x + (x - pivot_x) * cos - (y - pivot_y) * sin) * scale,
+                    (pivot_y + (x - pivot_x) * sin + (y - pivot_y) * cos) * scale,
+                ]
+            };
+            f.ui.get_background_draw_list()
+                .add_image_quad(
+                    texture_id,
+                    point(x0, y0),
+                    point(x1, y0),
+                    point(x1, y1),
+                    point(x0, y1),
+                )
+                .uv([u0, v0], [u1, v0], [u1, v1], [u0, v1])
+                .build();
+        });
+    }
+
     fn image_rect_additive(
         &self,
         texture_com_id: i32,

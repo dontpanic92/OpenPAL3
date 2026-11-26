@@ -35,6 +35,38 @@ pub fn entry(ui: &radiance.IUiHost) -> int {
 }
 "#;
 
+#[test]
+fn rotated_sprite_preserves_pivot_angle_and_atlas_uv_across_script_bridge() {
+    let host = ScriptHost::new();
+    host.load_source(
+        r#"
+        import radiance;
+        pub fn entry(ui: &radiance.IUiHost) {
+            ui.image_rotated(-17, 170.0, 83.0, 502.0, 519.0,
+                342.0, 591.0, -0.5, 0.125, 0.25, 0.75, 0.875);
+        }
+    "#,
+    )
+    .unwrap();
+    let (recorder, ui) = RecordingUiHost::create();
+    let id = host.intern(ui);
+    host.call_void(
+        "entry",
+        vec![host.foreign_box("radiance.comdef.IUiHost", id).unwrap()],
+    )
+    .unwrap();
+    assert_eq!(
+        *recorder.calls.borrow(),
+        vec![UiCall::RotatedImage {
+            texture_com_id: -17,
+            rect: [170., 83., 502., 519.],
+            pivot: [342., 591.],
+            radians: -0.5,
+            uv: [0.125, 0.25, 0.75, 0.875],
+        }]
+    );
+}
+
 const WITH_CAPTURE_SOURCE: &str = r#"
 import radiance;
 

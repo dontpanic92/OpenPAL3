@@ -98,6 +98,9 @@ pub struct[openpal3.IPal3StatusRenderer] Pal3StatusRendererImpl(
         let release = !down && self.prev_down;
         let over = pmx >= ax0 && pmx <= ax1 && pmy >= ay0 && pmy <= ay1;
         let was_open = self.menu_open;
+        // Agent opens can arrive after pre-update. Leave one HUD frame for
+        // the next pre-update to capture, before painting any menu chrome.
+        let paint_menu = was_open && !self.menu_needs_refresh;
         if press { self.hud_pressed = over && !was_open; }
 
         // Decorative variant: click (mouse down over panel) > hover > normal.
@@ -119,7 +122,7 @@ pub struct[openpal3.IPal3StatusRenderer] Pal3StatusRendererImpl(
 
         // Draw the HUD dial first so the full-screen menu (drawn below)
         // composites OVER it — the menu owns the screen while open.
-        if !was_open {
+        if !paint_menu {
             let items: array<box<gui.Element>> = [
                 sprite_rect(self.bk, x0, y0, x1, y1),
                 sprite_rect(face, ax0, ay0, ax1, ay1),
@@ -135,10 +138,11 @@ pub struct[openpal3.IPal3StatusRenderer] Pal3StatusRendererImpl(
             if self.menu_needs_refresh {
                 self.menu.on_open(gameplay);
                 self.menu_needs_refresh = false;
+            } else {
+                self.menu.tick(ui.time_milliseconds(), down);
+                let stay = self.menu.paint(ui, self.atlas, gameplay, pmx, pmy, press, release, down);
+                self.menu_open = stay;
             }
-            self.menu.tick(ui.time_milliseconds(), down);
-            let stay = self.menu.paint(ui, self.atlas, gameplay, pmx, pmy, press, release, down);
-            self.menu_open = stay;
         }
 
         // A release only opens the menu after a press inside the avatar.

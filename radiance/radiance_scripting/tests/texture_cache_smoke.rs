@@ -6,6 +6,7 @@ use radiance::rendering::{
     ComponentFactory, MaterialDef, RenderObjectHandle, RenderingComponent, Texture, TextureDef,
     VertexBuffer, VideoPlayer,
 };
+use radiance_scripting::services::sprite::SpriteUploader;
 use radiance_scripting::services::{ImguiTextureCache, Texture as ScriptTexture};
 
 struct DummyTexture;
@@ -89,6 +90,51 @@ fn resolve_is_idempotent_after_upload() {
     assert_eq!(first.id(), second.id());
     assert_eq!(Some(first.id()), cache.resolve(42).map(|id| id.id()));
     assert_eq!(factory.uploads.get(), 1);
+}
+
+#[test]
+fn deferred_sprites_upload_while_cache_borrowed_and_release_after_last_owner() {
+    let factory = Rc::new(MockFactory {
+        uploads: Cell::new(0),
+    });
+    let cache = std::cell::RefCell::new(ImguiTextureCache::new(factory.clone()));
+    let uploader = SpriteUploader::new(&cache.borrow());
+    let mut frame = cache.borrow_mut();
+    assert!(uploader.upload(vec![], u32::MAX, u32::MAX).is_none());
+    assert!(uploader.upload(vec![], 0, 1).is_none());
+    assert!(uploader.upload(vec![0; 3], 1, 1).is_none());
+    let sprite = uploader.upload(vec![255; 4], 1, 1).unwrap();
+    let owner = sprite.clone();
+    let id = i64::from(sprite.com_id());
+    let discarded = uploader.upload(vec![128; 4], 1, 1).unwrap();
+    let discarded_id = i64::from(discarded.com_id());
+    drop(discarded);
+    assert_eq!(
+        factory.uploads.get(),
+        0,
+        "uploading must not reborrow the cache"
+    );
+    assert!(frame.resolve(id).is_some());
+    assert_eq!(factory.uploads.get(), 2);
+    drop(sprite);
+    for _ in 0..3 {
+        frame.advance_frame();
+    }
+    assert!(
+        frame.resolve(id).is_some(),
+        "a cloned sprite owns its pixels"
+    );
+    assert!(
+        frame.resolve(discarded_id).is_none(),
+        "drop before upload must not leak"
+    );
+    drop(owner);
+    assert!(frame.resolve(id).is_some());
+    frame.advance_frame();
+    frame.advance_frame();
+    assert!(frame.resolve(id).is_some());
+    frame.advance_frame();
+    assert!(frame.resolve(id).is_none());
 }
 
 // --- Frame-gated deletion queue --------------------------------------

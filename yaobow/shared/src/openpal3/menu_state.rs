@@ -27,6 +27,8 @@ pub struct Pal3MenuState {
     preview: RefCell<Option<super::menu_preview::MenuPreview>>,
     effects: RefCell<super::menu_effects::ItemEffects>,
     sounds: RefCell<Vec<&'static str>>,
+    menu_was_open: Cell<bool>,
+    thumbnail_uploader: RefCell<Option<radiance_scripting::services::sprite::SpriteUploader>>,
 }
 
 enum AudioPersistence {
@@ -81,6 +83,7 @@ impl Pal3MenuState {
         audio_mix: Arc<Pal3AudioMix>,
         audio_persistence: AudioPersistence,
     ) -> ComRc<IPal3MenuState> {
+        state.borrow_mut().set_thumbnail(None);
         let descriptions = data
             .iter()
             .flat_map(|data| data.items())
@@ -98,11 +101,25 @@ impl Pal3MenuState {
             preview: RefCell::new(None),
             effects: RefCell::new(super::menu_effects::ItemEffects::default()),
             sounds: RefCell::new(Vec::new()),
+            menu_was_open: Cell::new(false),
+            thumbnail_uploader: RefCell::new(None),
         })
     }
 
     pub fn take_requested_load(&self) -> Option<i32> {
         self.pending_load.take()
+    }
+
+    pub(crate) fn capture_save_thumbnail(
+        &self,
+        engine: &mut dyn radiance::rendering::RenderingEngine,
+    ) {
+        if !self.menu_was_open.get() {
+            let png = engine
+                .capture_last_frame()
+                .and_then(super::save_slots::encode_thumbnail);
+            self.state.borrow_mut().set_thumbnail(png);
+        }
     }
 
     pub fn take_requested_return_to_menu(&self) -> bool {
@@ -117,11 +134,28 @@ impl Pal3MenuState {
         *self.preview.borrow_mut() = Some(preview);
     }
 
+    pub(crate) fn install_thumbnail_uploader(
+        &self,
+        uploader: radiance_scripting::services::sprite::SpriteUploader,
+    ) {
+        *self.thumbnail_uploader.borrow_mut() = Some(uploader);
+    }
+
     pub(crate) fn render_preview(
         &self,
         open: bool,
         engine: &mut dyn radiance::rendering::RenderingEngine,
     ) {
+        if open != self.menu_was_open.replace(open) || !open {
+            let png = if open {
+                engine
+                    .capture_last_frame()
+                    .and_then(super::save_slots::encode_thumbnail)
+            } else {
+                None
+            };
+            self.state.borrow_mut().set_thumbnail(png);
+        }
         if !open {
             self.effects.borrow_mut().clear();
         }
@@ -160,6 +194,13 @@ impl Pal3MenuState {
 }
 
 impl IPal3MenuStateImpl for Pal3MenuState {
+    fn native_page_preview_texture(&self, page: i32) -> i32 {
+        self.preview
+            .borrow()
+            .as_ref()
+            .map_or(0, |preview| preview.request_page(page))
+    }
+
     fn item_preview_texture(&self, id: i32, equipment: bool) -> i32 {
         self.preview
             .borrow()
@@ -315,7 +356,10 @@ impl IPal3MenuStateImpl for Pal3MenuState {
     }
 
     fn save_slots(&self) -> ComRc<super::comdef::IPal3SaveSlots> {
-        super::save_slots::Pal3SaveSlots::snapshot(self.state.borrow().app_name())
+        super::save_slots::Pal3SaveSlots::snapshot_with_thumbnails(
+            self.state.borrow().app_name(),
+            self.thumbnail_uploader.borrow().as_ref(),
+        )
     }
 
     fn save_slot(&self, slot: i32) -> bool {

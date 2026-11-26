@@ -38,7 +38,7 @@ fn deferred_scene_loading_installs_triggers_only_when_their_work_completes() {
 #[test]
 #[ignore = "requires original game assets via PAL3_ASSET_PATH"]
 fn shipped_item_previews_load_variant_textures_and_reject_missing_assets() {
-    use crate::openpal3::loaders::pol::create_item_preview;
+    use crate::openpal3::loaders::pol::create_menu_preview;
     let path = std::env::var("PAL3_ASSET_PATH").expect("PAL3_ASSET_PATH");
     let assets = AssetManager::new(
         Rc::new(UnusedFactory),
@@ -48,11 +48,11 @@ fn shipped_item_previews_load_variant_textures_and_reject_missing_assets() {
     for (model, image) in [("MB", "6"), ("MB", "7"), ("PE", "2"), ("WXA", "4")] {
         let folder = format!("/basedata/basedata/Item/{model}");
         let texture = format!("{folder}/{model}{image}.tga");
-        let entity = create_item_preview(
+        let entity = create_menu_preview(
             &assets.component_factory(),
             assets.vfs(),
             &format!("{folder}/{model}.pol"),
-            &texture,
+            Some(&texture),
         )
         .unwrap();
         let component = entity
@@ -80,23 +80,42 @@ fn shipped_item_previews_load_variant_textures_and_reject_missing_assets() {
     }
     assert_ne!(variants[0], variants[1]);
     assert!(
-        create_item_preview(
+        create_menu_preview(
             &assets.component_factory(),
             assets.vfs(),
             "/missing.pol",
-            "/missing.tga"
+            Some("/missing.tga")
         )
         .is_err()
     );
     assert!(
-        create_item_preview(
+        create_menu_preview(
             &assets.component_factory(),
             assets.vfs(),
             "/basedata/basedata/Item/MB/MB.pol",
-            "/missing.tga"
+            Some("/missing.tga")
         )
         .is_err()
     );
+    for model in ["Lineup/wl.pol", "SWORD/Data/Sword.pol"] {
+        let entity = create_menu_preview(
+            &assets.component_factory(),
+            assets.vfs(),
+            &format!("/basedata/basedata/ui/GameMainUI/{model}"),
+            None,
+        )
+        .unwrap();
+        let component = entity.get_component(IStaticMeshComponent::uuid()).unwrap();
+        let geometries = component.inner::<StaticMeshComponent>().get_geometries();
+        assert!(!geometries.is_empty());
+        for geometry in geometries.iter() {
+            assert!(!geometry.indices.is_empty());
+            assert!(
+                geometry.material.textures()[0].with_image(|i| i.is_some()),
+                "native UI model materials must load their own shipped textures"
+            );
+        }
+    }
 }
 
 #[test]

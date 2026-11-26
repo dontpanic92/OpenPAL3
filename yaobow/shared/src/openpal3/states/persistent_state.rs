@@ -25,6 +25,8 @@ pub struct PersistentState {
     party: PartyState,
     money: i32,
     play_seconds: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    thumbnail_png: Option<Vec<u8>>,
     stats: StatsState,
     inventory: InventoryState,
     scene: Option<String>,
@@ -46,6 +48,7 @@ impl PersistentState {
             party: PartyState::default(),
             money: 0,
             play_seconds: 0.0,
+            thumbnail_png: None,
             stats: StatsState::default(),
             inventory: InventoryState::default(),
             scene: None,
@@ -82,6 +85,14 @@ impl PersistentState {
         anyhow::ensure!(slot >= 0, "Invalid save slot");
         let dir = Self::get_data_dir(&self.app_name).join("Save");
         self.save_to_path(&dir.join(format!("{slot}.json")))
+    }
+
+    pub(crate) fn set_thumbnail(&mut self, png: Option<Vec<u8>>) {
+        self.thumbnail_png = png;
+    }
+
+    pub(crate) fn thumbnail(&self) -> Option<&[u8]> {
+        self.thumbnail_png.as_deref()
     }
 
     pub(crate) fn save_to_path(&self, path: &std::path::Path) -> anyhow::Result<()> {

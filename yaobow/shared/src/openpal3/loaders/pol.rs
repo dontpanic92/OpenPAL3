@@ -34,40 +34,45 @@ pub fn create_entity_from_pol_model<P: AsRef<Path>>(
     entity
 }
 
-pub(crate) fn create_item_preview(
+pub(crate) fn create_menu_preview(
     factory: &Rc<dyn ComponentFactory>,
     vfs: &MiniFs,
     model: &str,
-    texture: &str,
+    texture_override: Option<&str>,
 ) -> anyhow::Result<ComRc<IEntity>> {
     let pol = read_pol(&mut BufReader::new(vfs.open(model)?))?;
-    let dds = Path::new(texture).with_extension("dds");
-    let texture = if vfs.open(&dds).is_ok() {
-        dds
-    } else {
-        PathBuf::from(texture)
-    };
-    let texture_data = vfs.read_to_end(&texture)?;
-    let material = SimpleMaterialDef::create2(texture.to_str().unwrap(), Some(texture_data));
-    let geometries = pol
-        .meshes
-        .iter()
-        .flat_map(|mesh| {
-            mesh.material_info.iter().map(|info| {
-                let blend = if info.use_alpha == 0 {
-                    BlendMode::Opaque
-                } else {
-                    BlendMode::AlphaTest
-                };
-                create_geometry(
-                    &mesh.vertices,
-                    &info.triangles,
-                    material.clone().with_blend(blend),
-                    false,
-                )
-            })
-        })
-        .collect();
+    let mut geometries = Vec::new();
+    for mesh in &pol.meshes {
+        for info in &mesh.material_info {
+            let texture = match texture_override {
+                Some(path) => PathBuf::from(path),
+                None => Path::new(model).parent().unwrap().join(
+                    info.texture_names
+                        .first()
+                        .and_then(|n| n.as_str().ok())
+                        .ok_or_else(|| {
+                            anyhow::anyhow!("UI model has no primary texture: {model}")
+                        })?,
+                ),
+            };
+            let dds = texture.with_extension("dds");
+            let texture = if vfs.open(&dds).is_ok() { dds } else { texture };
+            let texture_data = vfs.read_to_end(&texture)?;
+            let material =
+                SimpleMaterialDef::create2(texture.to_str().unwrap(), Some(texture_data));
+            let blend = if info.use_alpha == 0 {
+                BlendMode::Opaque
+            } else {
+                BlendMode::AlphaTest
+            };
+            geometries.push(create_geometry(
+                &mesh.vertices,
+                &info.triangles,
+                material.with_blend(blend),
+                false,
+            ));
+        }
+    }
     let entity = CoreEntity::create(model.to_owned(), true);
     entity.add_component(
         IStaticMeshComponent::uuid(),

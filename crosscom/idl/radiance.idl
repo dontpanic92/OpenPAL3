@@ -864,6 +864,12 @@ interface IUiHost: IUnknown {
                     float x0, float y0, float x1, float y1,
                     float u0, float v0, float u1, float v1);
 
+    // Clockwise radians around an absolute logical-pixel pivot.
+    void image_rotated(int texture_com_id,
+                    float x0, float y0, float x1, float y1,
+                    float pivot_x, float pivot_y, float radians,
+                    float u0, float v0, float u1, float v1);
+
     // Vulkan foreground, viewport-clipped SRC_ALPHA/ONE overlay, after ordinary UI.
     // Other rendering backends omit these overlays.
     void image_rect_additive(int texture_com_id,

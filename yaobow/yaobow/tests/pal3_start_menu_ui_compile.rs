@@ -20,6 +20,9 @@ mod openpal3 {
 struct TestSlots;
 shared::ComObject_Pal3SaveSlots!(crate::TestSlots);
 impl IPal3SaveSlotsImpl for TestSlots {
+    fn thumbnail(&self, slot: i32) -> Option<ComRc<radiance_scripting::comdef::services::ISprite>> {
+        matches!(slot, 1 | 36).then(|| ComRc::from_object(Thumbnail))
+    }
     fn slot_count(&self) -> i32 {
         36
     }
@@ -47,6 +50,35 @@ impl IPal3SaveSlotsImpl for TestSlots {
     }
 }
 
+mod comdef {
+    pub use radiance_scripting::comdef::*;
+}
+struct Thumbnail;
+radiance_scripting::ComObject_Sprite!(crate::Thumbnail);
+impl radiance_scripting::comdef::services::ISpriteImpl for Thumbnail {
+    fn com_id(&self) -> i32 {
+        -12345
+    }
+    fn width(&self) -> i32 {
+        160
+    }
+    fn height(&self) -> i32 {
+        120
+    }
+    fn u0(&self) -> f32 {
+        0.
+    }
+    fn v0(&self) -> f32 {
+        0.
+    }
+    fn u1(&self) -> f32 {
+        1.
+    }
+    fn v1(&self) -> f32 {
+        1.
+    }
+}
+
 struct EmptyAtlas;
 shared::ComObject_Pal3UiAtlas!(crate::EmptyAtlas);
 impl IPal3UiAtlasImpl for EmptyAtlas {
@@ -70,6 +102,45 @@ fn pal3_start_menu_compiles_on_ui_framework() {
     host.set_script_assets(install_script_assets());
     host.load_source_from_path("/yaobow/openpal3/start_menu.p7")
         .expect("openpal3/start_menu.p7 must compile against radiance_scripting.ui");
+}
+
+#[test]
+fn native_taiji_accelerates_per_frame_clamps_and_reverses() {
+    let host = ScriptHost::new();
+    host.set_script_assets(install_script_assets());
+    host.load_source(
+        r#"
+        import yaobow.openpal3.start_menu;
+        pub fn make() -> &start_menu.TaijiMotion { &start_menu.TaijiMotion() }
+        pub fn step(m: &start_menu.TaijiMotion, closing: bool) -> float {
+            m.advance(closing); m.angle
+        }
+        pub fn reset(m: &start_menu.TaijiMotion) { m.reset(); }
+    "#,
+    )
+    .unwrap();
+    let motion = host.call_returning_data("make", vec![]).unwrap();
+    let step = |closing| {
+        host.call_returning_data("step", vec![motion.clone(), Data::Int(closing)])
+            .unwrap()
+    };
+    for frame in 1..=13 {
+        let Data::Float(angle) = step(0) else {
+            panic!("expected angle");
+        };
+        assert!(
+            (angle - (2.8 * frame as f64 + 0.25 * frame as f64 * (frame + 1) as f64)).abs()
+                < 0.0001
+        );
+    }
+    assert_eq!(step(0), Data::Float(82.));
+    assert_eq!(step(0), Data::Float(82.));
+    assert_eq!(step(1), Data::Float(78.7));
+    for _ in 0..13 {
+        step(1);
+    }
+    assert_eq!(step(1), Data::Float(0.));
+    host.call_void("reset", vec![motion]).unwrap();
 }
 
 #[test]
@@ -145,6 +216,12 @@ fn save_browser_pages_to_slot_36_rejects_bad_loads_and_confirms_overwrites() {
             .any(|c| matches!(c, UiCall::TextAt { s, .. } if s == "01:01:01"))
     );
     assert_eq!(click(true, 200.0, 82.0), Data::Int(1));
+    assert!(
+        recorder.calls.borrow().iter().any(|call| matches!(call,
+        UiCall::ImageRect { texture_com_id: -12345, x0, y0, x1, y1, .. }
+        if (*x0,*y0,*x1,*y1)==(970.,74.,1063.,143.))),
+        "standalone previews use the original row's 93x69 rectangle and letterboxing"
+    );
     assert_eq!(click(true, 200.0, 174.0), Data::Int(0));
     assert_eq!(click(true, 200.0, 266.0), Data::Int(0));
     frame(true, 200.0, 82.0, true, false, true);
@@ -158,6 +235,12 @@ fn save_browser_pages_to_slot_36_rejects_bad_loads_and_confirms_overwrites() {
     host.call_void("saving", vec![browser.clone(), slots])
         .unwrap();
     assert_eq!(click(false, 200.0, 60.0), Data::Int(0));
+    assert!(
+        recorder.calls.borrow().iter().any(|call| matches!(call,
+        UiCall::ImageRect { texture_com_id: -12345, x0, y0, x1, y1, .. }
+        if (*x0,*y0,*x1,*y1)==(902.,52.,995.,121.))),
+        "in-game save previews must use the same row-relative geometry"
+    );
     assert_eq!(
         host.call_returning_data("confirmation", vec![browser.clone()])
             .unwrap(),

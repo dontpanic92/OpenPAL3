@@ -60,6 +60,52 @@ pub struct Sprite {
     v1: f32,
 }
 
+/// Queues CPU images without borrowing the frame's already-borrowed texture cache.
+#[derive(Clone)]
+pub struct SpriteUploader {
+    pixels: super::texture_cache::PixelUploadQueue,
+    forgets: Rc<RefCell<Vec<i64>>>,
+}
+
+impl SpriteUploader {
+    pub fn new(cache: &ImguiTextureCache) -> Self {
+        Self {
+            pixels: cache.pending_pixels_sink(),
+            forgets: cache.pending_forgets_sink(),
+        }
+    }
+
+    pub fn upload(&self, rgba: Vec<u8>, width: u32, height: u32) -> Option<ComRc<ISprite>> {
+        if width == 0
+            || height == 0
+            || width > i32::MAX as u32
+            || height > i32::MAX as u32
+            || u64::from(width)
+                .checked_mul(u64::from(height))
+                .and_then(|n| n.checked_mul(4))
+                != Some(rgba.len() as u64)
+        {
+            return None;
+        }
+        let com_id = next_handle_com_id();
+        self.pixels.borrow_mut().push((com_id, rgba, width, height));
+        Some(Sprite::create(
+            Rc::new(AtlasPageInner {
+                com_id,
+                width: width as i32,
+                height: height as i32,
+                pending_forgets: self.forgets.clone(),
+            }),
+            width as i32,
+            height as i32,
+            0.,
+            0.,
+            1.,
+            1.,
+        ))
+    }
+}
+
 ComObject_Sprite!(super::Sprite);
 
 impl Sprite {

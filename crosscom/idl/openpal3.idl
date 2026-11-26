@@ -196,6 +196,7 @@ interface IPal3SaveSlots: IUnknown {
     int money(int slot);
     int member_role(int slot, int index);
     int role_level(int slot, int role);
+    ISprite? thumbnail(int slot);
 }
 
 [uuid(75c0c1a8-19e4-4bd0-84bb-d39c80c67ec5)]
@@ -226,6 +227,7 @@ interface IPal3MenuState: IUnknown {
     int item_category(int id);
     // Queues offscreen work; zero until this exact selection is ready.
     int item_preview_texture(int id, bool equipment);
+    int native_page_preview_texture(int page);
     IPal3SaveSlots save_slots();
     bool save_slot(int slot);
     // Deferred until the application's next pre-update, outside UI drawing.

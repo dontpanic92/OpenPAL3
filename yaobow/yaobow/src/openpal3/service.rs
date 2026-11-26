@@ -76,6 +76,7 @@ pub struct Pal3Service {
     /// boot by `YaobowApplicationLoader::on_loading`; the loaders return
     /// `None` when this slot is empty.
     texture_cache: RefCell<Option<Rc<RefCell<ImguiTextureCache>>>>,
+    thumbnail_uploader: RefCell<Option<radiance_scripting::services::sprite::SpriteUploader>>,
     /// Script-side factory (`IPal3ScriptFactory`) QI'd from the
     /// reverse-wrapped app root. Used by `create_director` to mint
     /// the scripted start menu. Cleared on app unload to break the
@@ -120,6 +121,7 @@ impl Pal3Service {
             app,
             asset_managers: RefCell::new(HashMap::new()),
             texture_cache: RefCell::new(None),
+            thumbnail_uploader: RefCell::new(None),
             script_factory: RefCell::new(None),
             last_asset_path: RefCell::new(None),
             last_game: Cell::new(GameType::PAL3),
@@ -134,6 +136,9 @@ impl Pal3Service {
     /// Install the imgui texture cache so the sprite/atlas loaders and
     /// dialog renderer can upload UI textures. Called once at boot.
     pub fn set_texture_cache(&self, cache: Rc<RefCell<ImguiTextureCache>>) {
+        *self.thumbnail_uploader.borrow_mut() = Some(
+            radiance_scripting::services::sprite::SpriteUploader::new(&cache.borrow()),
+        );
         *self.texture_cache.borrow_mut() = Some(cache);
     }
 
@@ -625,7 +630,10 @@ impl IPal3ServiceImpl for Pal3Service {
     }
 
     fn save_slots(&self) -> ComRc<shared::openpal3::comdef::IPal3SaveSlots> {
-        Pal3SaveSlots::snapshot(self.last_game.get().app_name())
+        Pal3SaveSlots::snapshot_with_thumbnails(
+            self.last_game.get().app_name(),
+            self.thumbnail_uploader.borrow().as_ref(),
+        )
     }
 
     fn load_menu_bgm(&self, asset_path: &str) -> Option<ComRc<IAudioSource>> {

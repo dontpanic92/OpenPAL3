@@ -39,6 +39,7 @@ pub struct Browser(
     pub confirmation: int,
     pub feedback: string,
     action: int,
+    selected: int = 0,
 ) {
     pub fn begin(self: &Self, slots: &openpal3.IPal3SaveSlots, saving: bool) {
         self.slots = slots;
@@ -47,6 +48,7 @@ pub struct Browser(
         self.held = -1;
         self.confirmation = 0;
         self.feedback = "";
+        self.selected = 0;
     }
 
     fn button(self: &Self, id: int, over: bool, press: bool, release: bool) -> bool {
@@ -132,6 +134,7 @@ pub struct Browser(
                         c.blit(ROOT + if self.saving { "cc.tga" } else { "dq.tga" },
                             x + 62.0, y + 12.0, 29.0, 64.0);
                         if status == 1 {
+                            if background_input && over { self.selected = slot; }
                             let names: array<string> = ["jt", "xj", "lk", "zx", "cq"];
                             for i in Range(0, 5) {
                                 let role = slots.member_role(slot, i);
@@ -146,6 +149,16 @@ pub struct Browser(
                                 two((seconds / 60) % 60) + ":" + two(seconds % 60), false);
                             c.text(x + 312.0, y + 29.0, slots.scene(slot), false);
                             c.text(x + 312.0, y + 52.0, "金钱 " + number(slots.money(slot)), false);
+                            // Original 0x4b1bb2: selected row's image at (+490,+12), 93x69.
+                            if self.selected == slot {
+                                let thumbnail = slots.thumbnail(slot);
+                                if thumbnail != null {
+                                    let sp = thumbnail!;
+                                    ui.image_rect(sp.com_id(), c.x + (x + 490.0) * scale,
+                                        c.y + (y + 12.0) * scale, c.x + (x + 583.0) * scale,
+                                        c.y + (y + 81.0) * scale, sp.u0(), sp.v0(), sp.u1(), sp.v1());
+                                }
+                            }
                         } else {
                             c.text(x + 312.0, y + 29.0, if status == 0 { "空存档" } else { "存档损坏或不完整" }, false);
                         }

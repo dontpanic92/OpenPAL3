@@ -52,6 +52,7 @@ pub struct MenuState(
     click_cycle: int = 0, was_down: bool = false, second_click: bool = false,
     target_hint: int = -1,
     arrow_y: int = 6, arrow_back: bool = false, arrow_time: int = -1,
+    magic_category: int = 0, sword_element: int = 0, book_category: int = 0,
 ) {
     // Original 0x402a90: release-idle >100ms resets the cycle, not press duration.
     pub fn tick(self: &Self, now: int, down: bool) -> bool {
@@ -133,11 +134,14 @@ pub struct MenuState(
         let modal = self.browser.confirmation > 0 || exiting;
         ui.fill_rect(0.0, 0.0, viewport.w, viewport.h, 0.0, 0.0, 0.0, 0.8);
 
-        let frames: array<string> = ["State", "Prop", "Equip"];
+        let frames: array<string> = ["State", "Prop", "Equip", "Magic", "Lineup"];
         if self.tab != 7 {
-            c.blit(ROOT + frames[self.tab] + "/Frame.tga", 592.0, 18.0, 192.0, 526.0);
+            if self.tab < 5 {
+                let left = if self.tab == 4 { 631.0 } else { 592.0 };
+                c.blit(ROOT + frames[self.tab] + "/Frame.tga", left, 18.0, 784.0 - left, 526.0);
+            }
             c.blit(COMMON + "Frame_Line.tga", 784.0, 44.0, 17.0, 526.0);
-            c.blit(COMMON + "TimeMoney.tga", 579.0, 0.0, 203.0, 64.0);
+            c.blit(COMMON + "TimeMoney.tga", if self.tab < 3 { 579.0 } else { 596.0 }, 0.0, 203.0, 64.0);
         }
 
         if gameplay.available() && self.tab != 7 {
@@ -157,7 +161,7 @@ pub struct MenuState(
                 self.role = game.member_role(0);
                 if self.held == 300 { self.held = -1; }
             }
-            for i in Range(0, 4) {
+            for i in Range(0, if self.tab <= 3 { 4 } else { 0 }) {
                 let role = game.member_role(self.party_page + i);
                 if role >= 0 {
                     if self.tab == 0 { paint_character(c, game, role, i); }
@@ -190,7 +194,7 @@ pub struct MenuState(
             }
             // The native layout has four visible slots; page a fifth member
             // instead of silently omitting a valid party member.
-            if count > 4 {
+            if count > 4 && self.tab <= 3 {
                 c.text(608.0, 524.0, "切换队员", true);
                 if self.button(40, inside(nx, ny, 600.0, 518.0, 164.0, 24.0), press, release) {
                     self.party_page = if self.party_page == 0 { 4 } else { 0 };
@@ -198,6 +202,10 @@ pub struct MenuState(
             }
             if self.tab == 1 { self.paint_inventory(c, game, nx, ny, press, release, down); }
             if self.tab == 2 { self.paint_equipment(c, game, nx, ny, press, release, down); }
+            if self.tab == 3 { self.paint_magic(c, game, nx, ny, press, release); }
+            if self.tab == 4 { self.paint_formation(c, game, nx, ny, press, release, down); }
+            if self.tab == 5 { self.paint_sword(c, game, nx, ny, press, release); }
+            if self.tab == 6 { self.paint_handbook(c, game, nx, ny, press, release); }
             if count == 0 && self.tab == 0 { c.text(190.0, 240.0, "队伍中没有角色", true); }
         } else if !gameplay.available() {
             c.text(180.0, 240.0, "此游戏的角色与物品数据尚未接入", true);
@@ -210,7 +218,7 @@ pub struct MenuState(
         for i in Range(0, 8) {
             let x = 38.0 + (i as float) * 88.0;
             let over = !modal && inside(nx, ny, x + 35.0, 551.0, 39.0, 40.0);
-            let enabled = (i < 3 || i == 7) && gameplay.available();
+            let enabled = gameplay.available();
             let mut name = TOOLBAR + tabs[i] + "0.tga";
             if self.tab == i {
                 name = TOOLBAR + "Un" + tabs[i] + ".tga";
@@ -292,6 +300,93 @@ pub struct MenuState(
         if !down { self.held = -1; }
         self.second_click = false;
         return !close;
+    }
+
+    fn paint_magic(self: &Self, c: &Canvas, game: &openpal3.IPal3MenuState,
+        nx: float, ny: float, press: bool, release: bool) {
+        paint_item_header(c, game, self.role, false);
+        c.blit(ROOT + "Magic/ListFrame.tga", 213.0, 125.0, 373.0, 394.0);
+        c.blit(ROOT + "Magic/Info.tga", 10.0, 125.0, 190.0, 414.0);
+        c.blit(ROOT + "Magic/xs.tga", 18.0, 128.0, 176.0, 242.0);
+        let tabs: array<string> = ["Skill", "Shui", "Huo", "Lei", "Feng", "Tu", "Suang", "Combo"];
+        for i in Range(0, 8) {
+            let x = if i == 7 { 529.0 } else { 229.0 + (i as float) * 43.0 };
+            let over = inside(nx, ny, x, 124.0, 42.0, 50.0);
+            let variant = if self.magic_category == i { "2" } else { if over { "1" } else { "0" } };
+            c.blit(ROOT + "Magic/" + tabs[i] + variant + ".tga", x, 124.0, 42.0, 50.0);
+            if self.button(400 + i, over, press, release) { self.magic_category = i; }
+        }
+        for i in Range(0, 10) {
+            c.blit(ROOT + "Magic/Skill_Grid.tga", 232.0, 207.0 + (i as float) * 29.0, 333.0, 29.0);
+        }
+        c.text(240.0, 486.0, "仙术数据与施放尚未接入", false);
+    }
+
+    fn paint_formation(self: &Self, c: &Canvas, game: &openpal3.IPal3MenuState,
+        nx: float, ny: float, press: bool, release: bool, down: bool) {
+        c.blit(ROOT + "Lineup/RoleFrame.tga", 0.0, 0.0, 488.0, 110.0);
+        let xs: array<float> = [50.0, 136.0, 216.0, 296.0, 376.0];
+        for i in Range(0, 5) {
+            let role = game.member_role(i);
+            let x = xs[i];
+            let over = role >= 0 && inside(nx, ny, x, 24.0, 55.0, 57.0);
+            let variant = if self.role == role { "1" } else { if over && down { "2" } else { "0" } };
+            let name = if role < 0 { "NoBody" } else { "Head" + int_str(role) + variant };
+            c.blit(ROOT + "Lineup/" + name + ".tga", x, 24.0, 55.0, 57.0);
+            if self.button(420 + i, over, press, release) { self.role = role; }
+        }
+        c.blit(ROOT + "Lineup/zhenlie.tga", 100.0, 95.0, 42.0, 223.0);
+        paint_page_preview(c, game, 4);
+        if self.role >= 0 {
+            c.text(646.0, 76.0, role_name(self.role), false);
+            c.text(646.0, 108.0, "等级 " + int_str(game.role_value(self.role, 0)), false);
+        }
+        c.text(156.0, 494.0, "阵位与领队调整尚未接入", true);
+    }
+
+    fn paint_sword(self: &Self, c: &Canvas, game: &openpal3.IPal3MenuState,
+        nx: float, ny: float, press: bool, release: bool) {
+        c.blit(ROOT + "Sword/SwordRemark.tga", 264.0, 2.0, 218.0, 356.0);
+        c.blit(ROOT + "Sword/SwordFrame.tga", 260.0, 2.0, 256.0, 534.0);
+        c.blit(ROOT + "Sword/UnLongjingshi.tga", 672.0, 48.0, 112.0, 112.0);
+        c.blit(ROOT + "Sword/wulingControl.tga", 690.0, 131.0, 105.0, 388.0);
+        paint_page_preview(c, game, 5);
+        let elements: array<string> = ["shui", "huo", "lei", "feng", "tu"];
+        let icons: array<string> = ["Shui", "Huo", "Lei", "Feng", "Tu"];
+        let ys: array<float> = [146.0, 219.0, 293.0, 367.0, 442.0];
+        for i in Range(0, 5) {
+            for side in Range(0, 2) {
+                let x = if side == 0 { 694.0 } else { 730.0 };
+                c.blit(ROOT + "Sword/WuLingBtn/" + elements[i] +
+                    if side == 0 { "_lunar0.tga" } else { "_Positive0.tga" },
+                    x, ys[i] + (side as float), 43.0, 51.0);
+            }
+            // Selecting a description is read-only; never paint purification/progress overlays.
+            if self.button(440 + i, inside(nx, ny, 690.0, ys[i], 88.0, 51.0), press, release) {
+                self.sword_element = i;
+            }
+        }
+        c.blit(ROOT + "Sword/Sword_" + icons[self.sword_element] + ".tga", 470.0, 10.0, 32.0, 32.0);
+        c.text(280.0, 456.0, "净化与五灵养成", false);
+        c.text(280.0, 480.0, "尚未接入", false);
+    }
+
+    fn paint_handbook(self: &Self, c: &Canvas, game: &openpal3.IPal3MenuState,
+        nx: float, ny: float, press: bool, release: bool) {
+        paint_page_preview(c, game, 6);
+        let names: array<string> = ["Gods", "Immortal", "Ghost", "Demon", "Human", "Magic"];
+        for i in Range(0, 6) {
+            let y = 86.0 + (i as float) * 50.0;
+            let selected = self.book_category == i;
+            c.blit(ROOT + "JusticeBook/" + names[i] + if selected { "1.tga" } else { "0.tga" },
+                706.0, y, 82.0, 25.0);
+            if self.button(460 + i, inside(nx, ny, 706.0, y, 82.0, 25.0), press, release) {
+                self.book_category = i;
+            }
+        }
+        c.blit(ROOT + "JusticeBook/UnUp.tga", 68.0, 368.0, 22.0, 36.0);
+        c.blit(ROOT + "JusticeBook/UnDw.tga", 690.0, 368.0, 22.0, 36.0);
+        c.text(156.0, 500.0, "图鉴记录尚未接入", true);
     }
 
     fn paint_inventory(self: &Self, c: &Canvas, game: &openpal3.IPal3MenuState,
@@ -532,6 +627,14 @@ pub struct MenuState(
 pub fn make_menu() -> &MenuState {
     return &MenuState(0, 0, 0, 0, 0, 5, -1, 0, 0, false, 0, 0, false, "", save_load.make_browser(),
         save_load.make_audio_controls(), false);
+}
+
+fn paint_page_preview(c: &Canvas, game: &openpal3.IPal3MenuState, page: int) {
+    let texture = game.native_page_preview_texture(page);
+    if texture != 0 {
+        c.ui.image_rect(texture, c.x, c.y, c.x + 800.0 * c.scale, c.y + 600.0 * c.scale,
+            0.0, 0.0, 1.0, 1.0);
+    }
 }
 
 fn has_item_target(game: &openpal3.IPal3MenuState, item: int) -> bool {

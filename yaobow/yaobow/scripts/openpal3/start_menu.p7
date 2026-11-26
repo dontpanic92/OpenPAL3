@@ -1,7 +1,7 @@
 // PAL3 cover and standalone load screen. Cover coordinates are reconstructed
 // from the original executable's 0x44c120 constructor; PAL3A keeps its existing
-// layout. New Game, Load, and Exit are functional; the other cover pages and
-// the original taiji rotation remain unfinished.
+// layout. New Game, Load, and Exit are functional; the other cover pages
+// remain unavailable.
 
 import radiance;
 import scripting_services;
@@ -67,21 +67,7 @@ let BEIJING_Y: float            = 80.0;
 let LOG0_X: float               = 212.0;
 let LOG0_Y: float               = 230.0;
 
-// Taiji discs (334×439 each) are the rotating yin-yang ornaments.
-// In the original game they sit centred behind the dial frame so
-// only their inner edge is visible through `beijing`'s aperture as
-// they slowly rotate. v1 paints them statically and BELOW beijing
-// so they don't cover the dial frame.
-// Taiji "open" animation. The two yin-yang discs (334×439) start
-// near the dial centre — overlapping so they together cover the
-// dial aperture — and slide outward to the screen edges over
-// `TAIJI_ANIM_DURATION` seconds, like sliding doors revealing the
-// menu interior. Ease-out cubic for a smooth feel.
-//
-// Start positions: chosen so TaijiA's right edge meets TaijiB's
-// left edge a little past centre, covering the dial aperture.
-// End positions: far enough off-canvas that both discs fully clear
-// the dial frame (dial spans x ∈ [BEIJING_X, BEIJING_X+442]).
+// Legacy PAL3A motion, unchanged until its executable is researched.
 let TAIJI_A_START_X: float      = 175.0;
 let TAIJI_A_END_X: float        = -175.0;
 let TAIJI_B_START_X: float      = 280.0;
@@ -90,6 +76,34 @@ let TAIJI_A_Y: float            = 80.0;
 let TAIJI_B_Y: float            = 80.0;
 let TAIJI_ANIM_DURATION: float  = 0.4;
 let TAIJI_WAIT_DURATION: float = 0.2;
+
+// Original 0x44e241 / 0x442ff0: degrees per update, not degrees per second.
+pub struct TaijiMotion(pub angle: float = 0.0, pub step: float = 2.8) {
+    pub fn reset(self: &Self) { self.angle = 0.0; self.step = 2.8; }
+    pub fn advance(self: &Self, closing: bool) {
+        if (!closing && self.angle >= 82.0) || (closing && self.angle <= 0.0) { return; }
+        self.step = self.step + 0.5;
+        self.angle = self.angle + if closing { -self.step } else { self.step };
+        if self.angle >= 82.0 { self.angle = 82.0; self.step = 2.8; }
+        if self.angle <= 0.0 { self.angle = 0.0; self.step = 2.8; }
+    }
+}
+
+struct[gui.Element] Taiji(
+    sprite: ?&scripting_services.ISprite,
+    nx: float, ny: float, pivot_x: float, pivot_y: float, degrees: float,
+) {
+    fn measure(self: ref<Self>, avail: gui.Size, ui: &radiance.IUiHost) -> gui.Size { avail }
+    fn paint(self: ref<Self>, rect: gui.Rect, ui: &radiance.IUiHost, ctx: box<gui.UiCtx>) {
+        if self.sprite == null || rect.is_empty() { return; }
+        let sp = self.sprite!;
+        let s = rect.w / 800.0;
+        ui.image_rotated(sp.com_id(), rect.x + self.nx * s, rect.y + self.ny * s,
+            rect.x + (self.nx + 332.0) * s, rect.y + (self.ny + 436.0) * s,
+            rect.x + self.pivot_x * s, rect.y + self.pivot_y * s,
+            -self.degrees * 0.017453292519943295, sp.u0(), sp.v0(), sp.u1(), sp.v1());
+    }
+}
 
 // Cloud band: 18 yun sprites (yun0..yun17) drifting right→left at
 // varied speeds across the sky band (y ≈ 100–250). Each cloud has
@@ -214,6 +228,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal3StartMenuDirector(
     pub ctx: box<gui.UiCtx>,
     pub browser: &save_load.Browser,
     pub load_prev_down: bool,
+    pub taiji: &TaijiMotion = &TaijiMotion(),
 ) {
     pub fn activate(self: &Self) -> int {
         // When an intro movie is queued we postpone BGM start until
@@ -232,6 +247,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal3StartMenuDirector(
             self.taiji_t = 0.0;
         }
         self.closing = false;
+        self.taiji.reset();
         self.activated = true;
         0
     }
@@ -260,6 +276,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal3StartMenuDirector(
         // before the user sees a single frame. 0.1 s matches the cap
         // used by the editor's `PreviewRegistry::render_all`.
         let anim_dt = if dt > 0.1 { 0.1 } else { dt };
+        if self.intro == null { self.taiji.advance(self.closing); }
         if self.closing {
             // Reverse the taiji-open animation: taiji_t decreases
             // until it hits 0, which mirrors the original (wait
@@ -269,6 +286,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal3StartMenuDirector(
                 self.taiji_t = self.taiji_t - anim_dt;
                 if self.taiji_t < 0.0 {
                     self.taiji_t = 0.0;
+                    self.taiji.reset();
                 }
             }
         } else {
@@ -350,8 +368,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal3StartMenuDirector(
         if self.atlas == null {
             return self.build_missing();
         }
-        // Compute the eased taiji disc positions from `taiji_t` (read
-        // only here; `render` advances the timer).
+        // PAL3A retains eased sliding; PAL3 uses the frame-stepped angle.
         let mut tnorm = (self.taiji_t - TAIJI_WAIT_DURATION) / (TAIJI_ANIM_DURATION - TAIJI_WAIT_DURATION);
         if tnorm > 1.0 { tnorm = 1.0; }
         if tnorm < 0.0 { tnorm = 0.0; }
@@ -362,7 +379,9 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal3StartMenuDirector(
 
         let cover = build_cover(
             self.atlas!, self.cloud_x, self.cloud_y, self.cloud_names,
-            ax, bx, (wid: int) => { self.dispatch_click(wid); },
+            ax, bx, self.taiji.angle, (wid: int) => {
+                if !self.closing { self.dispatch_click(wid); }
+            },
         );
 
         let items: array<box<gui.Element>> = [cover];
@@ -430,7 +449,8 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal3StartMenuDirector(
         // Already closing: do not honour new intents; just fire
         // exit_app once the reverse taiji animation has fully played.
         if self.closing {
-            if self.taiji_t <= 0.0 {
+            let native = self.atlas != null && self.atlas!.has_sprite(BTN_QIANCHENYIMENG_BASE + "0.tga");
+            if (native && self.taiji.angle <= 0.0) || (!native && self.taiji_t <= 0.0) {
                 self.host.pal3().exit_app();
                 // Latch so we don't repeatedly call exit_app while
                 // the engine shuts down across the next few frames.
@@ -458,8 +478,9 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal3StartMenuDirector(
             },
             Intent.Exit => {
                 // Start the reverse-open animation. exit_app is fired from the
-                // closing branch above when taiji_t hits 0.
+                // closing branch above when the cover finishes closing.
                 self.closing = true;
+                self.taiji.step = 2.8;
             },
             Intent.None => {},
         }
@@ -472,7 +493,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal3StartMenuDirector(
 // Everything here is authored in the original 800x600 canvas coordinates.
 // `NativeCanvas` letterbox-fits that canvas into the viewport and clips to it,
 // so nothing in this file computes a scale factor or an origin offset, and the
-// drifting clouds / sliding taiji discs are trimmed at the canvas edge by the
+// drifting clouds / moving taiji discs are trimmed at the canvas edge by the
 // host clip rect.
 //
 // This replaces a screen-local `Pal3Cover` element plus three free helpers:
@@ -490,6 +511,7 @@ fn build_cover(
     // director from `taiji_t`.
     taiji_ax: float,
     taiji_bx: float,
+    taiji_angle: float,
     on_click: fn(int),
 ) -> box<gui.Element> {
     // PAL3A (问情篇) ships abbreviated cover-button names in UIArtist.plug;
@@ -506,11 +528,15 @@ fn build_cover(
     let mut items: array<box<gui.Element>> = [
         // Dial frame.
         spr(atlas, SPR_BG, if a { BEIJING_X } else { 169.0 }, BEIJING_Y),
-        // Sliding taiji discs, drawn BEFORE ditu so once they fully slide
-        // outward they tuck behind the ornate frame.
-        spr(atlas, SPR_TAIJI_A, taiji_ax, TAIJI_A_Y),
-        spr(atlas, SPR_TAIJI_B, taiji_bx, TAIJI_B_Y),
     ];
+    if a {
+        items.push(spr(atlas, SPR_TAIJI_A, taiji_ax, TAIJI_A_Y));
+        items.push(spr(atlas, SPR_TAIJI_B, taiji_bx, TAIJI_B_Y));
+    } else {
+        // 0x443200 rotates around rect centre + (pivot - screen centre).
+        items.push(box(Taiji(atlas.sprite(SPR_TAIJI_A), 170.0, 83.0, 342.0, 591.0, taiji_angle)));
+        items.push(box(Taiji(atlas.sprite(SPR_TAIJI_B), 278.0, 86.0, 380.0, 32.0, taiji_angle)));
+    }
 
     // Drifting clouds (positions advanced by the director each frame).
     for i in Range(0, YUN_COUNT) {

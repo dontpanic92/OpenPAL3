@@ -17,12 +17,12 @@ use radiance_scripting::{
     services::{render_target::ScriptedRenderTarget, texture_cache::ImguiTextureCache},
 };
 
-use super::{asset_manager::AssetManager, loaders::pol::create_item_preview};
+use super::{asset_manager::AssetManager, loaders::pol::create_menu_preview};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-struct Selection {
-    id: i32,
-    equipment: bool,
+enum Selection {
+    Item { id: i32, equipment: bool },
+    Page(i32),
 }
 
 struct ActivePreview {
@@ -62,7 +62,17 @@ impl MenuPreview {
     }
 
     pub fn request(&self, id: i32, equipment: bool) -> i32 {
-        let selection = Selection { id, equipment };
+        self.request_selection(Selection::Item { id, equipment })
+    }
+
+    pub fn request_page(&self, page: i32) -> i32 {
+        if !matches!(page, 4..=6) {
+            return 0;
+        }
+        self.request_selection(Selection::Page(page))
+    }
+
+    fn request_selection(&self, selection: Selection) -> i32 {
         self.requested.set(Some(selection));
         if self.selected == Some(selection) {
             self.active.as_ref().map_or(0, |p| p.texture.texture_id())
@@ -89,48 +99,105 @@ impl MenuPreview {
             return;
         };
         // PAL3unpacked.exe 0x4390e2 / 0x439b0e: 98 degrees per second.
-        self.angle = (self.angle + dt * 98.).rem_euclid(360.);
-        preview
-            .entity
-            .transform()
-            .borrow_mut()
-            .clear_rotation()
-            .rotate_axis_angle(&Vec3::new(0., 1., 0.), self.angle.to_radians());
+        if matches!(self.selected, Some(Selection::Item { .. })) {
+            self.angle = (self.angle + dt * 98.).rem_euclid(360.);
+            preview
+                .entity
+                .transform()
+                .borrow_mut()
+                .clear_rotation()
+                .rotate_axis_angle(&Vec3::new(0., 1., 0.), self.angle.to_radians());
+        }
         preview.scene.update(0.);
         engine.render_scene_to_target(preview.scene.clone(), &mut **preview.target.borrow_mut());
     }
 
     fn prepare(&self, selection: Selection) -> Option<ActivePreview> {
-        let data = self.assets.stats_data();
-        let item = data.item(selection.id as u32)?;
-        let (model, texture) = item_paths(item)?;
-        let entity = match create_item_preview(
-            &self.assets.component_factory(),
-            self.assets.vfs(),
-            &model,
-            &texture,
-        ) {
-            Ok(entity) => entity,
-            Err(error) => {
-                log::warn!("Cannot preview PAL3 item {}: {error}", selection.id);
-                return None;
+        let (entity, (size, x, y)) = match selection {
+            Selection::Item { id, equipment } => {
+                let data = self.assets.stats_data();
+                let item = data.item(id as u32)?;
+                let (model, texture) = item_paths(item)?;
+                let entity = match create_menu_preview(
+                    &self.assets.component_factory(),
+                    self.assets.vfs(),
+                    &model,
+                    Some(&texture),
+                ) {
+                    Ok(entity) => entity,
+                    Err(error) => {
+                        log::warn!("Cannot preview PAL3 item {id}: {error}");
+                        return None;
+                    }
+                };
+                (entity, framing(item, equipment))
+            }
+            Selection::Page(page) => {
+                use mini_fs::StoreExt;
+                let root = "/basedata/basedata/ui/GameMainUI/";
+                let (path, framing) = if page == 4 {
+                    (format!("{root}Lineup/wl.pol"), (0., 0., 0.))
+                } else if page == 5 {
+                    (format!("{root}SWORD/Data/Sword.pol"), (100., 392., 400.))
+                } else {
+                    (
+                        format!("{root}JusticeBook/CVD/close.CVD"),
+                        (126., 566., 298.),
+                    )
+                };
+                self.assets.vfs().open(&path).ok()?;
+                let entity = if page != 6 {
+                    create_menu_preview(
+                        &self.assets.component_factory(),
+                        self.assets.vfs(),
+                        &path,
+                        None,
+                    )
+                    .ok()?
+                } else {
+                    super::scene::create_entity_from_cvd_model(
+                        self.assets.component_factory(),
+                        self.assets.vfs(),
+                        &path,
+                        path.clone(),
+                        true,
+                    )
+                };
+                (entity, framing)
             }
         };
         let scene = CoreScene::create();
+        if matches!(selection, Selection::Page(_)) {
+            scene.set_lighting(radiance::scene::SceneLighting::new([1.; 3], Vec::new()));
+        }
         scene.add_entity(entity.clone());
         scene.load();
         {
             let mut camera = scene.camera_mut();
-            let (size, x, y) = framing(item, selection.equipment);
             camera.set_aspect(800. / 600.);
-            camera.set_orthographic(size * 1.5);
-            // Native 0x439930: screen anchor -> orthographic look-at.
-            let x = -(x * 2. / 800. - 1.) * size;
-            let y = -(1. - y * 2. / 600.) * size;
-            camera
-                .transform_mut()
-                .set_position(&Vec3::new(x, y + 600., 1600.))
-                .look_at(&Vec3::new(x, y, 0.));
+            if selection == Selection::Page(4) {
+                // Native 0x48322a / 0x483b65: orbit pitch -38, eye distance 400, FOV 50.
+                let pitch = 38_f32.to_radians();
+                entity
+                    .transform()
+                    .borrow_mut()
+                    .set_position(&Vec3::new(-30., 30., 0.));
+                camera.set_fov43(50_f32.to_radians());
+                camera
+                    .transform_mut()
+                    .set_position(&Vec3::new(0., 50. + 400. * pitch.sin(), 400. * pitch.cos()))
+                    .look_at(&Vec3::new(0., 50., 0.))
+                    .rotate_axis_angle_local(&Vec3::new(0., 0., 1.), 3.2_f32.to_radians());
+            } else {
+                camera.set_orthographic(size * 1.5);
+                // Native 0x439930: screen anchor -> orthographic look-at.
+                let x = -(x * 2. / 800. - 1.) * size;
+                let y = -(1. - y * 2. / 600.) * size;
+                camera
+                    .transform_mut()
+                    .set_position(&Vec3::new(x, y + 600., 1600.))
+                    .look_at(&Vec3::new(x, y, 0.));
+            }
         }
         let mut target = self
             .assets

@@ -31,6 +31,88 @@ fn pal3_status_ui_and_state_menu_compile() {
 }
 
 #[test]
+fn newly_opened_menu_leaves_one_clean_hud_frame_for_thumbnail_capture() {
+    let host = ScriptHost::new();
+    host.set_script_assets(install_script_assets());
+    host.load_source(
+        r#"
+        import radiance;
+        import scripting_services;
+        import shared.openpal3;
+        import yaobow.openpal3.status_ui;
+        pub fn make(sprites: &scripting_services.ISpriteService,
+            atlas: &openpal3.IPal3UiAtlas) -> &openpal3.IPal3StatusRenderer {
+            status_ui.make_pal3_status_renderer(sprites, atlas)
+        }
+        pub fn open(renderer: &openpal3.IPal3StatusRenderer, opened: bool) {
+            renderer.set_menu_open(opened);
+        }
+        pub fn frame(renderer: &openpal3.IPal3StatusRenderer,
+            ui: &radiance.IUiHost, game: &openpal3.IPal3MenuState) {
+            renderer.render_status(ui, 0.0, game);
+        }
+    "#,
+    )
+    .unwrap();
+    let (recorder, ui) = RecordingUiHost::create();
+    recorder.set_display_size(800, 600);
+    let ui_id = host.intern(ui);
+    let sprites_id = host.intern(ComRc::<ISpriteService>::from_object(TestSprites));
+    let atlas_id = host.intern(ComRc::<IPal3UiAtlas>::from_object(TestAtlas));
+    let game_id = host.intern(Pal3MenuState::create(
+        Rc::new(RefCell::new(PersistentState::new("capture-test".into()))),
+        Some(Rc::new(menu_data())),
+    ));
+    let renderer = host
+        .call_returning_data(
+            "make",
+            vec![
+                host.foreign_box(
+                    "radiance_scripting.comdef.services.ISpriteService",
+                    sprites_id,
+                )
+                .unwrap(),
+                host.foreign_box("shared.openpal3.comdef.IPal3UiAtlas", atlas_id)
+                    .unwrap(),
+            ],
+        )
+        .unwrap();
+    let frame = || {
+        recorder.calls.borrow_mut().clear();
+        host.call_void(
+            "frame",
+            vec![
+                renderer.clone(),
+                host.foreign_box("radiance.comdef.IUiHost", ui_id).unwrap(),
+                host.foreign_box("shared.openpal3.comdef.IPal3MenuState", game_id)
+                    .unwrap(),
+            ],
+        )
+        .unwrap();
+        recorder.calls.borrow().iter().any(|call| {
+            matches!(call,
+            UiCall::ImageRect {texture_com_id,..}
+            if *texture_com_id == sprite_id("ui/GameMainUI/Communal/StpCtl/StpBarL.tga"))
+        })
+    };
+    for _ in 0..2 {
+        host.call_void("open", vec![renderer.clone(), Data::Int(1)])
+            .unwrap();
+        assert!(
+            !frame(),
+            "the first open frame must remain free of menu chrome"
+        );
+        assert!(
+            frame(),
+            "the menu appears after pre-update can capture the HUD"
+        );
+        host.call_void("open", vec![renderer.clone(), Data::Int(0)])
+            .unwrap();
+        assert!(!frame());
+    }
+}
+
+#[test]
 fn native_loading_screen_crops_progress_animates_and_resets_on_letterboxed_canvas() {
     let host = ScriptHost::new();
     host.set_script_assets(install_script_assets());
@@ -1350,6 +1432,52 @@ fn menu_renders_live_party_and_release_latched_inventory_equipment_navigation() 
     assert!(recorder.calls.borrow().iter().any(|call| matches!(call,
         UiCall::ImageRect { texture_com_id, .. }
             if *texture_com_id == sprite_id("ui/GameMainUI/System/MusicBar.tga"))));
+    let unchanged = serde_json::to_value(&*state.borrow()).unwrap();
+    for (tab, art, x, y, selected_art) in [
+        (3, "Magic/ListFrame.tga", 692., 144., "Magic/Shui2.tga"),
+        (4, "Lineup/RoleFrame.tga", 546., 40., "Lineup/Head11.tga"),
+        (
+            5,
+            "Sword/SwordFrame.tga",
+            1110.,
+            390.,
+            "Sword/Sword_Feng.tga",
+        ),
+        (
+            6,
+            "JusticeBook/UnUp.tga",
+            1142.,
+            348.,
+            "JusticeBook/Magic1.tga",
+        ),
+    ] {
+        let toolbar_x = 493. + tab as f64 * 88.;
+        frame(toolbar_x, 570., true, false, true);
+        frame(toolbar_x, 570., false, true, false);
+        frame(0., 0., false, false, false);
+        assert!(
+            recorder.calls.borrow().iter().any(|call| matches!(call,
+            UiCall::ImageRect { texture_com_id, .. }
+            if *texture_com_id == sprite_id(&format!("ui/GameMainUI/{art}")))),
+            "{art}"
+        );
+        frame(x, y, true, false, true);
+        frame(x, y, false, true, false);
+        frame(0., 0., false, false, false);
+        assert!(
+            recorder.calls.borrow().iter().any(|call| matches!(call,
+            UiCall::ImageRect { texture_com_id, .. }
+            if *texture_com_id == sprite_id(&format!("ui/GameMainUI/{selected_art}")))),
+            "{selected_art}"
+        );
+        frame(800., 300., true, false, true);
+        frame(800., 300., false, true, false);
+        assert_eq!(
+            serde_json::to_value(&*state.borrow()).unwrap(),
+            unchanged,
+            "visual navigation and unsupported gameplay controls must not alter saves"
+        );
+    }
     frame(1180.0, 570.0, true, false, true);
     assert_eq!(frame(1180.0, 570.0, false, true, false), Data::Int(0));
 }

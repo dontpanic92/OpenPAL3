@@ -439,6 +439,11 @@ impl SceState {
     ) {
         self.menu_state
             .inner::<crate::openpal3::menu_state::Pal3MenuState>()
+            .install_thumbnail_uploader(radiance_scripting::services::sprite::SpriteUploader::new(
+                &cache.borrow(),
+            ));
+        self.menu_state
+            .inner::<crate::openpal3::menu_state::Pal3MenuState>()
             .install_preview(crate::openpal3::menu_preview::MenuPreview::new(
                 self.asset_mgr.clone(),
                 cache,
@@ -449,6 +454,15 @@ impl SceState {
         self.menu_state
             .inner::<crate::openpal3::menu_state::Pal3MenuState>()
             .render_preview(self.status_renderer.is_menu_open(), engine);
+    }
+
+    pub(crate) fn capture_save_thumbnail(
+        &self,
+        engine: &mut dyn radiance::rendering::RenderingEngine,
+    ) {
+        self.menu_state
+            .inner::<crate::openpal3::menu_state::Pal3MenuState>()
+            .capture_save_thumbnail(engine);
     }
 
     pub fn take_menu_exit(&self) -> bool {

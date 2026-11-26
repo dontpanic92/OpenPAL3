@@ -19,6 +19,8 @@ struct CachedTexture {
     id: TextureId,
 }
 
+pub(crate) type PixelUploadQueue = Rc<RefCell<Vec<(i64, Vec<u8>, u32, u32)>>>;
+
 pub struct ImguiTextureCache {
     factory: Rc<dyn ComponentFactory>,
     cache: HashMap<i64, CachedTexture>,
@@ -31,6 +33,7 @@ pub struct ImguiTextureCache {
     /// texture dropped mid-frame is not freed while the GPU may still be
     /// sampling it this frame.
     pending_forgets: Rc<RefCell<Vec<i64>>>,
+    pending_pixels: PixelUploadQueue,
     /// External texture-id updates queued by handles that produce a
     /// fresh `imgui::TextureId` every frame (e.g. `VideoHandle`) and
     /// therefore can't borrow the cache directly from inside an
@@ -72,6 +75,7 @@ impl ImguiTextureCache {
             factory,
             cache: HashMap::new(),
             pending_forgets: Rc::new(RefCell::new(Vec::new())),
+            pending_pixels: Rc::new(RefCell::new(Vec::new())),
             pending_external_updates: Rc::new(RefCell::new(Vec::new())),
             frame_counter: 0,
             deletion_queue: Vec::new(),
@@ -87,6 +91,10 @@ impl ImguiTextureCache {
         self.pending_forgets.clone()
     }
 
+    pub(crate) fn pending_pixels_sink(&self) -> PixelUploadQueue {
+        self.pending_pixels.clone()
+    }
+
     /// Shared queue handle for `set_external`-equivalent updates that
     /// must happen mid-frame (when the cache is borrowed by the
     /// imgui pump). See `pending_external_updates` field doc.
@@ -95,6 +103,10 @@ impl ImguiTextureCache {
     }
 
     fn drain_pending(&mut self) {
+        let pixels = std::mem::take(&mut *self.pending_pixels.borrow_mut());
+        for (id, rgba, width, height) in pixels {
+            self.upload_pixels_now(id, &rgba, width, height);
+        }
         // Move newly-queued forgets (pushed by Drop handlers) into the
         // frame-stamped deletion queue rather than evicting them now.
         // Stamping with `frame_counter + GRACE` defers the actual GPU
@@ -175,6 +187,16 @@ impl ImguiTextureCache {
         height: u32,
     ) -> Option<TextureId> {
         self.drain_pending_forgets();
+        self.upload_pixels_now(com_id, pixels, width, height)
+    }
+
+    fn upload_pixels_now(
+        &mut self,
+        com_id: i64,
+        pixels: &[u8],
+        width: u32,
+        height: u32,
+    ) -> Option<TextureId> {
         if let Some(entry) = self.cache.get(&com_id) {
             return Some(entry.id);
         }
