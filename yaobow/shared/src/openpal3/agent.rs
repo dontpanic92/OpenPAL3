@@ -67,6 +67,15 @@ pub struct Pal3DispatchCtx<'a> {
 pub fn dispatch_pal3_command(ctx: &Pal3DispatchCtx, command: AgentCommand) -> AgentResponse {
     use AgentCommand as C;
 
+    if ctx.director.is_some_and(AdventureDirector::is_loading)
+        && matches!(
+            &command,
+            C::SaveSlot(_) | C::TeleportPlayer(_) | C::SetStatusMenu(_) | C::AdvanceDialog
+        )
+    {
+        return AgentResponse::err(AgentError::conflict("PAL3 is loading"));
+    }
+
     match command {
         // --- generic bridge / observability -------------------------------
         C::GetState => AgentResponse::State(build_snapshot(ctx)),
@@ -189,7 +198,9 @@ pub fn build_snapshot(ctx: &Pal3DispatchCtx) -> StateSnapshot {
     // as "script is running" for the agent contract — combined with
     // `is_running()` for the case where a proc is pending but input
     // is still nominally enabled (script kick-off frame).
-    let script_running = !global.adv_input_enabled() || sce_vm.state().context().is_running();
+    let script_running = director.is_loading()
+        || !global.adv_input_enabled()
+        || sce_vm.state().context().is_running();
     snap.script_running = script_running;
     snap.current_script_fn = sce_vm.state().context().current_proc_name();
 

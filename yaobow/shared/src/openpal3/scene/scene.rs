@@ -9,7 +9,7 @@ use super::{
 use crate::openpal3::asset_manager::AssetManager;
 use crate::openpal3::comdef::IRoleController;
 use crate::openpal3::loaders::nav_loader::{NavFile, NavMapPoint};
-use crate::openpal3::loaders::scn_loader::ScnFile;
+use crate::openpal3::loaders::scn_loader::{ScnFile, ScnNode, ScnRole};
 use crate::openpal3::scene::{RoleAnimationRepeatMode, RoleController, RoleState};
 use crate::openpal3::states::persistent_state::PersistentState;
 use crosscom::ComRc;
@@ -21,6 +21,7 @@ use radiance::math::Vec3;
 use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, HashSet};
 use std::rc::Rc;
+use std::time::{Duration, Instant};
 
 pub struct ScnScene {
     scene: ComRc<IScene>,
@@ -41,6 +42,7 @@ pub struct ScnScene {
     mechanism_notices: RefCell<Vec<String>>,
     mechanism_sounds: RefCell<Vec<String>>,
     hazard_bounds: RefCell<BTreeMap<u16, (Vec3, Vec3)>>,
+    loading_cursor: Cell<Option<usize>>,
 }
 
 enum PickupWalk {
@@ -53,8 +55,10 @@ ComObject_ScnSceneComponent!(super::ScnScene);
 
 impl IComponentImpl for ScnScene {
     fn on_loading(&self) {
-        self.load_objects();
-        self.load_roles();
+        if self.loading_cursor.get().is_none() {
+            self.load_objects();
+            self.load_roles();
+        }
     }
 
     fn on_unloading(&self) {}
@@ -99,6 +103,58 @@ impl ScnScene {
             mechanism_notices: RefCell::new(vec![]),
             mechanism_sounds: RefCell::new(vec![]),
             hazard_bounds: RefCell::new(BTreeMap::new()),
+            loading_cursor: Cell::new(None),
+        }
+    }
+
+    pub(crate) fn defer_loading(&self) {
+        self.loading_cursor.set(Some(0));
+    }
+
+    pub(crate) fn advance_loading(&self) -> f32 {
+        let mut cursor = self
+            .loading_cursor
+            .get()
+            .expect("scene loading not deferred");
+        let objects_end = 1 + self.scn_file.nodes.len();
+        let total = objects_end + 6 + self.scn_file.roles.len();
+        let start = Instant::now();
+        // Native progress callbacks present at most once per 50ms. Yield at
+        // those intervals and at phase boundaries, never to fill an animation.
+        let boundary = if cursor == 0 {
+            1
+        } else if cursor < objects_end {
+            objects_end
+        } else {
+            total
+        };
+        while cursor < boundary {
+            let entity = if cursor == 0 {
+                self.load_ground()
+            } else if cursor < objects_end {
+                self.load_object(&self.scn_file.nodes[cursor - 1])
+            } else if cursor < objects_end + 6 {
+                Some(self.load_player((cursor - objects_end) as i32))
+            } else {
+                self.load_role(&self.scn_file.roles[cursor - objects_end - 6])
+            };
+            if let Some(entity) = entity {
+                self.scene.add_entity(entity);
+            }
+            cursor += 1;
+            if start.elapsed() >= Duration::from_millis(50) {
+                break;
+            }
+        }
+        self.loading_cursor.set(Some(cursor));
+        if cursor == total {
+            1.
+        } else if cursor < objects_end {
+            // The main POL is the native 0..80% phase. Placed objects and
+            // trigger setup occupy 80..85%; actors occupy the final 15%.
+            0.8 + 0.05 * (cursor - 1) as f32 / self.scn_file.nodes.len() as f32
+        } else {
+            0.85 + 0.15 * (cursor - objects_end) as f32 / (6 + self.scn_file.roles.len()) as f32
         }
     }
 
@@ -1761,8 +1817,20 @@ impl ScnScene {
     }
 
     fn load_objects(&self) {
+        let mut entities: Vec<_> = self.load_ground().into_iter().collect();
+        entities.extend(
+            self.scn_file
+                .nodes
+                .iter()
+                .filter_map(|obj| self.load_object(obj)),
+        );
+        for entity in entities {
+            self.scene.add_entity(entity);
+        }
+    }
+
+    fn load_ground(&self) -> Option<ComRc<IEntity>> {
         let ground_pol_name = self.scn_file.scn_base_name.clone() + ".pol";
-        let mut entities: Vec<ComRc<IEntity>> = vec![];
 
         let scn_object = self.asset_mgr.load_scn_pol(
             &self.cpk_name,
@@ -1772,135 +1840,131 @@ impl ScnScene {
             std::u16::MAX,
         );
 
-        if let Some(scn_object) = scn_object {
+        if let Some(scn_object) = &scn_object {
             Self::apply_position_rotation(scn_object.clone(), &Vec3::new(0., 0., 0.), 0.);
-            entities.push(scn_object);
+        }
+        scn_object
+    }
+
+    fn load_object(&self, obj: &ScnNode) -> Option<ComRc<IEntity>> {
+        let mut entity: Option<ComRc<IEntity>> = None;
+        if obj.nav_trigger_coord_min.0 != 0
+            || obj.nav_trigger_coord_min.1 != 0
+            || obj.nav_trigger_coord_max.0 != 0
+            || obj.nav_trigger_coord_max.1 != 0
+        {
+            self.nav_triggers.borrow_mut().push(SceNavTrigger {
+                nav_coord_max: obj.nav_trigger_coord_max,
+                nav_coord_min: obj.nav_trigger_coord_min,
+                node_type: obj.node_type,
+                layer: obj.nav_layer,
+                sce_proc_id: obj.sce_proc_id,
+            });
         }
 
-        for obj in &self.scn_file.nodes {
-            let mut entity: Option<ComRc<IEntity>> = None;
-            if obj.nav_trigger_coord_min.0 != 0
-                || obj.nav_trigger_coord_min.1 != 0
-                || obj.nav_trigger_coord_max.0 != 0
-                || obj.nav_trigger_coord_max.1 != 0
-            {
-                self.nav_triggers.borrow_mut().push(SceNavTrigger {
-                    nav_coord_max: obj.nav_trigger_coord_max,
-                    nav_coord_min: obj.nav_trigger_coord_min,
-                    node_type: obj.node_type,
-                    layer: obj.nav_layer,
-                    sce_proc_id: obj.sce_proc_id,
-                });
-            }
-
-            let visible = obj.node_type != 17 && obj.node_type != 25;
-            if obj.node_type != 37 && obj.node_type != 43 && obj.name.len() != 0 {
-                if obj.name.as_bytes()[0] as char == '_' {
-                    match self.asset_mgr.load_scn_pol(
-                        &self.cpk_name,
-                        &self.scn_file.scn_base_name,
-                        &obj.name,
-                        self.scn_file.is_night,
-                        obj.index,
-                    ) {
-                        Some(p) => {
-                            entity = Some(p);
-                        }
-                        _ => {
-                            match self.asset_mgr.load_scn_cvd(
-                                &self.cpk_name,
-                                &self.scn_file.scn_base_name,
-                                &obj.name,
-                                self.scn_file.is_night,
-                                obj.index,
-                            ) {
-                                Some(c) => {
-                                    entity = Some(c);
-                                }
-                                _ => {
-                                    log::error!("Cannot load object: {}", obj.name);
-                                }
+        let visible = obj.node_type != 17 && obj.node_type != 25;
+        if obj.node_type != 37 && obj.node_type != 43 && obj.name.len() != 0 {
+            if obj.name.as_bytes()[0] as char == '_' {
+                match self.asset_mgr.load_scn_pol(
+                    &self.cpk_name,
+                    &self.scn_file.scn_base_name,
+                    &obj.name,
+                    self.scn_file.is_night,
+                    obj.index,
+                ) {
+                    Some(p) => {
+                        entity = Some(p);
+                    }
+                    _ => {
+                        match self.asset_mgr.load_scn_cvd(
+                            &self.cpk_name,
+                            &self.scn_file.scn_base_name,
+                            &obj.name,
+                            self.scn_file.is_night,
+                            obj.index,
+                        ) {
+                            Some(c) => {
+                                entity = Some(c);
+                            }
+                            _ => {
+                                log::error!("Cannot load object: {}", obj.name);
                             }
                         }
                     }
-                } else if obj.name.to_lowercase().ends_with(".pol") {
-                    entity = Some(
-                        self.asset_mgr
-                            .load_object_item_pol(&obj.name, obj.index, visible)
-                            .unwrap(),
-                    );
-                } else if obj.name.to_lowercase().ends_with(".cvd") {
-                    entity = Some(
-                        self.asset_mgr
-                            .load_object_item_cvd(&obj.name, obj.index, visible)
-                            .unwrap(),
-                    );
-                } else if obj.name.as_bytes()[0] as char == '+' {
-                    entity = self.build_scene_effect(obj);
-                } else {
-                    entity = Some(
-                        self.asset_mgr
-                            .load_object_item_pol(&obj.name, obj.index, visible)
-                            .unwrap(),
-                    );
                 }
-            }
-
-            match obj.node_type {
-                ScnNodeTypes::LADDER | ScnNodeTypes::LADDER2 => {
-                    self.ladder_triggers.borrow_mut().push(LadderTrigger {
-                        position: obj.position,
-                        nav_coord1: obj.ladder_nav_coord1,
-                        nav_coord2: obj.ladder_nav_coord2,
-                        switch_layer: obj.ladder_switch_layer != obj.nav_layer as i32
-                            || obj.node_type == ScnNodeTypes::LADDER2, // ?? should be obj.ladder_target_layer?
-                        sce_proc_id: obj.sce_proc_id,
-                    })
-                }
-                ScnNodeTypes::ITEM_TRIGGER
-                | ScnNodeTypes::ITEM_TRIGGER2
-                | ScnNodeTypes::ITEM_TRIGGER3 => {
-                    self.item_triggers.borrow_mut().push(SceItemTrigger {
-                        id: obj.index,
-                        layer: obj.nav_layer as usize,
-                        sce_proc_id: obj.sce_proc_id,
-                    });
-                }
-                ScnNodeTypes::TRIGGER_SOURCE if self.asset_mgr.game() != crate::GameType::PAL3 => {
-                    self.item_triggers.borrow_mut().push(SceItemTrigger {
-                        id: obj.index,
-                        layer: obj.nav_layer as usize,
-                        sce_proc_id: obj.sce_proc_id,
-                    });
-                }
-                ScnNodeTypes::TRIGGER_TARGET => {}
-                ScnNodeTypes::AABB_TRIGGER => {
-                    self.aabb_triggers.borrow_mut().push(SceAabbTrigger {
-                        aabb_coord2: obj.aabb_trigger_coord2,
-                        aabb_coord1: obj.aabb_trigger_coord1,
-                        sce_proc_id: obj.sce_proc_id,
-                    });
-                }
-                _ => {}
-            }
-
-            if let Some(p) = entity {
-                Self::apply_position_rotation(p.clone(), &obj.position, obj.rotation.to_radians());
-                if self.asset_mgr.game() == crate::GameType::PAL3
-                    && matches!(
-                        obj.node_type,
-                        5 | 7 | 8 | 11 | 16 | 19 | 22 | 23 | 28 | 29 | 31 | 33 | 34 | 41
-                    )
-                {
-                    p.set_visible(obj.active != 0);
-                }
-                entities.push(p);
+            } else if obj.name.to_lowercase().ends_with(".pol") {
+                entity = Some(
+                    self.asset_mgr
+                        .load_object_item_pol(&obj.name, obj.index, visible)
+                        .unwrap(),
+                );
+            } else if obj.name.to_lowercase().ends_with(".cvd") {
+                entity = Some(
+                    self.asset_mgr
+                        .load_object_item_cvd(&obj.name, obj.index, visible)
+                        .unwrap(),
+                );
+            } else if obj.name.as_bytes()[0] as char == '+' {
+                entity = self.build_scene_effect(obj);
+            } else {
+                entity = Some(
+                    self.asset_mgr
+                        .load_object_item_pol(&obj.name, obj.index, visible)
+                        .unwrap(),
+                );
             }
         }
 
-        for entity in entities {
-            self.scene.add_entity(entity);
+        match obj.node_type {
+            ScnNodeTypes::LADDER | ScnNodeTypes::LADDER2 => {
+                self.ladder_triggers.borrow_mut().push(LadderTrigger {
+                    position: obj.position,
+                    nav_coord1: obj.ladder_nav_coord1,
+                    nav_coord2: obj.ladder_nav_coord2,
+                    switch_layer: obj.ladder_switch_layer != obj.nav_layer as i32
+                        || obj.node_type == ScnNodeTypes::LADDER2, // ?? should be obj.ladder_target_layer?
+                    sce_proc_id: obj.sce_proc_id,
+                })
+            }
+            ScnNodeTypes::ITEM_TRIGGER
+            | ScnNodeTypes::ITEM_TRIGGER2
+            | ScnNodeTypes::ITEM_TRIGGER3 => {
+                self.item_triggers.borrow_mut().push(SceItemTrigger {
+                    id: obj.index,
+                    layer: obj.nav_layer as usize,
+                    sce_proc_id: obj.sce_proc_id,
+                });
+            }
+            ScnNodeTypes::TRIGGER_SOURCE if self.asset_mgr.game() != crate::GameType::PAL3 => {
+                self.item_triggers.borrow_mut().push(SceItemTrigger {
+                    id: obj.index,
+                    layer: obj.nav_layer as usize,
+                    sce_proc_id: obj.sce_proc_id,
+                });
+            }
+            ScnNodeTypes::TRIGGER_TARGET => {}
+            ScnNodeTypes::AABB_TRIGGER => {
+                self.aabb_triggers.borrow_mut().push(SceAabbTrigger {
+                    aabb_coord2: obj.aabb_trigger_coord2,
+                    aabb_coord1: obj.aabb_trigger_coord1,
+                    sce_proc_id: obj.sce_proc_id,
+                });
+            }
+            _ => {}
         }
+
+        if let Some(p) = &entity {
+            Self::apply_position_rotation(p.clone(), &obj.position, obj.rotation.to_radians());
+            if self.asset_mgr.game() == crate::GameType::PAL3
+                && matches!(
+                    obj.node_type,
+                    5 | 7 | 8 | 11 | 16 | 19 | 22 | 23 | 28 | 29 | 31 | 33 | 34 | 41
+                )
+            {
+                p.set_visible(obj.active != 0);
+            }
+        }
+        entity
     }
 
     /// Build a PAL3 scene "effect" entity for a `+`-prefixed node.
@@ -1944,75 +2008,83 @@ impl ScnScene {
 
     fn load_roles(&self) {
         for i in &[0, 1, 2, 3, 4, 5] {
-            let entity_name = format!("ROLE_{}", i);
-            let model_name = Self::map_role_id(*i).to_string();
-            let entity = self
-                .asset_mgr
-                .load_role(&model_name, "C01", entity_name, false)
-                .unwrap();
+            self.scene.add_entity(self.load_player(*i));
+        }
+        let entities: Vec<_> = self
+            .scn_file
+            .roles
+            .iter()
+            .filter_map(|role| self.load_role(role))
+            .collect();
+        for entity in entities {
             self.scene.add_entity(entity);
         }
+    }
 
-        let mut entities = vec![];
-        for role in &self.scn_file.roles {
-            if let Some(entity) = self.asset_mgr.load_role(
-                &role.name,
-                &role.action_name,
-                format!("ROLE_{}", role.index),
-                false,
-            ) {
-                let entity = entity;
-                let layer = (role.nav_layer as usize).min(self.nav.layer_count().saturating_sub(1));
-                let nav_coord = self.scene_coord_to_nav_coord(
-                    layer,
-                    &Vec3::new(role.position_x, 0., role.position_z),
-                );
-                let height = self.get_height(layer, nav_coord);
-                // Role model's authored forward is +Z (SOUTH); apply the role's
-                // facing (degrees, 0x44) on top of that base. Sign mirrors
-                // SceCommandRoleTurnFace (`-degree.to_radians()`). The base is a
-                // single tunable constant for visual calibration.
-                const ROLE_FACING_BASE: f32 = std::f32::consts::PI;
-                let facing = ROLE_FACING_BASE - role.facing.to_radians();
-                entity
-                    .transform()
-                    .borrow_mut()
-                    .set_position(&Vec3::new(role.position_x, height, role.position_z))
-                    .rotate_axis_angle_local(&Vec3::UP, facing);
+    fn load_player(&self, i: i32) -> ComRc<IEntity> {
+        let entity_name = format!("ROLE_{}", i);
+        let model_name = Self::map_role_id(i).to_string();
+        let entity = self
+            .asset_mgr
+            .load_role(&model_name, "C01", entity_name, false)
+            .unwrap();
+        entity
+    }
 
-                let role_controller = entity.get_component(IRoleController::uuid()).unwrap();
-                let role_controller = role_controller
-                    .query_interface::<IRoleController>()
-                    .unwrap();
+    fn load_role(&self, role: &ScnRole) -> Option<ComRc<IEntity>> {
+        if let Some(entity) = self.asset_mgr.load_role(
+            &role.name,
+            &role.action_name,
+            format!("ROLE_{}", role.index),
+            false,
+        ) {
+            let entity = entity;
+            let layer = (role.nav_layer as usize).min(self.nav.layer_count().saturating_sub(1));
+            let nav_coord = self
+                .scene_coord_to_nav_coord(layer, &Vec3::new(role.position_x, 0., role.position_z));
+            let height = self.get_height(layer, nav_coord);
+            // Role model's authored forward is +Z (SOUTH); apply the role's
+            // facing (degrees, 0x44) on top of that base. Sign mirrors
+            // SceCommandRoleTurnFace (`-degree.to_radians()`). The base is a
+            // single tunable constant for visual calibration.
+            const ROLE_FACING_BASE: f32 = std::f32::consts::PI;
+            let facing = ROLE_FACING_BASE - role.facing.to_radians();
+            entity
+                .transform()
+                .borrow_mut()
+                .set_position(&Vec3::new(role.position_x, height, role.position_z))
+                .rotate_axis_angle_local(&Vec3::UP, facing);
+
+            let role_controller = entity.get_component(IRoleController::uuid()).unwrap();
+            let role_controller = role_controller
+                .query_interface::<IRoleController>()
+                .unwrap();
+            {
+                let rc = role_controller.inner::<RoleController>();
+                rc.set_nav_layer(layer);
+                // Only non-scripted ambient NPCs auto-patrol, so they don't
+                // fight SCE RoleMoveTo/RolePathTo. Mark them active so their
+                // walk animation loops (driven by RoleController::on_updating).
+                if role.sce_proc_id == 0 && role.patrol_path.len() >= 2 {
+                    rc.set_patrol(
+                        role.patrol_path.clone(),
+                        role.path_mode,
+                        role.move_speed as f32,
+                    );
+                    rc.set_active(true);
+                }
+            }
+            if role.sce_proc_id != 0 {
                 {
                     let rc = role_controller.inner::<RoleController>();
-                    rc.set_nav_layer(layer);
-                    // Only non-scripted ambient NPCs auto-patrol, so they don't
-                    // fight SCE RoleMoveTo/RolePathTo. Mark them active so their
-                    // walk animation loops (driven by RoleController::on_updating).
-                    if role.sce_proc_id == 0 && role.patrol_path.len() >= 2 {
-                        rc.set_patrol(
-                            role.patrol_path.clone(),
-                            role.path_mode,
-                            role.move_speed as f32,
-                        );
-                        rc.set_active(true);
-                    }
-                }
-                if role.sce_proc_id != 0 {
-                    {
-                        let rc = role_controller.inner::<RoleController>();
-                        rc.set_active(true);
-                        rc.set_proc_id(role.sce_proc_id as i32);
-                    };
-                }
-
-                entities.push(entity);
+                    rc.set_active(true);
+                    rc.set_proc_id(role.sce_proc_id as i32);
+                };
             }
-        }
 
-        for e in entities {
-            self.scene.add_entity(e);
+            Some(entity)
+        } else {
+            None
         }
     }
 }

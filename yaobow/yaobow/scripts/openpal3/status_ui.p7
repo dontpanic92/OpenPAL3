@@ -8,6 +8,7 @@ import shared.openpal3;
 import radiance_scripting.ui as gui;
 // Full-screen character-status (状态) overlay, popped on avatar click.
 import yaobow.openpal3.state_menu as state_menu;
+import yaobow.openpal3.loading;
 
 // Panel size as a fraction of framebuffer height. bk.tga is 128x128; the
 // whole HUD is scaled uniformly so its on-screen height = lh * this.
@@ -47,6 +48,7 @@ pub struct[openpal3.IPal3StatusRenderer] Pal3StatusRendererImpl(
     // Three avatar variants per role: normal, hover, pressed.
     pub faces: array<?&scripting_services.ISprite>,
     pub menu: &state_menu.MenuState,
+    pub loading_screen: &loading.LoadingScreen,
     pub hud_pressed: bool = false,
     // Whether the full-screen character-status menu is open.
     pub menu_open: bool = false,
@@ -54,6 +56,10 @@ pub struct[openpal3.IPal3StatusRenderer] Pal3StatusRendererImpl(
     pub prev_down: bool = false,
     pub menu_needs_refresh: bool = false,
 ) {
+    pub fn render_loading(self: &Self, ui: &radiance.IUiHost, progress: float, dt: float) -> bool {
+        return self.loading_screen.paint(ui, progress, dt);
+    }
+
     pub fn render_status(self: &Self, ui: &radiance.IUiHost, dt: float, gameplay: &openpal3.IPal3MenuState) -> int {
         let lw = ui.display_size_x() as float;
         let lh = ui.display_size_y() as float;
@@ -243,5 +249,5 @@ pub fn make_pal3_status_renderer(
         }
     }
     return &Pal3StatusRendererImpl(sprites, atlas, bk, hp, mp, note, faces, state_menu.make_menu(),
-        false, false, false);
+        loading.make_loading(sprites), false, false, false);
 }

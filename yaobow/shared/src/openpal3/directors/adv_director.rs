@@ -75,6 +75,7 @@ impl AdventureDirector {
                 camera_rotation: 0.,
                 layer_switch_triggered: false,
                 hazard_cooldown: 0.,
+                pending_load: None,
                 agent_bridge: None,
             }),
         }
@@ -117,56 +118,12 @@ impl AdventureDirector {
             return None;
         }
 
-        let scene = asset_mgr.load_scn(
-            scene_name.as_ref().unwrap(),
-            sub_scene_name.as_ref().unwrap(),
-        );
-
-        scene_manager.unload_all_scenes();
-        scene_manager.push_scene(scene);
-        scene_manager
-            .scn_scene()
-            .unwrap()
-            .inner::<crate::openpal3::scene::ScnScene>()
-            .restore_mechanisms(&p_state);
-
-        let mut global_state = GlobalState::new(
+        let show_loading = asset_mgr.game() == crate::GameType::PAL3;
+        let global_state = GlobalState::new(
             asset_mgr.clone(),
             audio_engine.clone(),
             Rc::new(RefCell::new(p_state)),
         );
-
-        let scn = scene_manager.scn_scene().unwrap();
-        let scn = scn.inner::<crate::openpal3::scene::ScnScene>();
-        let role_entity = scn
-            .get_role_entity(global_state.role_controlled())
-            .unwrap_or_else(|| {
-                global_state.set_role_controlled(0);
-                scn.get_role_entity(0).unwrap()
-            });
-
-        let role = RoleController::get_role_controller(role_entity.clone()).unwrap();
-        role.inner::<RoleController>().set_active(true);
-        if asset_mgr.game() == crate::GameType::PAL3 {
-            let layers = scene_manager
-                .scn_scene()
-                .unwrap()
-                .inner::<crate::openpal3::scene::ScnScene>()
-                .nav()
-                .layer_count();
-            role.inner::<RoleController>().set_nav_layer(
-                global_state
-                    .persistent_state_mut()
-                    .nav_layer()
-                    .min(layers.saturating_sub(1)),
-            );
-        }
-        role_entity
-            .transform()
-            .borrow_mut()
-            .set_position(&global_state.persistent_state_mut().position());
-
-        global_state.play_default_bgm();
 
         let mut sce_vm = SceVm::new(
             audio_engine.clone(),
@@ -190,7 +147,7 @@ impl AdventureDirector {
             sub_scene_name.as_ref().unwrap()
         ));
 
-        Some(Self {
+        let director = Self {
             props: RefCell::new(AdventureDirectorProps {
                 input_engine,
                 scene_manager: scene_manager.clone(),
@@ -198,9 +155,16 @@ impl AdventureDirector {
                 camera_rotation: 0.,
                 layer_switch_triggered: false,
                 hazard_cooldown: 0.,
+                pending_load: show_loading.then_some(SaveLoadPhase::Paint),
                 agent_bridge: None,
             }),
-        })
+        };
+        if !show_loading {
+            let mut props = director.props_mut();
+            props.create_scene(false);
+            props.restore_scene();
+        }
+        Some(director)
     }
 
     pub fn sce_vm(&self) -> Ref<'_, SceVm> {
@@ -225,6 +189,11 @@ impl AdventureDirector {
     /// pushed onto the scene manager.
     pub fn agent_bridge(&self) -> Option<Rc<AgentBridge>> {
         self.props.borrow().agent_bridge.clone()
+    }
+
+    pub fn is_loading(&self) -> bool {
+        let props = self.props.borrow();
+        props.pending_load.is_some() || props.sce_vm.is_loading()
     }
 
     /// Resolve the currently-controlled role entity (player slot
@@ -270,6 +239,39 @@ impl IDirectorImpl for AdventureDirector {
     }
 
     fn update(&self, delta_sec: f32) -> Option<ComRc<IDirector>> {
+        {
+            let mut props = self.props_mut();
+            if let Some(phase) = props.pending_load {
+                match phase {
+                    SaveLoadPhase::Paint => {
+                        props.sce_vm.state().render_loading(0., 0.);
+                        props.pending_load = Some(SaveLoadPhase::Create);
+                    }
+                    SaveLoadPhase::Create => {
+                        props.create_scene(true);
+                        props.sce_vm.state().render_loading(0., 0.);
+                        props.pending_load = Some(SaveLoadPhase::Load);
+                    }
+                    SaveLoadPhase::Load => {
+                        let progress = props
+                            .scene_manager
+                            .scn_scene()
+                            .unwrap()
+                            .inner::<crate::openpal3::scene::ScnScene>()
+                            .advance_loading();
+                        if progress == 1. {
+                            props.restore_scene();
+                            props.pending_load = None;
+                        }
+                        props.sce_vm.state().render_loading(progress, delta_sec);
+                    }
+                }
+                if let Some(scene) = props.scene_manager.scene() {
+                    scene.set_active(false);
+                }
+                return None;
+            }
+        }
         // Honor `/v1/time/pause` + `/v1/time/step`: when an agent
         // bridge is installed and we're paused with no pending steps,
         // skip the entire SCE tick so movement, animations, and the
@@ -279,7 +281,9 @@ impl IDirectorImpl for AdventureDirector {
         // The same borrow also reads `/v1/time/fast_forward`, which we
         // push onto the SCE state so commands can skip input-blocked
         // waits (dialog / movie) and collapse timed tweens this frame.
+        let loading = self.props.borrow().sce_vm.is_loading();
         let (effective_dt, fast_forward) = match self.props.borrow().agent_bridge.as_ref() {
+            Some(bridge) if loading => (delta_sec, bridge.fast_forward.get()),
             Some(bridge) => match bridge.effective_dt(delta_sec) {
                 (true, dt) => (dt, bridge.fast_forward.get()),
                 (false, _) => return None,
@@ -308,13 +312,64 @@ struct AdventureDirectorProps {
     camera_rotation: f32,
     layer_switch_triggered: bool,
     hazard_cooldown: f32,
+    pending_load: Option<SaveLoadPhase>,
     /// Agent-server bridge. `None` when the embedded HTTP listener
     /// is not running; `Some(_)` gates pause/step + provides the
     /// synthetic-input overlay backing `/v1/input/*`.
     agent_bridge: Option<Rc<AgentBridge>>,
 }
 
+#[derive(Clone, Copy)]
+enum SaveLoadPhase {
+    Paint,
+    Create,
+    Load,
+}
+
 impl AdventureDirectorProps {
+    fn create_scene(&mut self, deferred: bool) {
+        let (name, sub_name) = {
+            let state = self.sce_vm.global_state().persistent_state();
+            (state.scene_name().unwrap(), state.sub_scene_name().unwrap())
+        };
+        let assets = self.sce_vm.state().asset_mgr();
+        let scene = if deferred {
+            assets.load_scn_deferred(&name, &sub_name)
+        } else {
+            assets.load_scn(&name, &sub_name)
+        };
+        self.scene_manager.unload_all_scenes();
+        self.scene_manager.push_scene(scene);
+    }
+
+    fn restore_scene(&mut self) {
+        let component = self.scene_manager.scn_scene().unwrap();
+        let scn = component.inner::<crate::openpal3::scene::ScnScene>();
+        let global_state = self.sce_vm.global_state_mut();
+        scn.restore_mechanisms(&global_state.persistent_state());
+        let role_entity = scn
+            .get_role_entity(global_state.role_controlled())
+            .unwrap_or_else(|| {
+                global_state.set_role_controlled(0);
+                scn.get_role_entity(0).unwrap()
+            });
+        let role = RoleController::get_role_controller(role_entity.clone()).unwrap();
+        role.inner::<RoleController>().set_active(true);
+        if global_state.asset_mgr().game() == crate::GameType::PAL3 {
+            role.inner::<RoleController>().set_nav_layer(
+                global_state
+                    .persistent_state()
+                    .nav_layer()
+                    .min(scn.nav().layer_count().saturating_sub(1)),
+            );
+        }
+        role_entity
+            .transform()
+            .borrow_mut()
+            .set_position(&global_state.persistent_state_mut().position());
+        global_state.play_default_bgm();
+    }
+
     fn play_mechanism_sound(&mut self, sound: &str) {
         if let Ok(data) = self.sce_vm.state().asset_mgr().load_snd_data(sound) {
             let mut source = self.sce_vm.global_state().create_sound_source();
@@ -412,6 +467,7 @@ impl AdventureDirectorProps {
     }
 
     fn do_update(&mut self, delta_sec: f32) -> Option<ComRc<IDirector>> {
+        let was_loading = self.sce_vm.is_loading();
         self.sce_vm.update(delta_sec);
 
         // Freeze the whole game world while the full-screen status (状态)
@@ -423,7 +479,7 @@ impl AdventureDirectorProps {
         // below so movement/triggers stop too.
         let adv_enabled = self.sce_vm.global_state().adv_input_enabled();
         let menu_open = self.sce_vm.state().status_renderer().is_menu_open();
-        let freeze = adv_enabled && menu_open;
+        let freeze = (adv_enabled && menu_open) || was_loading || self.sce_vm.is_loading();
         if let Some(scene) = self.scene_manager.scene() {
             scene.set_active(!freeze);
         }

@@ -20,6 +20,87 @@ use radiance::{
 use std::rc::Rc;
 
 #[test]
+fn deferred_scene_loading_installs_triggers_only_when_their_work_completes() {
+    let mut item = node(12, 11, u16::MAX);
+    item.sce_proc_id = 500;
+    let scene = scene(vec![item]);
+    let position = Vec3::new(0., 10., 0.);
+    cache_player(&scene, position);
+    scene.defer_loading();
+    radiance::comdef::IComponentImpl::on_loading(&scene);
+    assert_eq!(scene.test_item_trigger(&position), None);
+    assert_eq!(scene.advance_loading(), 0.8);
+    assert_eq!(scene.test_item_trigger(&position), None);
+    assert_eq!(scene.advance_loading(), 0.85);
+    assert_eq!(scene.test_item_trigger(&position), Some(500));
+}
+
+#[test]
+#[ignore = "requires original game assets via PAL3_ASSET_PATH"]
+fn shipped_deferred_scene_loading_matches_synchronous_entities_and_finishes_once() {
+    use crate::openpal3::comdef::IScnSceneComponent;
+    use radiance::comdef::{IScene, ISceneExt};
+    let path = std::env::var("PAL3_ASSET_PATH").expect("PAL3_ASSET_PATH");
+    let assets = Rc::new(AssetManager::new(
+        Rc::new(UnusedFactory),
+        Rc::new(packfs::init_virtual_fs(std::path::Path::new(&path), None)),
+    ));
+    let entities = |root: &crosscom::ComRc<IScene>| {
+        root.root_entities()
+            .iter()
+            .map(|entity| {
+                let p = entity.transform().borrow().position();
+                (
+                    entity.name(),
+                    entity.visible(),
+                    [p.x.to_bits(), p.y.to_bits(), p.z.to_bits()],
+                )
+            })
+            .collect::<Vec<_>>()
+    };
+    for (name, block) in [("m01", "1"), ("m24", "3")] {
+        let synchronous = assets.load_scn(name, block);
+        let sync_component = synchronous
+            .get_component(IScnSceneComponent::uuid())
+            .unwrap();
+        sync_component.on_loading();
+        let deferred = assets.load_scn_deferred(name, block);
+        let component = deferred.get_component(IScnSceneComponent::uuid()).unwrap();
+        // Keep the roots unloaded so this asset-only test needs no GPU.
+        component.on_loading();
+        assert!(deferred.root_entities().is_empty());
+        let component = component.query_interface::<IScnSceneComponent>().unwrap();
+        let scene = component.inner::<ScnScene>();
+        let mut previous = 0.;
+        let mut finished = false;
+        for _ in 0..1000 {
+            let progress = scene.advance_loading();
+            assert!(progress >= previous && progress <= 1.);
+            previous = progress;
+            if progress == 1. {
+                finished = true;
+                break;
+            }
+        }
+        assert!(
+            finished,
+            "{name}/{block} must finish without waiting for UI easing"
+        );
+        assert_eq!(
+            entities(&deferred),
+            entities(&synchronous),
+            "{name}/{block}"
+        );
+        assert_eq!(scene.advance_loading(), 1.);
+        assert_eq!(
+            entities(&deferred),
+            entities(&synchronous),
+            "completion must not reload entities"
+        );
+    }
+}
+
+#[test]
 #[ignore = "requires original game assets via PAL3_ASSET_PATH"]
 fn shipped_plate_bridge_geometry() {
     use crate::openpal3::comdef::IScnSceneComponent;
@@ -429,6 +510,12 @@ fn native_hazards_share_strict_cooldown_and_disabled_hammer_keeps_phase_and_heig
 
 struct UnusedFactory;
 
+struct UnusedRenderObject;
+
+impl radiance::rendering::RenderObject for UnusedRenderObject {
+    fn update_vertices(&self, _: &dyn Fn(std::cell::RefMut<VertexBuffer>)) {}
+}
+
 impl ComponentFactory for UnusedFactory {
     fn create_texture(&self, _: &TextureDef) -> Box<dyn Texture> {
         unreachable!()
@@ -453,10 +540,9 @@ impl ComponentFactory for UnusedFactory {
         _: &MaterialDef,
         _: bool,
     ) -> RenderObjectHandle {
-        unreachable!()
+        RenderObjectHandle::from_dyn(Rc::new(UnusedRenderObject))
     }
-    fn create_rendering_component(&self, objects: Vec<RenderObjectHandle>) -> RenderingComponent {
-        assert!(objects.is_empty());
+    fn create_rendering_component(&self, _: Vec<RenderObjectHandle>) -> RenderingComponent {
         RenderingComponent::new()
     }
     fn create_video_player(&self) -> Box<VideoPlayer> {

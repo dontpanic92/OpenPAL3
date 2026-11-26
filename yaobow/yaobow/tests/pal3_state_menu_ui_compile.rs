@@ -31,6 +31,139 @@ fn pal3_status_ui_and_state_menu_compile() {
 }
 
 #[test]
+fn native_loading_screen_crops_progress_animates_and_resets_on_letterboxed_canvas() {
+    let host = ScriptHost::new();
+    host.set_script_assets(install_script_assets());
+    host.load_source(
+        r#"
+        import radiance;
+        import scripting_services;
+        import shared.openpal3;
+        import yaobow.openpal3.status_ui;
+        pub fn make(sprites: &scripting_services.ISpriteService,
+            atlas: &openpal3.IPal3UiAtlas) -> &openpal3.IPal3StatusRenderer {
+            status_ui.make_pal3_status_renderer(sprites, atlas)
+        }
+        pub fn paint(renderer: &openpal3.IPal3StatusRenderer,
+            ui: &radiance.IUiHost, progress: float, dt: float) -> bool {
+            renderer.render_loading(ui, progress, dt)
+        }
+        "#,
+    )
+    .unwrap();
+    let (recorder, ui) = RecordingUiHost::create();
+    let ui_id = host.intern(ui);
+    let sprites_id = host.intern(ComRc::<ISpriteService>::from_object(TestSprites));
+    let atlas_id = host.intern(ComRc::<IPal3UiAtlas>::from_object(TestAtlas));
+    let renderer = host
+        .call_returning_data(
+            "make",
+            vec![
+                host.foreign_box(
+                    "radiance_scripting.comdef.services.ISpriteService",
+                    sprites_id,
+                )
+                .unwrap(),
+                host.foreign_box("shared.openpal3.comdef.IPal3UiAtlas", atlas_id)
+                    .unwrap(),
+            ],
+        )
+        .unwrap();
+    let frame = |progress, dt| {
+        recorder.calls.borrow_mut().clear();
+        host.call_returning_data(
+            "paint",
+            vec![
+                renderer.clone(),
+                host.foreign_box("radiance.comdef.IUiHost", ui_id).unwrap(),
+                Data::Float(progress),
+                Data::Float(dt),
+            ],
+        )
+        .unwrap()
+    };
+    for (width, height, ox, oy, scale) in [
+        (800, 600, 0., 0., 1.),
+        (1600, 600, 400., 0., 1.),
+        (400, 300, 0., 0., 0.5),
+        (800, 1200, 0., 300., 1.),
+    ] {
+        recorder.set_display_size(width, height);
+        frame(0., 0.);
+        assert!(recorder.calls.borrow().iter().any(|call| matches!(call,
+            UiCall::FillRect {x0,y0,x1,y1,r,g,b,a}
+            if (*x0,*y0,*x1,*y1,*r,*g,*b,*a)==(0.,0.,width as f32,height as f32,0.,0.,0.,1.))));
+        let mut alternate_seen = false;
+        for _ in 0..8 {
+            assert_eq!(frame(1., 0.1), Data::Int(0));
+            alternate_seen |= recorder.calls.borrow().iter().any(|call| {
+                matches!(call,
+                UiCall::ImageRect {texture_com_id,..}
+                if *texture_com_id==sprite_id("/basedata/basedata/ui/Loading/loading_5.tga"))
+            });
+        }
+        assert!(
+            alternate_seen,
+            "the native fairy must alternate between both sprites"
+        );
+        assert_eq!(frame(1., 4.25 / 216.), Data::Int(0));
+        for (name, rect) in [
+            (
+                "/basedata/basedata/ui/Loading/loading_1.tga",
+                [206., 520., 570., 548.],
+            ),
+            (
+                "/basedata/basedata/ui/Loading/loading_2.tga",
+                [210., 529., 387., 542.],
+            ),
+            (
+                "/basedata/basedata/ui/Loading/loading_3.tga",
+                [343., 483., 431., 547.],
+            ),
+        ] {
+            assert!(recorder.calls.borrow().iter().any(|call| matches!(call,
+                UiCall::ImageRect {texture_com_id,x0,y0,x1,y1,..}
+                if *texture_com_id==sprite_id(name)
+                && (*x0,*y0,*x1,*y1)==(ox+rect[0]*scale,oy+rect[1]*scale,ox+rect[2]*scale,oy+rect[3]*scale))),"{name}: {:?}",recorder.calls.borrow());
+        }
+        assert!(
+            recorder.calls.borrow().iter().any(|call| matches!(call,
+            UiCall::ImageRect {texture_com_id,u0,u1,..}
+            if *texture_com_id==sprite_id("/basedata/basedata/ui/Loading/loading_2.tga")
+            && (*u0,*u1)==(0.125,0.125+0.625*177.5/512.))),
+            "crop the fill UV rather than squeezing the whole texture"
+        );
+        for _ in 0..9 {
+            frame(1., 0.1);
+        }
+        assert_eq!(frame(1., 0.), Data::Int(1));
+        frame(0., 0.);
+        assert!(!recorder.calls.borrow().iter().any(|call| matches!(call,
+            UiCall::ImageRect {texture_com_id,..} if *texture_com_id==sprite_id("/basedata/basedata/ui/Loading/loading_2.tga"))));
+        assert_eq!(
+            frame(1., 60.),
+            Data::Int(1),
+            "elapsed loading work must catch up without an artificial time cap"
+        );
+        frame(0., 0.);
+        assert_eq!(frame(0.8, 2.), Data::Int(1));
+        for _ in 0..3 {
+            frame(0.8, 0.1);
+            assert!(
+                recorder.calls.borrow().iter().any(|call| matches!(call,
+                UiCall::ImageRect {texture_com_id,x1,..}
+                if *texture_com_id==sprite_id("/basedata/basedata/ui/Loading/loading_2.tga")
+                && *x1==ox+(210.+283.)*scale)),
+                "progress must stop at completed work, not keep filling with time"
+            );
+        }
+        assert_eq!(frame(0.85, 0.), Data::Int(0));
+        assert_eq!(frame(0.85, 0.1), Data::Int(1));
+        assert_eq!(frame(1., 0.), Data::Int(0));
+    }
+}
+
+#[test]
 fn native_mechanism_notice_uses_shipped_note_nine_slice() {
     let host = ScriptHost::new();
     host.set_script_assets(install_script_assets());
@@ -502,10 +635,33 @@ impl ISpriteImpl for TestSprite {
         self.0
     }
     fn width(&self) -> i32 {
-        256
+        let base = "/basedata/basedata/ui/Loading/loading_";
+        if [1, 2]
+            .iter()
+            .any(|i| self.0 == sprite_id(&format!("{base}{i}.tga")))
+        {
+            512
+        } else if [3, 5]
+            .iter()
+            .any(|i| self.0 == sprite_id(&format!("{base}{i}.tga")))
+        {
+            128
+        } else {
+            256
+        }
     }
     fn height(&self) -> i32 {
-        32
+        let base = "/basedata/basedata/ui/Loading/loading_";
+        if self.0 == sprite_id(&format!("{base}2.tga")) {
+            8
+        } else if [3, 5]
+            .iter()
+            .any(|i| self.0 == sprite_id(&format!("{base}{i}.tga")))
+        {
+            64
+        } else {
+            32
+        }
     }
     fn u0(&self) -> f32 {
         0.125

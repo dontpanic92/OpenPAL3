@@ -120,6 +120,22 @@ impl AssetManager {
         scene
     }
 
+    pub(crate) fn load_scn_deferred(
+        self: &Rc<Self>,
+        cpk_name: &str,
+        scn_name: &str,
+    ) -> ComRc<IScene> {
+        let scene = self.load_scn(cpk_name, scn_name);
+        scene
+            .get_component(IScnSceneComponent::uuid())
+            .unwrap()
+            .query_interface::<IScnSceneComponent>()
+            .unwrap()
+            .inner::<ScnScene>()
+            .defer_loading();
+        scene
+    }
+
     /// Load the scene's dynamic light table into a [`SceneLighting`] consumed
     /// by the dynamically-lit actor shader. Night scenes ship a separate, warmer
     /// (candlelit) light set under the `1/` subfolder — the same day/night split

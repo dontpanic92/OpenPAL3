@@ -41,6 +41,10 @@ pub trait SceCommandDebug {
 }
 
 pub trait SceCommand: dyn_clone::DynClone + SceCommandDebug {
+    fn blocks_script(&self) -> bool {
+        false
+    }
+
     fn initialize(&mut self, _scene_manager: ComRc<ISceneManager>, _state: &mut SceState) {}
 
     fn update(
@@ -307,6 +311,15 @@ impl SceState {
         self.ui.with_ui_host(|ui_host| {
             renderer.render_curtain(ui_host.clone());
         });
+    }
+
+    pub fn render_loading(&self, progress: f32, delta_sec: f32) -> bool {
+        self.ui
+            .with_ui_host(|ui_host| {
+                self.status_renderer
+                    .render_loading(ui_host.clone(), progress, delta_sec)
+            })
+            .unwrap_or(true)
     }
 
     /// Set the dialog avatar/portrait (PAL3 `dlgface`). The p7 renderer

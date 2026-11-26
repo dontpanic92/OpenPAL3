@@ -262,6 +262,10 @@ interface IPal3StatusRenderer: IUnknown {
     // centered text. Lifetime is owned by the SCE host.
     void render_notice(IUiHost ui, &str text);
 
+    // Progress is 0 at the pre-load paint, then follows completed load work.
+    // Returns true once the native progress widget has reached its target.
+    bool render_loading(IUiHost ui, float progress, float dt);
+
     // Open (`true`) or close (`false`) the full-screen character-status
     // (状态) menu overlay. Lets the agent server pop the menu without a
     // synthetic avatar click. Idempotent.

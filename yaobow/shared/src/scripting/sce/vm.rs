@@ -84,7 +84,11 @@ impl SceVm {
                     Some(mut cmd) => {
                         cmd.initialize(self.scene_manager.clone(), &mut self.state);
                         if !cmd.update(self.scene_manager.clone(), ui, &mut self.state, delta_sec) {
+                            let blocks_script = cmd.blocks_script();
                             self.active_commands.push(cmd);
+                            if blocks_script {
+                                break;
+                            }
                         }
                     }
                     None => {
@@ -101,8 +105,24 @@ impl SceVm {
             }
         } else {
             let state = &mut self.state;
-            self.active_commands
-                .retain_mut(|cmd| !cmd.update(self.scene_manager.clone(), ui, state, delta_sec));
+            if let Some(index) = self
+                .active_commands
+                .iter()
+                .position(|cmd| cmd.blocks_script())
+            {
+                if self.active_commands[index].update(
+                    self.scene_manager.clone(),
+                    ui,
+                    state,
+                    delta_sec,
+                ) {
+                    self.active_commands.remove(index);
+                }
+            } else {
+                self.active_commands.retain_mut(|cmd| {
+                    !cmd.update(self.scene_manager.clone(), ui, state, delta_sec)
+                });
+            }
         }
 
         None
@@ -161,6 +181,10 @@ impl SceVm {
 
     pub fn state(&self) -> &SceState {
         &self.state
+    }
+
+    pub fn is_loading(&self) -> bool {
+        self.active_commands.iter().any(|cmd| cmd.blocks_script())
     }
 
     pub fn state_mut(&mut self) -> &mut SceState {

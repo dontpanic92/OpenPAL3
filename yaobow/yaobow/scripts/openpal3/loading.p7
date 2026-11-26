@@ -1,0 +1,76 @@
+import radiance;
+import scripting_services;
+import radiance_scripting.ui as gui;
+
+pub struct LoadingScreen(
+    frame: ?&scripting_services.ISprite,
+    fill: ?&scripting_services.ISprite,
+    fairies: array<?&scripting_services.ISprite>,
+    width: float = 0.0,
+    pixels: int = 0,
+    elapsed: float = 0.0,
+    fairy: int = 0,
+) {
+    pub fn paint(self: &Self, ui: &radiance.IUiHost, progress: float, dt: float) -> bool {
+        let w = ui.display_size_x() as float;
+        let h = ui.display_size_y() as float;
+        if w <= 0.0 || h <= 0.0 { return true; }
+        let canvas = gui.Rect(0.0, 0.0, w, h);
+        let native = gui.Size(800.0, 600.0);
+        let fitted = canvas.fit(native);
+        let scale = canvas.fit_scale(native);
+        let target = if progress < 0.0 { 0.0 } else if progress > 1.0 { 1.0 } else { progress };
+        let step = if dt < 0.0 { 0.0 } else { dt };
+        if target == 0.0 {
+            self.width = 0.0;
+            self.pixels = 0;
+            self.elapsed = 0.0;
+            self.fairy = 0;
+        } else {
+            // Native 0x44058f: widget speed 6 times the fixed multiplier 36.
+            self.width = self.width + 216.0 * step;
+            if self.width > 354.0 * target { self.width = 354.0 * target; }
+            if self.elapsed >= 0.3 {
+                self.elapsed = 0.0;
+                self.fairy = 1 - self.fairy;
+            }
+            self.elapsed = self.elapsed + step;
+            while (self.pixels + 1) as float <= self.width {
+                self.pixels = self.pixels + 1;
+            }
+        }
+        ui.fill_rect(0.0, 0.0, w, h, 0.0, 0.0, 0.0, 1.0);
+        blit(ui, self.frame, fitted.x, fitted.y, scale, 206.0, 520.0, 570.0, 548.0);
+        let pixels = self.pixels as float;
+        if pixels > 0.0 {
+            blit(ui, self.fill, fitted.x, fitted.y, scale,
+                210.0, 529.0, 210.0 + pixels, 542.0);
+        }
+        blit(ui, self.fairies[self.fairy], fitted.x, fitted.y, scale,
+            166.0 + pixels, 483.0, 254.0 + pixels, 547.0);
+        return self.width >= 354.0 * target;
+    }
+}
+
+fn blit(ui: &radiance.IUiHost, sprite: ?&scripting_services.ISprite,
+    x: float, y: float, scale: float,
+    x0: float, y0: float, x1: float, y1: float) {
+    if sprite == null { return; }
+    let s = sprite!;
+    ui.image_rect(s.com_id(), x + x0 * scale, y + y0 * scale,
+        x + x1 * scale, y + y1 * scale,
+        s.u0(), s.v0(),
+        s.u0() + (s.u1() - s.u0()) * (x1 - x0 + 0.5) / s.width() as float,
+        s.v0() + (s.v1() - s.v0()) * (y1 - y0 + 0.5) / s.height() as float);
+}
+
+pub fn make_loading(sprites: &scripting_services.ISpriteService) -> &LoadingScreen {
+    // Native 0x45085b passes atlas=false: sample the standalone TGAs.
+    // The optimized atlas rectangles overlap neighboring sprite artwork.
+    let path = "/basedata/basedata/ui/Loading/loading_";
+    return &LoadingScreen(
+        sprites.load_sprite(path + "1.tga"),
+        sprites.load_sprite(path + "2.tga"),
+        [sprites.load_sprite(path + "3.tga"), sprites.load_sprite(path + "5.tga")],
+    );
+}
