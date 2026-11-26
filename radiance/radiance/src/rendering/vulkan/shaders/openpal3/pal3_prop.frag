@@ -8,6 +8,7 @@
 // NOT pick up the nearest scene lights the way POL/role geometry does.
 
 layout(constant_id = 0) const bool ALPHA_TEST = true;
+layout(constant_id = 1) const bool ALPHA_BLEND = false;
 
 layout(set = 0, binding = 0) uniform PerFrameUbo {
     mat4 view;
@@ -47,6 +48,9 @@ void main() {
     // near-black. The scene floor (~0.1) is too dark, so lift to a modest floor.
     vec3 ambient = max(perFrameUbo.ambient.rgb, vec3(0.35));
     vec3 rgb = sampled.rgb * ambient * mat.tint.rgb * mat.tint.a;
+    if (ALPHA_BLEND) {
+        rgb *= sampled.a;
+    }
     outColor = vec4(rgb, sampled.a * mat.tint.a);
 
     if (perFrameUbo.fogParams.x > 0.5 && mat.misc.w < 0.5) {
@@ -54,6 +58,7 @@ void main() {
         float fStart = perFrameUbo.fogParams.y;
         float fEnd = perFrameUbo.fogParams.z;
         float vis = clamp((fEnd - dist) / max(fEnd - fStart, 1e-4), 0.0, 1.0);
-        outColor.rgb = mix(perFrameUbo.fogColor.rgb * outColor.a, outColor.rgb, vis);
+        vec3 fog = perFrameUbo.fogColor.rgb * (ALPHA_BLEND ? outColor.a : 1.0);
+        outColor.rgb = mix(fog, outColor.rgb, vis);
     }
 }

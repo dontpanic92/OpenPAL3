@@ -173,8 +173,7 @@ pub struct CvdMesh {
     pub frame_count: u32,
     pub vertex_count: u32,
     pub frames: Vec<Vec<CvdVertex>>,
-    /// One `f32` per frame (originally read into `unknown_data`); purpose
-    /// unconfirmed.
+    /// Mesh-frame timestamps, before the native loader's first-entry reset.
     pub frame_extra: Vec<f32>,
     pub material_count: u32,
     pub materials: Vec<CvdMaterial>,

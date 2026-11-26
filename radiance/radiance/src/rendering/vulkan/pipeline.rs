@@ -3,7 +3,7 @@ use super::{
 };
 use crate::rendering::vulkan::descriptor_managers::DescriptorManager;
 use crate::rendering::vulkan::material::VulkanMaterial;
-use crate::rendering::{BlendMode, CullMode, DepthMode, MaterialKey};
+use crate::rendering::{BlendMode, CullMode, DepthMode, MaterialKey, ShaderProgram};
 use ash::vk;
 use std::error::Error;
 use std::ffi::CString;
@@ -64,18 +64,29 @@ impl Pipeline {
             .stage(vk::ShaderStageFlags::VERTEX)
             .module(shader.vk_vert_shader_module());
 
-        // Fragment-shader specialization: constant_id = 0 -> ALPHA_TEST (bool).
+        // Fragment-shader specialization: 0 -> ALPHA_TEST, 1 -> ALPHA_BLEND.
         // Set to 1 only for `BlendMode::AlphaTest`; every other mode runs the
         // opaque variant so early-Z is preserved.
         let alpha_test_value: u32 = match key.blend {
             BlendMode::AlphaTest => 1,
             _ => 0,
         };
-        let alpha_test_bytes = alpha_test_value.to_ne_bytes();
-        let spec_map_entries = [vk::SpecializationMapEntry::default()
-            .constant_id(0)
-            .offset(0)
-            .size(std::mem::size_of::<u32>())];
+        let alpha_blend_value = u32::from(key.blend == BlendMode::AlphaBlend);
+        let alpha_test_bytes = [
+            alpha_test_value.to_ne_bytes(),
+            alpha_blend_value.to_ne_bytes(),
+        ]
+        .concat();
+        let spec_map_entries = [
+            vk::SpecializationMapEntry::default()
+                .constant_id(0)
+                .offset(0)
+                .size(std::mem::size_of::<u32>()),
+            vk::SpecializationMapEntry::default()
+                .constant_id(1)
+                .offset(4)
+                .size(std::mem::size_of::<u32>()),
+        ];
         let spec_info = vk::SpecializationInfo::default()
             .map_entries(&spec_map_entries)
             .data(&alpha_test_bytes);
@@ -188,6 +199,9 @@ impl Pipeline {
                 vk::BlendFactor::ONE,
             ),
         };
+        // PAL3 CVD's opaque coverage pass is a real, non-blended alpha test.
+        let blend_enable = blend_enable
+            && !(key.program == ShaderProgram::Pal3Prop && key.blend == BlendMode::AlphaTest);
 
         let pipeline_color_blend_attachment_state =
             vk::PipelineColorBlendAttachmentState::default()

@@ -121,6 +121,74 @@ fn shipped_item_previews_load_variant_textures_and_reject_missing_assets() {
 
 #[test]
 #[ignore = "requires original game assets via PAL3_ASSET_PATH"]
+fn shipped_cvd_switches_and_bridge_deform_and_restore_both_render_passes() {
+    fn bounds(entity: &crosscom::ComRc<radiance::comdef::IEntity>) -> Vec<([f32; 3], [f32; 3])> {
+        let mut result = vec![];
+        if let Some(component) = entity.get_rendering_component() {
+            result.extend(
+                component
+                    .render_objects()
+                    .iter()
+                    .filter_map(|object| object.as_dyn().local_aabb()),
+            );
+        }
+        for child in entity.children() {
+            result.extend(bounds(&child));
+        }
+        result
+    }
+
+    let path = std::env::var("PAL3_ASSET_PATH").expect("PAL3_ASSET_PATH");
+    let assets = AssetManager::new(
+        Rc::new(UnusedFactory),
+        Rc::new(packfs::init_virtual_fs(std::path::Path::new(&path), None)),
+    );
+    for model in ["wz05.cvd", "wz06.cvd", "_e.cvd"] {
+        let load = || {
+            if model.starts_with('_') {
+                assets.load_scn_cvd("m01", "1", model, false, 1)
+            } else {
+                assets.load_object_item_cvd(model, 1, true)
+            }
+            .unwrap()
+        };
+        let entity = load();
+        entity.load();
+        let duration = super::cvd_entity::animation_duration(&entity);
+        assert!(duration > 0., "{model}");
+        let initial = bounds(&entity);
+        assert!(!initial.is_empty());
+        if !model.starts_with('_') {
+            assert_eq!(initial.len(), 6, "three materials, each with two passes");
+            for pair in initial.chunks_exact(2) {
+                assert_eq!(pair[0], pair[1]);
+            }
+        }
+        super::cvd_entity::set_animation_time(&entity, duration * 0.25);
+        assert_ne!(
+            bounds(&entity),
+            initial,
+            "{model} must deform, not just move nodes"
+        );
+        super::cvd_entity::set_animation_time(&entity, duration);
+        let final_pose = bounds(&entity);
+        super::cvd_entity::set_animation_time(&entity, duration + 1.);
+        assert_eq!(bounds(&entity), final_pose, "{model} must clamp at the end");
+        let restored = load();
+        super::cvd_entity::set_animation_time(&restored, duration);
+        restored.load();
+        assert_eq!(
+            bounds(&restored),
+            final_pose,
+            "{model} restores before loading"
+        );
+        entity.unload();
+        restored.unload();
+    }
+}
+
+#[test]
+#[ignore = "requires original game assets via PAL3_ASSET_PATH"]
 fn shipped_chest_uses_real_animation_duration_and_broken_model() {
     use crate::openpal3::comdef::IScnSceneComponent;
     let path = std::env::var("PAL3_ASSET_PATH").expect("PAL3_ASSET_PATH");
@@ -656,12 +724,18 @@ fn native_hazards_share_strict_cooldown_and_disabled_hammer_keeps_phase_and_heig
     );
 }
 
-struct UnusedFactory;
+pub(super) struct UnusedFactory;
 
-struct UnusedRenderObject;
+struct UnusedRenderObject(std::cell::RefCell<VertexBuffer>);
 
 impl radiance::rendering::RenderObject for UnusedRenderObject {
-    fn update_vertices(&self, _: &dyn Fn(std::cell::RefMut<VertexBuffer>)) {}
+    fn update_vertices(&self, update: &dyn Fn(std::cell::RefMut<VertexBuffer>)) {
+        update(self.0.borrow_mut());
+    }
+
+    fn local_aabb(&self) -> Option<([f32; 3], [f32; 3])> {
+        self.0.borrow().aabb_min_max()
+    }
 }
 
 impl ComponentFactory for UnusedFactory {
@@ -683,15 +757,21 @@ impl ComponentFactory for UnusedFactory {
     }
     fn create_render_object(
         &self,
-        _: VertexBuffer,
+        vertices: VertexBuffer,
         _: Vec<u32>,
         _: &MaterialDef,
         _: bool,
     ) -> RenderObjectHandle {
-        RenderObjectHandle::from_dyn(Rc::new(UnusedRenderObject))
+        RenderObjectHandle::from_dyn(Rc::new(UnusedRenderObject(std::cell::RefCell::new(
+            vertices,
+        ))))
     }
-    fn create_rendering_component(&self, _: Vec<RenderObjectHandle>) -> RenderingComponent {
-        RenderingComponent::new()
+    fn create_rendering_component(&self, objects: Vec<RenderObjectHandle>) -> RenderingComponent {
+        let mut component = RenderingComponent::new();
+        for object in objects {
+            component.push_render_object(object);
+        }
+        component
     }
     fn create_video_player(&self) -> Box<VideoPlayer> {
         unreachable!()

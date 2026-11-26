@@ -8,10 +8,11 @@ use mini_fs::{MiniFs, StoreExt};
 use radiance::comdef::{IComponentImpl, IEntity, IEntityExt};
 use radiance::math::{Quaternion, Transform, Vec2, Vec3};
 use radiance::rendering::{
-    ComponentFactory, MaterialDef, Pal3PropMaterialDef, VertexBuffer, VertexComponents,
+    BlendMode, ComponentFactory, MaterialDef, Pal3PropMaterialDef, VertexBuffer, VertexComponents,
 };
 use radiance::scene::CoreEntity;
 use std::{
+    cell::Cell,
     path::{Path, PathBuf},
     rc::Rc,
 };
@@ -55,24 +56,24 @@ fn new_from_cvd_model_node<P: AsRef<Path>>(
     let mut position_keyframes = None;
     let mut rotation_keyframes = None;
     let mut scale_keyframes = None;
+    let mut mesh_timestamps = vec![];
     let mut meshes = vec![];
     if let Some(model) = &node.model {
         position_keyframes = model.position_keyframes.clone();
         rotation_keyframes = model.rotation_keyframes.clone();
         scale_keyframes = model.scale_keyframes.clone();
+        mesh_timestamps = model.mesh.unknown_data.clone();
 
         for material in &model.mesh.materials {
-            if material.triangles.is_none() {
+            if material.triangles.is_none() || model.mesh.frames.is_empty() {
                 continue;
             }
 
-            for v in &model.mesh.frames {
-                let mesh = CvdMesh::new(v, material, load_texture(material, vfs, path.as_ref()));
-                meshes.push(mesh);
-
-                // TODO: Support multiple frames
-                break;
-            }
+            meshes.push(CvdMesh::new(
+                &model.mesh.frames,
+                material,
+                load_texture(material, vfs, path.as_ref()),
+            ));
         }
 
         scale_factor = model.scale_factor;
@@ -87,6 +88,8 @@ fn new_from_cvd_model_node<P: AsRef<Path>>(
         rotation_keyframes,
         scale_keyframes,
         scale_factor,
+        mesh_timestamps,
+        animation_time: Cell::new(0.),
         meshes,
     };
 
@@ -126,11 +129,26 @@ fn load_texture<P: AsRef<Path>>(
         model_dir.join(&material.texture_name)
     };
 
-    // CVD props carry no baked lightmap; like the original engine, shade them
-    // with the scene's dynamic `.lgt` lights via the lit material (CVD vertices
-    // ship normals). Keep the default `BlendMode::AlphaTest` cutout fallback,
-    // matching the legacy renderer's "always cutout" behavior.
     Pal3PropMaterialDef::create(texture_path.to_str().unwrap(), |name| vfs.open(name).ok())
+}
+
+fn material_passes(material: MaterialDef, mode: u8) -> Vec<MaterialDef> {
+    let opaque = material.clone().with_blend(BlendMode::Opaque);
+    if mode != 1 {
+        return vec![opaque];
+    }
+
+    // Native geom_t.gbf writes nearly opaque texels first. Its blended,
+    // non-depth-writing pass then rejects those same texels with strict LESS.
+    let mut params = *opaque.params();
+    params.alpha_ref = 245. / 255.;
+    vec![
+        material
+            .clone()
+            .with_blend(BlendMode::AlphaTest)
+            .with_params(params),
+        material.with_blend(BlendMode::AlphaBlend),
+    ]
 }
 
 pub struct CvdModelComponent {
@@ -140,6 +158,8 @@ pub struct CvdModelComponent {
     rotation_keyframes: Option<CvdRotationKeyFrames>,
     scale_keyframes: Option<CvdScaleKeyFrames>,
     scale_factor: f32,
+    mesh_timestamps: Vec<f32>,
+    animation_time: Cell<f32>,
     meshes: Vec<CvdMesh>,
 }
 
@@ -148,15 +168,16 @@ ComObject_CvdModel!(super::CvdModelComponent);
 impl IComponentImpl for CvdModelComponent {
     fn on_loading(&self) -> crosscom::Void {
         let mut objects = vec![];
+        let frame = sample_mesh_frame(&self.mesh_timestamps, self.animation_time.get());
         for mesh in &self.meshes {
-            let ro = self.component_factory.create_render_object(
-                mesh.vertices.clone(),
-                mesh.indices.clone(),
-                &mesh.material,
-                false,
-            );
-
-            objects.push(ro);
+            for material in &mesh.materials {
+                objects.push(self.component_factory.create_render_object(
+                    mesh.sampled_vertices(frame),
+                    mesh.indices.clone(),
+                    material,
+                    mesh.frames.len() > 1,
+                ));
+            }
         }
 
         let component = self.component_factory.create_rendering_component(objects);
@@ -178,6 +199,8 @@ impl CvdModelComponent {
             rotation_keyframes: None,
             scale_keyframes: None,
             scale_factor: 1.,
+            mesh_timestamps: vec![],
+            animation_time: Cell::new(0.),
             meshes: vec![],
         }
     }
@@ -240,11 +263,11 @@ impl CvdModelComponent {
         ]
         .into_iter()
         .flatten()
+        .chain(self.mesh_timestamps.iter().copied())
         .fold(0., f32::max)
     }
 
     fn set_time(&self, time: f32) {
-        // Linear tracks/slerp are used until the CVD spline parameters are decoded.
         let mut transform = Transform::new();
         if let Some(keys) = &self.position_keyframes {
             if let Some((a, b, t)) = sample_pair(&keys.frames, time, |k| k.timestamp) {
@@ -276,7 +299,36 @@ impl CvdModelComponent {
             .transform()
             .borrow_mut()
             .set_matrix(*transform.matrix());
+        if self.animation_time.replace(time) == time {
+            return;
+        }
+        if let Some(component) = self.entity.get_rendering_component() {
+            let frame = sample_mesh_frame(&self.mesh_timestamps, time);
+            let meshes = self
+                .meshes
+                .iter()
+                .flat_map(|mesh| mesh.materials.iter().map(move |_| mesh));
+            for (object, mesh) in component.render_objects().iter().zip(meshes) {
+                if mesh.frames.len() > 1 {
+                    object
+                        .as_dyn()
+                        .update_vertices(&|mut vertices| mesh.write_frame(&mut vertices, frame));
+                }
+            }
+        }
     }
+}
+
+fn sample_mesh_frame(timestamps: &[f32], time: f32) -> (usize, usize, f32) {
+    let upper = timestamps.partition_point(|&t| t <= time);
+    if upper == 0 {
+        return (0, 0, 0.);
+    }
+    let a = upper - 1;
+    let Some(&next) = timestamps.get(upper) else {
+        return (a, a, 0.);
+    };
+    (a, upper, (time - timestamps[a]) / (next - timestamps[a]))
 }
 
 fn cvd_slerp(a: &Quaternion, b: &Quaternion, t: f32) -> Quaternion {
@@ -366,7 +418,7 @@ pub(super) fn model_bounds(entity: &ComRc<IEntity>) -> Option<(Vec3, Vec3)> {
     let mut bounds = vec![];
     if let Some(component) = entity.get_component(ICvdModel::uuid()) {
         for mesh in &component.inner::<CvdModelComponent>().meshes {
-            bounds.extend(mesh.vertices.aabb_min_max());
+            bounds.extend(mesh.bounds);
         }
     }
     for child in entity.children() {
@@ -390,6 +442,118 @@ pub(super) fn model_bounds(entity: &ComRc<IEntity>) -> Option<(Vec3, Vec3)> {
 #[cfg(test)]
 mod animation_tests {
     use super::*;
+    use crate::openpal3::loaders::cvd_loader::CvdTriangle;
+    use radiance::rendering::{DepthMode, ShaderProgram};
+
+    fn animated_mesh() -> CvdMesh {
+        let frames = [0., 10.].map(|offset| {
+            (0..3)
+                .map(|i| CvdVertex {
+                    position: Vec3::new(i as f32 + offset, 0., 0.),
+                    normal: Vec3::new(0., 1. - offset / 5., 0.),
+                    tex_coord: Vec2::new(i as f32 + offset / 10., offset / 5.),
+                })
+                .collect::<Vec<_>>()
+        });
+        CvdMesh::new(
+            &frames,
+            &CvdMaterial {
+                unknown_byte: 1,
+                color1: 0xffffffff,
+                color2: 0xffffffff,
+                color3: 0xff0b0b0b,
+                color4: 0xff000000,
+                texture_name: String::new(),
+                triangle_count: 1,
+                triangles: Some(vec![CvdTriangle { indices: [2, 0, 2] }]),
+            },
+            MaterialDef::builder(ShaderProgram::Pal3Prop).build(),
+        )
+    }
+
+    #[test]
+    fn mesh_frames_follow_native_absolute_timestamps_and_final_clamp() {
+        let times = [0., 1. / 6., 1. / 3.];
+        assert_eq!(sample_mesh_frame(&times, 0.), (0, 1, 0.));
+        assert_eq!(sample_mesh_frame(&times, 1. / 12.), (0, 1, 0.5));
+        assert_eq!(sample_mesh_frame(&times, 1. / 6.), (1, 2, 0.));
+        assert_eq!(sample_mesh_frame(&times, 1.), (2, 2, 0.));
+        assert_eq!(sample_mesh_frame(&[2., 3., 5.], 4.), (1, 2, 0.5));
+        assert_eq!(sample_mesh_frame(&times, -1.), (0, 0, 0.));
+        assert_eq!(sample_mesh_frame(&[0., 0., 1.], 0.), (1, 2, 0.));
+        assert_eq!(sample_mesh_frame(&[], 0.), (0, 0, 0.));
+    }
+
+    #[test]
+    fn mesh_frames_reindex_and_blend_positions_and_uvs_but_copy_earlier_normals() {
+        let mesh = animated_mesh();
+        assert_eq!(mesh.indices, [0, 1, 0]);
+        let vertices = mesh.sampled_vertices((0, 1, 0.25));
+        assert_eq!(vertices.count(), 2);
+        assert_eq!(vertices.position(0).unwrap().x, 4.5);
+        assert_eq!(vertices.position(1).unwrap().x, 2.5);
+        assert_eq!(vertices.tex_coord(0).unwrap().x, 2.25);
+        assert_eq!(vertices.tex_coord(0).unwrap().y, 0.5);
+        assert_eq!(vertices.normal(0).unwrap().y, 1.);
+        assert_eq!(mesh.sampled_vertices((1, 1, 0.)).normal(0).unwrap().y, -1.);
+        assert_eq!(mesh.bounds, Some(([0., 0., 0.], [12., 0., 0.])));
+    }
+
+    #[test]
+    fn native_material_modes_separate_opaque_and_two_pass_transparency() {
+        let base = MaterialDef::builder(ShaderProgram::Pal3Prop).build();
+        let opaque = material_passes(base.clone(), 0);
+        assert_eq!(opaque.len(), 1);
+        assert_eq!(opaque[0].blend(), BlendMode::Opaque);
+        assert_eq!(opaque[0].params().alpha_ref, 0.);
+        let transparent = material_passes(base, 1);
+        assert_eq!(transparent.len(), 2);
+        assert_eq!(transparent[0].blend(), BlendMode::AlphaTest);
+        assert_eq!(transparent[0].depth(), DepthMode::TestWrite);
+        assert_eq!(transparent[0].params().alpha_ref, 245. / 255.);
+        assert_eq!(transparent[1].blend(), BlendMode::AlphaBlend);
+        assert_eq!(transparent[1].depth(), DepthMode::TestOnly);
+    }
+
+    #[test]
+    fn mesh_only_animation_updates_both_render_passes_and_loads_a_restored_pose() {
+        let factory = Rc::new(super::super::mechanism_tests::UnusedFactory);
+        let root = CoreEntity::create("placed object".into(), true);
+        root.transform()
+            .borrow_mut()
+            .set_position(&Vec3::new(50., 60., 70.));
+        let child = CoreEntity::create("animated mesh".into(), true);
+        let mut component = CvdModelComponent::new(child.clone(), factory);
+        component.mesh_timestamps = vec![0., 5.];
+        component.meshes = vec![animated_mesh()];
+        child.add_component(ICvdModel::uuid(), ComRc::from_object(component));
+        root.attach(child.clone());
+        assert_eq!(animation_duration(&root), 5.);
+        set_animation_time(&root, 2.5);
+        root.load();
+        let rendering = child.get_rendering_component().unwrap();
+        assert_eq!(rendering.render_objects().len(), 2);
+        for object in rendering.render_objects() {
+            assert_eq!(
+                object.as_dyn().local_aabb(),
+                Some(([5., 0., 0.], [7., 0., 0.]))
+            );
+        }
+        for time in [5., 5., 10., 0.] {
+            set_animation_time(&root, time);
+            let offset = if time == 0. { 0. } else { 10. };
+            for object in rendering.render_objects() {
+                assert_eq!(
+                    object.as_dyn().local_aabb(),
+                    Some(([offset, 0., 0.], [offset + 2., 0., 0.]))
+                );
+            }
+        }
+        assert_eq!(root.transform().borrow().position().x, 50.);
+        assert_eq!(root.transform().borrow().position().y, 60.);
+        assert_eq!(root.transform().borrow().position().z, 70.);
+        root.unload();
+    }
 
     #[test]
     fn mechanism_tracks_normalize_time_and_clamp_at_endpoints() {
@@ -438,14 +602,15 @@ mod animation_tests {
 }
 
 struct CvdMesh {
-    material: MaterialDef,
-    vertices: VertexBuffer,
+    materials: Vec<MaterialDef>,
+    frames: Vec<VertexBuffer>,
     indices: Vec<u32>,
+    bounds: Option<([f32; 3], [f32; 3])>,
 }
 
 impl CvdMesh {
     pub fn new(
-        all_vertices: &Vec<CvdVertex>,
+        all_frames: &[Vec<CvdVertex>],
         cvd_material: &CvdMaterial,
         material: MaterialDef,
     ) -> Self {
@@ -472,26 +637,63 @@ impl CvdMesh {
             indices.push(get_new_index(t.indices[2]));
         }
 
-        let mut vertices = VertexBuffer::new(components, reversed_index.len());
-        for i in 0..reversed_index.len() {
-            let vert = &all_vertices[reversed_index[i]];
-            vertices.set_data(
-                i,
-                Some(&Vec3::new(
-                    vert.position.x,
-                    vert.position.y,
-                    vert.position.z,
-                )),
-                Some(&Vec3::new(vert.normal.x, vert.normal.y, vert.normal.z)),
-                Some(&Vec2::new(vert.tex_coord.x, vert.tex_coord.y)),
-                None,
-            );
-        }
+        let frames = all_frames
+            .iter()
+            .map(|frame| {
+                let mut vertices = VertexBuffer::new(components, reversed_index.len());
+                for (i, &source) in reversed_index.iter().enumerate() {
+                    let vert = &frame[source];
+                    vertices.set_data(
+                        i,
+                        Some(&vert.position),
+                        Some(&vert.normal),
+                        Some(&vert.tex_coord),
+                        None,
+                    );
+                }
+                vertices
+            })
+            .collect::<Vec<_>>();
+        let bounds = frames.iter().filter_map(VertexBuffer::aabb_min_max).reduce(
+            |(min, max), (next_min, next_max)| {
+                (
+                    std::array::from_fn(|i| min[i].min(next_min[i])),
+                    std::array::from_fn(|i| max[i].max(next_max[i])),
+                )
+            },
+        );
 
         CvdMesh {
-            material,
-            vertices,
+            materials: material_passes(material, cvd_material.unknown_byte),
+            frames,
             indices,
+            bounds,
+        }
+    }
+
+    fn sampled_vertices(&self, frame: (usize, usize, f32)) -> VertexBuffer {
+        let mut vertices = self.frames[frame.0].clone();
+        if frame.0 != frame.1 {
+            self.write_frame(&mut vertices, frame);
+        }
+        vertices
+    }
+
+    fn write_frame(&self, vertices: &mut VertexBuffer, (a, b, weight): (usize, usize, f32)) {
+        let (a, b) = (&self.frames[a], &self.frames[b]);
+        for i in 0..vertices.count() {
+            let position = Vec3::lerp(a.position(i).unwrap(), b.position(i).unwrap(), weight);
+            let (uv_a, uv_b) = (a.tex_coord(i).unwrap(), b.tex_coord(i).unwrap());
+            let uv = Vec2::new(
+                uv_a.x * (1. - weight) + uv_b.x * weight,
+                uv_a.y * (1. - weight) + uv_b.y * weight,
+            );
+            // gbengine.dll 0x10012e1d copies the earlier frame's normal.
+            vertices.set_component(i, VertexComponents::POSITION, |p: &mut Vec3| *p = position);
+            vertices.set_component(i, VertexComponents::NORMAL, |n: &mut Vec3| {
+                *n = *a.normal(i).unwrap()
+            });
+            vertices.set_component(i, VertexComponents::TEXCOORD, |t: &mut Vec2| *t = uv);
         }
     }
 }

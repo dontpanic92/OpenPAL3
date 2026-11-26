@@ -210,6 +210,12 @@ fn convert_model(model: raw::CvdModel) -> CvdModel {
 }
 
 fn convert_mesh(mesh: raw::CvdMesh) -> CvdMesh {
+    let mut timestamps = mesh.frame_extra;
+    // Native 0x1001205a zeroes the first entry in-place; later entries
+    // subtract that now-zero value. Static meshes commonly store 10 here.
+    if let Some(first) = timestamps.first_mut() {
+        *first = 0.;
+    }
     let frames = mesh
         .frames
         .into_iter()
@@ -222,7 +228,7 @@ fn convert_mesh(mesh: raw::CvdMesh) -> CvdMesh {
         frame_count: mesh.frame_count,
         vertex_count: mesh.vertex_count,
         frames,
-        unknown_data: mesh.frame_extra,
+        unknown_data: timestamps,
         material_count: mesh.material_count,
         materials,
     }
@@ -233,7 +239,7 @@ fn convert_vertex(v: raw::CvdVertex) -> CvdVertex {
     let [nx, ny, nz] = v.normal;
     CvdVertex {
         position: Vec3::new(px, pz, -py),
-        normal: Vec3::new(nx, ny, nz),
+        normal: Vec3::new(nx, nz, -ny),
         tex_coord: Vec2::new(v.tex_coord.u, v.tex_coord.v),
     }
 }
@@ -381,4 +387,26 @@ fn convert_scale_keyframes(kf: raw::CvdScaleKeyFrames) -> CvdScaleKeyFrames {
         .collect();
 
     CvdScaleKeyFrames { version, frames }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mesh_timestamps_match_native_in_place_first_entry_reset() {
+        for times in [vec![10.], vec![2., 3., 5.]] {
+            let mesh = raw::CvdMesh {
+                frame_count: times.len() as u32,
+                vertex_count: 0,
+                frames: vec![vec![]; times.len()],
+                frame_extra: times.clone(),
+                material_count: 0,
+                materials: vec![],
+            };
+            let converted = convert_mesh(mesh);
+            assert_eq!(converted.unknown_data[0], 0.);
+            assert_eq!(converted.unknown_data[1..], times[1..]);
+        }
+    }
 }
