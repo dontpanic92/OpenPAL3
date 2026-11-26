@@ -12,7 +12,7 @@ use super::{
 };
 use crate::comdef::{IEntity, IEntityExt, IScene, ISceneExt};
 use crate::math::{Mat44, Vec3};
-use crate::rendering::{BlendMode, RenderObject, RenderTarget, RenderingComponent};
+use crate::rendering::{BlendMode, RenderObject, RenderingComponent};
 use crate::scene::{Camera, Viewport};
 use crate::{
     imgui::{ImguiContext, ImguiFrame},
