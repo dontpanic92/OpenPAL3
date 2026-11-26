@@ -7,6 +7,7 @@ use crate::{
     openpal3::{
         asset_manager::AssetManager,
         directors::SceneManagerExtensions,
+        loaders::stats::StatsData,
         scene::{LadderTestResult, RoleController},
         states::{global_state::GlobalState, persistent_state::PersistentState},
     },
@@ -28,6 +29,79 @@ use crate::agent_common::AgentBridge;
 
 pub struct AdventureDirector {
     props: RefCell<AdventureDirectorProps>,
+}
+
+fn apply_pickup_rewards(
+    persistent: &mut PersistentState,
+    data: &StatsData,
+    rewards: Vec<(i32, i32)>,
+) -> (Vec<String>, usize) {
+    let mut notices = vec![];
+    let mut gain_sounds = 0;
+    for (item_id, money) in rewards {
+        if item_id != 0 {
+            let granted = persistent.grant_world_item(item_id, data);
+            log::info!("PAL3 world pickup item {item_id}: granted={granted}");
+            if granted {
+                notices.push(format!("得到{}", data.item(item_id as u32).unwrap().name));
+                gain_sounds += 1;
+            }
+        }
+        if money != 0 {
+            let before = persistent.money();
+            persistent.add_money(money);
+            let after = persistent.money();
+            let delta = after - before;
+            log::info!("PAL3 world pickup money: {money}, actual change: {delta}");
+            if after == 0 {
+                notices.push("失去所有钱".into());
+            } else if delta < 0 {
+                notices.push(format!("失去{}文钱", -delta));
+            } else {
+                notices.push(format!("得到{delta}文钱"));
+                gain_sounds += 1;
+            }
+        }
+    }
+    (notices, gain_sounds)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pickup_feedback_only_sounds_for_valid_items_and_uses_actual_money_changes() {
+        let data = crate::openpal3::loaders::stats::test_data();
+        for (balance, amount, expected, sounds) in [
+            (0, 25, "得到25文钱", 1),
+            (100, -25, "失去25文钱", 0),
+            (10, -25, "失去所有钱", 0),
+            (0, -25, "失去所有钱", 0),
+            (i32::MAX, 1, "失去所有钱", 0),
+        ] {
+            let mut state = PersistentState::new("OpenPAL3".into());
+            state.add_money(-state.money());
+            state.add_money(balance);
+            let (notices, count) =
+                apply_pickup_rewards(&mut state, &data, vec![(42, amount), (-1, 0), (0, 0)]);
+            assert_eq!(
+                notices,
+                vec![
+                    format!("得到{}", data.item(42).unwrap().name),
+                    expected.into()
+                ]
+            );
+            assert_eq!(count, sounds + 1);
+            assert_eq!(state.inventory().quantity(42), 1);
+            assert_eq!(state.money(), balance.wrapping_add(amount).max(0));
+        }
+        let mut state = PersistentState::new("OpenPAL3".into());
+        assert_eq!(
+            apply_pickup_rewards(&mut state, &data, vec![(-1, 0), (123456, 0)]),
+            (vec![], 0)
+        );
+    }
 }
 
 ComObject_AdventureDirector!(super::AdventureDirector);
@@ -512,7 +586,9 @@ impl AdventureDirectorProps {
             let native_pal3 = self.sce_vm.state().asset_mgr().game() == crate::GameType::PAL3;
             let rewards = scene.take_pickup_rewards();
             let chest_rewards = scene.take_chest_rewards();
-            let mut notices = scene.take_mechanism_notices();
+            let notices = scene.take_mechanism_notices();
+            let mut reward_notices = vec![];
+            let mut reward_sound_count = 0;
             let stats_data = (!rewards.is_empty() || hazard.is_some())
                 .then(|| self.sce_vm.state().asset_mgr().stats_data());
             let mut damage_delta = 0;
@@ -529,29 +605,16 @@ impl AdventureDirectorProps {
                     );
                     damage_delta = deltas.get(role as usize).copied().unwrap_or(0);
                 }
-                for (item_id, money) in rewards {
-                    if item_id != 0 {
-                        let granted =
-                            persistent.grant_world_item(item_id, stats_data.as_ref().unwrap());
-                        log::info!("PAL3 world pickup item {item_id}: granted={granted}");
-                        if granted {
-                            if let Some(item) = stats_data.as_ref().unwrap().item(item_id as u32) {
-                                notices.push(format!("得到{}", item.name));
-                            }
-                        }
-                    }
-                    if money != 0 {
-                        persistent.add_money(money);
-                        log::info!("PAL3 world pickup money: {money}");
-                        notices.push(format!("得到{money}文钱"));
-                    }
+                if let Some(data) = &stats_data {
+                    (reward_notices, reward_sound_count) =
+                        apply_pickup_rewards(&mut persistent, data, rewards);
                 }
                 for reward in chest_rewards {
                     if reward.experience != 0 {
                         persistent
                             .stats_mut()
                             .add_experience(reward.role, reward.experience);
-                        notices.push(format!("经验增加{}", reward.experience));
+                        reward_notices.push(format!("经验增加{}", reward.experience));
                     }
                     persistent.add_favor(reward.role, reward.favor);
                     log::info!("PAL3 chest reward: {reward:?}");
@@ -569,6 +632,7 @@ impl AdventureDirectorProps {
                     .state_mut()
                     .show_mechanism_notice(notices.join("\n"));
             }
+            self.sce_vm.state_mut().show_reward_notices(reward_notices);
             if damage_delta < 0 {
                 self.sce_vm.state_mut().show_hazard_damage(damage_delta);
                 let role = self.sce_vm.global_state().role_controlled();
@@ -580,6 +644,9 @@ impl AdventureDirectorProps {
             }
             for sound in scene.take_mechanism_sounds() {
                 self.play_mechanism_sound(&sound);
+            }
+            for _ in 0..reward_sound_count {
+                self.play_mechanism_sound("wa006");
             }
             for proc_id in procs {
                 self.sce_vm.call_proc(proc_id);

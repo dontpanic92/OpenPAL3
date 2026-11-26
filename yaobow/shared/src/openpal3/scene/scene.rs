@@ -253,6 +253,12 @@ impl ScnScene {
         if let Some(entity) = self.get_root_object(mechanism.id as i32) {
             if matches!(mechanism.kind, 24 | 41) {
                 entity.set_visible(mechanism.active && !mechanism.pickup_claimed());
+                if mechanism.kind == 41 {
+                    cvd_entity::set_animation_time(
+                        &entity,
+                        mechanism.state.animation_time.unwrap_or(0.),
+                    );
+                }
             } else if let Some(chest) = &mechanism.state.chest {
                 let time = match chest.phase {
                     ChestPhase::Opening { elapsed, .. } => elapsed,
@@ -656,7 +662,8 @@ impl ScnScene {
                 let Some((player, _)) = self.mechanism_player.borrow().as_ref().cloned() else {
                     continue;
                 };
-                if let Some(proc_id) = mechanism.activation_proc() {
+                if let Some(proc_id) = mechanism.activation_proc().filter(|_| mechanism.kind == 24)
+                {
                     mechanism.pickup_mut().unwrap().waiting_for_script = true;
                     return Some(Some(proc_id));
                 }
@@ -665,7 +672,7 @@ impl ScnScene {
                     player: player.name(),
                     target,
                 });
-                return Some(None);
+                return Some(mechanism.activation_proc());
             }
             if mechanism.kind == 26 {
                 if mechanism.state.remaining == 0
@@ -1024,6 +1031,26 @@ impl ScnScene {
     }
 
     fn update_pickup(&self, mechanism: &mut Mechanism, delta_sec: f32) {
+        if mechanism.pickup_claimed() {
+            return;
+        }
+        let duration = if mechanism.kind == 41 {
+            self.get_root_object(mechanism.id as i32)
+                .map(|entity| cvd_entity::animation_duration(&entity))
+                .unwrap_or(0.)
+        } else {
+            0.
+        };
+        if mechanism.kind == 41
+            && let Some(time) = mechanism.state.animation_time
+        {
+            let time = (time + delta_sec.max(0.) * 2.).min(duration);
+            mechanism.state.animation_time = Some(time);
+            if time >= duration {
+                self.claim_pickup(mechanism);
+            }
+            return;
+        }
         if mechanism.pickup().is_some_and(|p| p.waiting_for_script) {
             if !self.mechanism_script_running.get() {
                 self.claim_pickup(mechanism);
@@ -1061,7 +1088,15 @@ impl ScnScene {
                 }
             }
             PickupWalk::Arrived => {
-                self.claim_pickup(mechanism);
+                if mechanism.kind == 41 {
+                    mechanism.state.animation_time = Some(0.);
+                    self.mechanism_sounds
+                        .borrow_mut()
+                        .push(mechanism.action_sound(false).into());
+                }
+                if duration == 0. {
+                    self.claim_pickup(mechanism);
+                }
                 if let Some(controller) = RoleController::get_role_controller(player) {
                     controller.inner::<RoleController>().idle();
                 }

@@ -661,6 +661,7 @@ impl Mechanism {
             19 => "Wg001",
             26 if variant => "wg011",
             26 => "wa004",
+            41 => "wg011",
             29 if variant => "We026",
             _ => "Wg005",
         }
@@ -796,7 +797,7 @@ impl Mechanism {
     }
 
     pub fn activation_proc(&self) -> Option<u32> {
-        (matches!(self.kind, 24 | 29 | 31) && self.proc_id != 0).then_some(self.proc_id)
+        (matches!(self.kind, 24 | 29 | 31 | 41) && self.proc_id != 0).then_some(self.proc_id)
     }
 
     pub fn set_active(&mut self, active: bool) {

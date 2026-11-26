@@ -155,6 +155,22 @@ pub struct[openpal3.IPal3StatusRenderer] Pal3StatusRendererImpl(
         0
     }
 
+    pub fn render_reward_notice(self: &Self, ui: &radiance.IUiHost,
+        text: string, elapsed: float, row: int) -> int {
+        let fade_time = if elapsed > 1.5 { elapsed - 1.5 } else { 0.0 };
+        let alpha = if fade_time < 2.5 { 1.0 - fade_time * 0.4 } else { 0.0 };
+        let mut units = 0;
+        for i in Range(0, text.len_chars()) {
+            units = units + if text.char_at(i)!.len_bytes() == 1 { 1 } else { 2 };
+        }
+        ui.text_at_size(
+            (ui.display_size_x() as float - (units as float) * 10.0) * 0.5,
+            40.0 + (row as float) * 24.0,
+            20.0, 1.0, 1.0, 1.0, alpha, text,
+        );
+        0
+    }
+
     pub fn render_notice(self: &Self, ui: &radiance.IUiHost, text: string) -> int {
         let lines = state_menu.description_lines(text);
         let font_size = if lines.len() == 1 && text.len_chars() <= 10 { 20.0 } else { 16.0 };

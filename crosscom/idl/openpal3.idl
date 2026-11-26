@@ -269,6 +269,7 @@ interface IPal3StatusRenderer: IUnknown {
     // Paint PAL3's native fixed note panel (`ui/flex/Note0..8.tga`) with
     // centered text. Lifetime is owned by the SCE host.
     void render_notice(IUiHost ui, &str text);
+    void render_reward_notice(IUiHost ui, &str text, float elapsed, int row);
 
     // Progress is 0 at the pre-load paint, then follows completed load work.
     // Returns true once the native progress widget has reached its target.

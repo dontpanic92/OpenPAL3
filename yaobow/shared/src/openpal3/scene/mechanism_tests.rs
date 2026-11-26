@@ -1584,6 +1584,58 @@ fn cache_player(scene: &ScnScene, position: Vec3) {
 }
 
 #[test]
+#[ignore = "requires original game assets via PAL3_ASSET_PATH"]
+fn shipped_pickup_container_animates_before_reward_and_restores_without_replaying_sound() {
+    use crate::openpal3::comdef::IScnSceneComponent;
+    let path = std::env::var("PAL3_ASSET_PATH").expect("PAL3_ASSET_PATH");
+    let assets = Rc::new(AssetManager::new(
+        Rc::new(UnusedFactory),
+        Rc::new(packfs::init_virtual_fs(std::path::Path::new(&path), None)),
+    ));
+    for sound in ["wa006", "wg011"] {
+        assert!(!assets.load_snd_data(sound).unwrap().is_empty());
+    }
+    let root = assets.load_scn("m01", "1");
+    let component = root.get_component(IScnSceneComponent::uuid()).unwrap();
+    component.on_loading();
+    let component = component.query_interface::<IScnSceneComponent>().unwrap();
+    let scene = component.inner::<ScnScene>();
+    let entity = scene.get_root_object(83).unwrap();
+    let duration = super::cvd_entity::animation_duration(&entity);
+    assert!(duration > 0.5, "mesh frames outlast the transform tracks");
+    let position = entity.transform().borrow().position();
+    cache_player(scene, position);
+    assert_eq!(scene.interact_mechanism(0, &position), Some(None));
+    scene.update_mechanisms(0.);
+    assert!(scene.mechanism_input_locked());
+    assert!(entity.visible());
+    assert!(scene.take_pickup_rewards().is_empty());
+    assert_eq!(scene.take_mechanism_sounds(), vec!["wg011"]);
+    scene.update_mechanisms(duration * 0.25);
+    assert!(scene.take_pickup_rewards().is_empty());
+
+    let mut saved = PersistentState::new("OpenPAL3".into());
+    scene.snapshot_mechanisms(&mut saved);
+    assert_eq!(
+        saved.mechanism_states("m01", "1").unwrap()[&83].animation_time,
+        Some(duration * 0.5)
+    );
+    let saved = serde_json::from_str(&serde_json::to_string(&saved).unwrap()).unwrap();
+    scene.restore_mechanisms(&saved);
+    scene.update_mechanisms(duration * 0.25);
+    assert_eq!(scene.take_pickup_rewards(), vec![(8101, 0)]);
+    assert!(!scene.mechanism_input_locked());
+    assert!(!entity.visible());
+    assert!(scene.take_mechanism_sounds().is_empty());
+    let mut claimed = PersistentState::new("OpenPAL3".into());
+    scene.snapshot_mechanisms(&mut claimed);
+    scene.restore_mechanisms(&claimed);
+    scene.update_mechanisms(1.);
+    assert!(scene.take_pickup_rewards().is_empty());
+    assert!(scene.take_mechanism_sounds().is_empty());
+}
+
+#[test]
 fn ground_pickup_queues_reward_once_hides_and_persists_claim() {
     let mut pickup = node(41, 41, u16::MAX);
     pickup.ladder_nav_coord1.0 = 6601;
@@ -1661,6 +1713,24 @@ fn ordinary_pickup_waits_for_its_script_before_granting() {
     scene.update_mechanisms(0.);
     assert!(!scene.mechanism_input_locked());
     assert_eq!(scene.take_pickup_rewards(), vec![(6201, 0)]);
+}
+
+#[test]
+fn pickup_container_starts_its_script_without_waiting_for_it_to_finish() {
+    let mut pickup = node(41, 41, u16::MAX);
+    pickup.ladder_nav_coord1.0 = 6201;
+    pickup.sce_proc_id = 500;
+    let scene = scene(vec![pickup]);
+    cache_player(&scene, Vec3::new(0., 10., 0.));
+    assert_eq!(
+        scene.interact_mechanism(0, &Vec3::new(0., 10., 0.)),
+        Some(Some(500))
+    );
+    scene.set_mechanism_script_running(true);
+    scene.update_mechanisms(0.);
+    assert_eq!(scene.take_mechanism_sounds(), vec!["wg011"]);
+    assert_eq!(scene.take_pickup_rewards(), vec![(6201, 0)]);
+    assert!(!scene.mechanism_input_locked());
 }
 
 #[test]

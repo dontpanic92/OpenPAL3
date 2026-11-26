@@ -134,7 +134,15 @@ pub struct SceState {
     status_renderer: ComRc<crate::openpal3::comdef::IPal3StatusRenderer>,
     menu_state: ComRc<crate::openpal3::comdef::IPal3MenuState>,
     mechanism_notice: Option<(String, f32)>,
+    reward_notices: Vec<RewardNotice>,
     hazard_damage_feedback: Vec<HazardDamageFeedback>,
+}
+
+#[derive(Clone, Debug)]
+struct RewardNotice {
+    text: String,
+    elapsed: f32,
+    row: i32,
 }
 
 #[derive(Clone, Debug)]
@@ -203,6 +211,7 @@ impl SceState {
             status_renderer,
             menu_state,
             mechanism_notice: None,
+            reward_notices: vec![],
             hazard_damage_feedback: vec![],
         }
     }
@@ -365,6 +374,14 @@ impl SceState {
             if let Some((text, _)) = &self.mechanism_notice {
                 renderer.render_notice(ui_host.clone(), text);
             }
+            for notice in &self.reward_notices {
+                renderer.render_reward_notice(
+                    ui_host.clone(),
+                    &notice.text,
+                    notice.elapsed,
+                    notice.row,
+                );
+            }
             if let (Some(position), Some(view_projection)) = (role_position, view_projection) {
                 let width = ui_host.display_size_x() as f32;
                 let height = ui_host.display_size_y() as f32;
@@ -423,10 +440,32 @@ impl SceState {
         }
         self.hazard_damage_feedback
             .retain(|feedback| feedback.elapsed < 2.5);
+        for notice in &mut self.reward_notices {
+            notice.elapsed += elapsed;
+        }
+        self.reward_notices.retain(|notice| notice.elapsed < 4.);
     }
 
     pub fn show_mechanism_notice(&mut self, text: String) {
         self.mechanism_notice = Some((text, 4.));
+    }
+
+    pub fn show_reward_notices(&mut self, notices: Vec<String>) {
+        let first_row = self
+            .reward_notices
+            .last()
+            .map_or(0, |notice| notice.row + 1);
+        self.reward_notices
+            .extend(
+                notices
+                    .into_iter()
+                    .enumerate()
+                    .map(|(index, text)| RewardNotice {
+                        text,
+                        elapsed: 0.,
+                        row: first_row + index as i32,
+                    }),
+            );
     }
 
     pub fn show_hazard_damage(&mut self, delta: i32) {

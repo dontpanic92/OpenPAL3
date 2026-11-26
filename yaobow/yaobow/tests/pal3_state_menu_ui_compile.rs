@@ -246,6 +246,72 @@ fn native_loading_screen_crops_progress_animates_and_resets_on_letterboxed_canva
 }
 
 #[test]
+fn native_pickup_notice_centers_stacked_text_and_fades_without_a_panel() {
+    let host = ScriptHost::new();
+    host.set_script_assets(install_script_assets());
+    host.load_source(
+        r#"
+        import radiance;
+        import scripting_services;
+        import shared.openpal3;
+        import yaobow.openpal3.status_ui;
+        pub fn make(sprites: &scripting_services.ISpriteService,
+            atlas: &openpal3.IPal3UiAtlas) -> &openpal3.IPal3StatusRenderer {
+            status_ui.make_pal3_status_renderer(sprites, atlas)
+        }
+        pub fn paint(renderer: &openpal3.IPal3StatusRenderer,
+            ui: &radiance.IUiHost, elapsed: float, row: int) {
+            renderer.render_reward_notice(ui, "得到25文钱", elapsed, row);
+        }
+        "#,
+    )
+    .unwrap();
+    let (recorder, ui) = RecordingUiHost::create();
+    recorder.set_display_size(800, 600);
+    let ui_id = host.intern(ui);
+    let sprites_id = host.intern(ComRc::<ISpriteService>::from_object(TestSprites));
+    let atlas_id = host.intern(ComRc::<IPal3UiAtlas>::from_object(TestAtlas));
+    let renderer = host
+        .call_returning_data(
+            "make",
+            vec![
+                host.foreign_box(
+                    "radiance_scripting.comdef.services.ISpriteService",
+                    sprites_id,
+                )
+                .unwrap(),
+                host.foreign_box("shared.openpal3.comdef.IPal3UiAtlas", atlas_id)
+                    .unwrap(),
+            ],
+        )
+        .unwrap();
+    for (elapsed, row, expected_alpha) in [(0., 0, 1.), (1.5, 1, 1.), (2.75, 2, 0.5), (4., 3, 0.)] {
+        recorder.calls.borrow_mut().clear();
+        host.call_void(
+            "paint",
+            vec![
+                renderer.clone(),
+                host.foreign_box("radiance.comdef.IUiHost", ui_id).unwrap(),
+                Data::Float(elapsed),
+                Data::Int(row),
+            ],
+        )
+        .unwrap();
+        let calls = recorder.calls.borrow();
+        assert!(
+            !calls
+                .iter()
+                .any(|call| matches!(call, UiCall::ImageRect { .. }))
+        );
+        assert!(calls.iter().any(|call| matches!(call,
+            UiCall::TextAt { x, y, size: Some(size), r, g, b, a, s }
+            if (*x, *y, *size) == (350., 40. + row as f32 * 24., 20.)
+                && (*r, *g, *b) == (1., 1., 1.)
+                && (*a - expected_alpha).abs() < 0.0001 && s == "得到25文钱")));
+    }
+}
+
+#[test]
 fn native_mechanism_notice_uses_shipped_note_nine_slice() {
     let host = ScriptHost::new();
     host.set_script_assets(install_script_assets());
