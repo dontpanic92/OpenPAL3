@@ -695,6 +695,11 @@ pub(crate) fn swap_pal4_scene(
         sub_block_name,
         factory.as_ref(),
     )?;
+    if let Some(context) = scene.game_context.as_ref() {
+        context
+            .inner::<super::game_context::Pal4GameContext>()
+            .set_session(Rc::downgrade(&session));
+    }
 
     let _ = scene_manager.pop_scene();
 

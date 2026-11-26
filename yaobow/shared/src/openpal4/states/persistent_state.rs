@@ -120,6 +120,12 @@ pub struct Pal4PersistentState {
     /// which hold cross-scene story-plot flags.
     #[serde(default)]
     script_globals: Vec<u32>,
+    #[serde(default = "default_menu_grants")]
+    menu_grants: [bool; 8],
+}
+
+fn default_menu_grants() -> [bool; 8] {
+    [true; 8]
 }
 
 impl Pal4PersistentState {
@@ -152,6 +158,7 @@ impl Pal4PersistentState {
             players,
             inventory: HashMap::new(),
             script_globals: Vec::new(),
+            menu_grants: default_menu_grants(),
         }
     }
 
@@ -222,6 +229,85 @@ impl Pal4PersistentState {
 
     pub fn app_name(&self) -> &str {
         self.app_name.as_str()
+    }
+
+    pub fn menu_enabled(&self, tab: i32) -> bool {
+        self.menu_grants.get(tab as usize).copied().unwrap_or(false)
+    }
+
+    pub fn grant_menu(&mut self, tab: i32, enabled: bool) {
+        if let Some(grant) = self.menu_grants.get_mut(tab as usize) {
+            *grant = enabled;
+        }
+    }
+
+    fn property_use_plan(
+        &self,
+        role: usize,
+        id: i32,
+        catalog: &GameplayCatalog,
+    ) -> Option<Vec<(usize, i32, i32)>> {
+        let item = catalog.properties.get(&id)?;
+        if !self.has_equipment(id)
+            || !item.usable_in_menu
+            || item.category != 0
+            || ![1, 3].contains(&item.target)
+        {
+            return None;
+        }
+        let effects = catalog.recovery_effects(item.skill_id)?;
+        let mut changes = Vec::new();
+        for slot in 0..PLAYER_COUNT {
+            if item.target == 1 && slot != role {
+                continue;
+            }
+            let player = self.player(slot)?;
+            if !player.in_team || player.hp <= 0 || !item.usable_by[slot] {
+                continue;
+            }
+            let (mut hp, mut mp) = (player.hp, player.mp);
+            for effect in &effects {
+                let (value, maximum) = if effect.hp {
+                    (&mut hp, player.max_hp)
+                } else {
+                    (&mut mp, player.max_mp)
+                };
+                let amount = if effect.proportional {
+                    maximum as f64 * f64::from(effect.amount)
+                } else {
+                    f64::from(effect.amount)
+                };
+                *value = value.saturating_add(amount as i32).clamp(0, maximum);
+            }
+            if hp != player.hp || mp != player.mp {
+                changes.push((slot, hp, mp));
+            }
+        }
+        if changes.is_empty() {
+            None
+        } else {
+            Some(changes)
+        }
+    }
+
+    pub fn can_use_property(&self, role: usize, id: i32, catalog: &GameplayCatalog) -> bool {
+        role < PLAYER_COUNT && self.property_use_plan(role, id, catalog).is_some()
+    }
+
+    pub fn use_property(&mut self, role: usize, id: i32, catalog: &GameplayCatalog) -> bool {
+        if role >= PLAYER_COUNT {
+            return false;
+        }
+        let Some(changes) = self.property_use_plan(role, id, catalog) else {
+            return false;
+        };
+        for (slot, hp, mp) in changes {
+            let player = self.player_mut(slot);
+            player.hp = hp;
+            player.mp = mp;
+        }
+        self.remove_equipment(id, 1);
+        true
     }
 
     // --- Money ---------------------------------------------------------

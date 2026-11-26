@@ -1,0 +1,395 @@
+use std::{
+    cell::{Cell, RefCell},
+    collections::BTreeMap,
+    rc::Rc,
+};
+
+use crosscom::ComRc;
+use p7::interpreter::context::Data;
+use radiance_scripting::{
+    ScriptHost,
+    comdef::services::{IInputService, IInputServiceImpl},
+    services::ui_host_recording::{RecordingUiHost, UiCall},
+};
+use shared::openpal4::{
+    gameplay::{
+        CharacterStats, EquipmentDefinition, EquipmentType, GameplayCatalog, LevelDefinition,
+        PropertyDefinition, RoleDefinition, SkillDefinition,
+    },
+    menu_state::Pal4MenuState,
+    session::Pal4Session,
+};
+use yaobow_lib::script_source::install_script_assets;
+
+mod comdef {
+    pub use radiance_scripting::comdef::services;
+}
+
+struct TestInput {
+    key: Rc<Cell<i32>>,
+}
+radiance_scripting::ComObject_InputService!(crate::TestInput);
+impl IInputServiceImpl for TestInput {
+    fn key_down(&self, key: i32) -> bool {
+        self.key.get() == key
+    }
+    fn key_pressed(&self, key: i32) -> bool {
+        self.key.get() == key
+    }
+    fn mouse_x(&self) -> f32 {
+        0.0
+    }
+    fn mouse_y(&self) -> f32 {
+        0.0
+    }
+    fn axis(&self, _: i32) -> f32 {
+        0.0
+    }
+    fn mouse_button_down(&self, _: i32) -> bool {
+        false
+    }
+    fn mouse_button_pressed(&self, _: i32) -> bool {
+        false
+    }
+    fn mouse_delta_x(&self) -> f32 {
+        0.0
+    }
+    fn mouse_delta_y(&self) -> f32 {
+        0.0
+    }
+    fn mouse_wheel(&self) -> f32 {
+        0.0
+    }
+}
+
+fn catalog() -> Rc<GameplayCatalog> {
+    let mut catalog = GameplayCatalog::default();
+    let stats = CharacterStats {
+        integers: BTreeMap::from([
+            ("CA_MAX_HP".into(), 210),
+            ("CA_MAX_MP".into(), 30),
+            ("CA_PHYSICAL".into(), 24),
+        ]),
+        ..Default::default()
+    };
+    for role in 0..4 {
+        catalog.roles.insert(
+            role,
+            RoleDefinition {
+                id: role as i32 + 1001,
+                name: format!("Role {role}"),
+                model: String::new(),
+                stats: stats.clone(),
+            },
+        );
+        catalog.levels.insert(
+            (role, 1),
+            LevelDefinition {
+                experience: 54,
+                stats: stats.clone(),
+            },
+        );
+    }
+    for (id, skill, category) in [(3000, 7200, 0), (3001, 7201, 0), (3100, 0, 3)] {
+        catalog.properties.insert(
+            id,
+            PropertyDefinition {
+                id,
+                name: format!("Item {id}"),
+                description: "Recovery description".into(),
+                detail: String::new(),
+                category,
+                target: 1,
+                model: String::new(),
+                texture: String::new(),
+                usable_by: [true; 4],
+                usable_in_menu: true,
+                droppable: true,
+                price: 30,
+                skill_id: skill,
+            },
+        );
+    }
+    for (id, function) in [(7200, 9118), (7201, 9999)] {
+        catalog.skills.insert(
+            id,
+            SkillDefinition {
+                kind: 3,
+                trigger: 2,
+                duration: 0,
+                function,
+                parameters: [1.0, 0.0, 0.0, 2.0, 300.0, 0.0, 0.0, 0.0, 0.0],
+                attached: 0,
+                mutex: 0,
+                status: 0,
+            },
+        );
+    }
+    for id in [3501, 3502] {
+        catalog.equipment.insert(
+            id,
+            EquipmentDefinition {
+                id,
+                kind: EquipmentType::Sword,
+                name: format!("Sword {id}"),
+                description: "Sword".into(),
+                model: String::new(),
+                texture: String::new(),
+                level_limits: [1, 0, 0, 1],
+                price: 300,
+                skill_id: 0,
+                stats: CharacterStats {
+                    integers: [("CA_PHYSICAL".into(), 10)].into(),
+                    ..Default::default()
+                },
+            },
+        );
+    }
+    Rc::new(catalog)
+}
+
+struct Harness {
+    host: Rc<ScriptHost>,
+    menu: Data,
+    key: Rc<Cell<i32>>,
+    state: Rc<RefCell<Pal4Session>>,
+    bridge: ComRc<shared::openpal4::comdef::IPal4MenuState>,
+}
+
+impl Harness {
+    fn new() -> Self {
+        let host = ScriptHost::new();
+        host.set_script_assets(install_script_assets());
+        host.load_source(r#"
+            import radiance;
+            import scripting_services;
+            import shared.openpal4;
+            import yaobow.openpal4.game_menu;
+            import yaobow.openpal4.native_layout;
+            import radiance_scripting.ui as gui;
+            fn anchor(layout: &native_layout.NativeLayout, name: string, x: float, y: float, w: float, h: float) {
+                let mut names: array<string> = [];
+                let mut parents: array<int> = [];
+                let mut rects: array<gui.Rect> = [];
+                for i in Range(0, layout.names.len()) {
+                    names.push(layout.names[i]); parents.push(layout.parents[i]); rects.push(layout.rects[i]);
+                }
+                names.push(name); parents.push(-1); rects.push(gui.Rect(x,y,w,h));
+                layout.names = names; layout.parents = parents; layout.rects = rects;
+            }
+            pub fn make(game: &openpal4.IPal4MenuState, input: &scripting_services.IInputService) -> &game_menu.GameMenu {
+                let menu = game_menu.make(game, input, null, null, null, null, null, null, null);
+                anchor(menu.portrait, "BtnSystem", 715.0,15.0,68.0,68.0);
+                anchor(menu.toolbar, "Role",16.0,524.0,97.0,76.0);
+                anchor(menu.toolbar, "Property",118.0,524.0,97.0,76.0);
+                anchor(menu.toolbar, "Equipment",219.0,524.0,97.0,76.0);
+                anchor(menu.frame, "btnClose",754.0,554.0,40.0,40.0);
+                anchor(menu.properties, "PropertyList",377.0,35.0,306.0,189.0);
+                anchor(menu.properties, "PropertyClassImage",0.0,0.0,51.0,236.0);
+                anchor(menu.properties, "PropertyWindow",338.0,0.0,379.0,240.0);
+                anchor(menu.properties, "PropCure",724.0,221.0,65.0,65.0);
+                anchor(menu.properties, "PropertyDescription",387.0,250.0,292.0,99.0);
+                anchor(menu.properties, "PropertyProp",387.0,381.0,292.0,73.0);
+                anchor(menu.equipment, "List",379.0,35.0,304.0,135.0);
+                anchor(menu.equipment, "PropertyClassImage",0.0,0.0,51.0,236.0);
+                anchor(menu.equipment, "PanelList",338.0,0.0,379.0,199.0);
+                anchor(menu.equipment, "touxiang",12.0,333.0,169.0,185.0);
+                menu
+            }
+            pub fn tick(menu: &game_menu.GameMenu) -> int { menu.tick(); menu.selected }
+            pub fn frame(menu: &game_menu.GameMenu, ui: &radiance.IUiHost, x: float, y: float, down: bool) -> int {
+                menu.paint_at(ui, x, y, down); menu.selected
+            }
+        "#).expect("PAL4 menu must compile");
+        let catalog = catalog();
+        let mut session = Pal4Session::new();
+        session.install_catalog(catalog.clone()).unwrap();
+        session.set_menu_host_available(true);
+        session.state_mut().set_player_locked(false);
+        session.state_mut().player_mut(0).hp = 10;
+        for id in [3000, 3001, 3100] {
+            session.state_mut().add_property(id, 2, &catalog).unwrap();
+        }
+        session
+            .state_mut()
+            .add_player_equip(0, 3501, &catalog)
+            .unwrap();
+        session.state_mut().add_equipment(3502, 1);
+        let state = Rc::new(RefCell::new(session));
+        let bridge = Pal4MenuState::create(state.clone());
+        bridge.inner::<Pal4MenuState>().set_available(true);
+        let key = Rc::new(Cell::new(-1));
+        let input: ComRc<IInputService> = ComRc::from_object(TestInput { key: key.clone() });
+        let game_id = host.intern(bridge.clone());
+        let input_id = host.intern(input);
+        let game = host
+            .foreign_box("shared.openpal4.comdef.IPal4MenuState", game_id)
+            .unwrap();
+        let input = host
+            .foreign_box("radiance_scripting.comdef.services.IInputService", input_id)
+            .unwrap();
+        let menu = host.call_returning_data("make", vec![game, input]).unwrap();
+        Self {
+            host,
+            menu,
+            key,
+            state,
+            bridge,
+        }
+    }
+    fn key(&self, key: i32) {
+        self.key.set(key);
+        self.host
+            .call_returning_data("tick", vec![self.menu.clone()])
+            .unwrap();
+        self.key.set(-1);
+    }
+    fn frame(&self, ui: Data, x: f64, y: f64, down: bool) {
+        self.host
+            .call_returning_data(
+                "frame",
+                vec![
+                    self.menu.clone(),
+                    ui,
+                    Data::Float(x),
+                    Data::Float(y),
+                    Data::Int(down as i64),
+                ],
+            )
+            .unwrap();
+    }
+}
+
+#[test]
+fn keyboard_menu_uses_and_equips_authoritative_state_without_wasting_items() {
+    let h = Harness::new();
+    h.key(38);
+    assert_eq!(h.bridge.active_tab(), 0);
+    assert!(h.state.borrow().menu_input_blocked());
+    h.key(28);
+    assert_eq!(h.bridge.active_tab(), 1);
+    h.key(0);
+    assert_eq!(h.state.borrow().state().player(0).unwrap().hp, 210);
+    assert_eq!(h.bridge.item_quantity(3000), 1);
+    h.key(0);
+    assert_eq!(h.bridge.item_quantity(3000), 1);
+    h.key(42);
+    h.key(0);
+    assert_eq!(h.bridge.item_quantity(3001), 2);
+    h.key(29);
+    h.key(0);
+    assert_eq!(h.bridge.equipped_item(0, 0), 3502);
+    assert_eq!(h.bridge.item_quantity(3501), 1);
+    assert_eq!(h.bridge.item_quantity(3502), 0);
+    h.key(38);
+    assert_eq!(h.bridge.active_tab(), -1);
+    assert!(!h.bridge.equip(0, 3501));
+    assert!(!h.state.borrow().state().player_locked());
+}
+
+#[test]
+fn mouse_press_latching_respects_letterboxing_and_disabled_tabs() {
+    let h = Harness::new();
+    let (recorder, ui) = RecordingUiHost::create();
+    let id = h.host.intern(ui);
+    let ui = h.host.foreign_box("radiance.comdef.IUiHost", id).unwrap();
+    recorder.set_display_size(1600, 600);
+    h.key(38);
+    h.frame(ui.clone(), 0.0, 0.0, false);
+    h.state.borrow_mut().state_mut().grant_menu(1, false);
+    h.frame(ui.clone(), 560.0, 560.0, true);
+    h.frame(ui.clone(), 560.0, 560.0, false);
+    assert_eq!(h.bridge.active_tab(), 0);
+    h.state.borrow_mut().state_mut().grant_menu(1, true);
+    h.frame(ui.clone(), 560.0, 560.0, true);
+    h.frame(ui.clone(), 0.0, 0.0, false);
+    assert_eq!(h.bridge.active_tab(), 0);
+    h.frame(ui.clone(), 560.0, 560.0, true);
+    h.frame(ui.clone(), 560.0, 560.0, false);
+    assert_eq!(h.bridge.active_tab(), 1);
+    assert!(!recorder.calls.borrow().is_empty());
+    assert!(
+        !recorder
+            .calls
+            .borrow()
+            .iter()
+            .any(|call| matches!(call, UiCall::FillRect { a, .. } if *a > 0.8))
+    );
+}
+
+#[test]
+fn native_portrait_opens_menu_and_native_close_consumes_input_at_multiple_sizes() {
+    for (width, height, ox, scale) in [
+        (800, 600, 0.0, 1.0),
+        (1600, 600, 400.0, 1.0),
+        (1600, 1200, 0.0, 2.0),
+    ] {
+        let h = Harness::new();
+        let (recorder, ui) = RecordingUiHost::create();
+        recorder.set_display_size(width, height);
+        let id = h.host.intern(ui);
+        let ui = h.host.foreign_box("radiance.comdef.IUiHost", id).unwrap();
+        h.frame(ui.clone(), 0.0, 0.0, false);
+        h.frame(ui.clone(), ox + 748.0 * scale, 48.0 * scale, true);
+        h.frame(ui.clone(), ox + 748.0 * scale, 48.0 * scale, false);
+        assert_eq!(h.bridge.active_tab(), 0);
+        h.frame(ui.clone(), 0.0, 0.0, false);
+        // The removed custom top tab must no longer accept clicks.
+        h.frame(ui.clone(), ox + 175.0 * scale, 42.0 * scale, true);
+        h.frame(ui.clone(), ox + 175.0 * scale, 42.0 * scale, false);
+        assert_eq!(h.bridge.active_tab(), 0);
+        h.frame(ui.clone(), ox + 774.0 * scale, 574.0 * scale, true);
+        h.frame(ui.clone(), ox + 774.0 * scale, 574.0 * scale, false);
+        assert_eq!(h.bridge.active_tab(), -1);
+        assert!(h.state.borrow().menu_input_blocked());
+        h.bridge.inner::<Pal4MenuState>().set_available(false);
+        h.frame(ui.clone(), ox + 748.0 * scale, 48.0 * scale, true);
+        h.frame(ui, ox + 748.0 * scale, 48.0 * scale, false);
+        assert_eq!(h.bridge.active_tab(), -1);
+    }
+}
+
+#[test]
+fn native_inventory_rows_use_items_only_after_a_completed_double_click() {
+    let h = Harness::new();
+    let (recorder, ui) = RecordingUiHost::create();
+    recorder.set_display_size(800, 600);
+    let id = h.host.intern(ui);
+    let ui = h.host.foreign_box("radiance.comdef.IUiHost", id).unwrap();
+    h.key(38);
+    h.key(28);
+    h.frame(ui.clone(), 0.0, 0.0, false);
+    h.frame(ui.clone(), 410.0, 45.0, true);
+    h.frame(ui.clone(), 200.0, 400.0, false);
+    assert_eq!(h.bridge.item_quantity(3000), 2);
+    h.frame(ui.clone(), 410.0, 45.0, true);
+    h.frame(ui.clone(), 410.0, 45.0, false);
+    assert_eq!(h.bridge.item_quantity(3000), 2);
+    h.frame(ui.clone(), 410.0, 45.0, true);
+    h.frame(ui, 410.0, 45.0, false);
+    assert_eq!(h.bridge.item_quantity(3000), 1);
+    assert_eq!(h.state.borrow().state().player(0).unwrap().hp, 210);
+}
+
+#[test]
+fn app_factory_and_actor_controller_compile_with_menu_contracts() {
+    let host = ScriptHost::new();
+    host.set_script_assets(install_script_assets());
+    host.load_source_from_path("/yaobow/app.p7").unwrap();
+}
+
+#[test]
+fn forced_script_menu_can_close_without_unlocking_cutscene_control() {
+    let h = Harness::new();
+    h.state.borrow_mut().state_mut().set_player_locked(true);
+    h.bridge.inner::<Pal4MenuState>().set_available(false);
+    h.key(38);
+    assert_eq!(h.bridge.active_tab(), -1);
+    assert!(h.state.borrow().request_menu(1, true));
+    assert!(h.bridge.can_use(0, 3000));
+    h.key(0);
+    assert_eq!(h.bridge.item_quantity(3000), 1);
+    h.key(38);
+    assert_eq!(h.bridge.active_tab(), -1);
+    assert!(h.state.borrow().state().player_locked());
+}

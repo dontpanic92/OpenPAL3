@@ -1,0 +1,393 @@
+import radiance;
+import scripting_services;
+import shared.openpal4;
+import radiance_scripting.ui as gui;
+import yaobow.openpal4.native_layout as native;
+
+struct Canvas(ui: &radiance.IUiHost, x: float, y: float, scale: float) {
+    fn text(self: &Self, rect: gui.Rect, text: string, size: float) {
+        if rect.w <= 0.0 || rect.h <= 0.0 { return; }
+        self.ui.clip_rect(self.x + rect.x * self.scale, self.y + rect.y * self.scale,
+            self.x + (rect.x + rect.w) * self.scale, self.y + (rect.y + rect.h) * self.scale, () => {
+                self.ui.text_at_size(self.x + rect.x * self.scale, self.y + rect.y * self.scale,
+                    size * self.scale, 0.04, 0.10, 0.08, 1.0, text);
+        });
+    }
+}
+
+pub struct[openpal4.IPal4GameMenu] GameMenu(
+    pub game: &openpal4.IPal4MenuState,
+    pub input: &scripting_services.IInputService,
+    pub status: &native.NativeLayout, pub properties: &native.NativeLayout,
+    pub equipment: &native.NativeLayout, pub portrait: &native.NativeLayout,
+    pub toolbar: &native.NativeLayout, pub frame: &native.NativeLayout,
+    pub info: &native.NativeLayout,
+    pub role: int, pub category: int, pub selected: int,
+    previous_tab: int, held: int, mouse_held: bool, guard_click: bool,
+    hud_role: int, clock: float, last_click: float, last_item: int,
+    preview_item: int, preview_yaw: float, dragging_preview: bool,
+    pub feedback: string,
+) {
+    fn reset_selection(self: &Self) {
+        self.category = -1; self.selected = 0; self.held = -1;
+        self.feedback = ""; self.guard_click = true; self.last_item = 0;
+        self.dragging_preview = false;
+    }
+    pub fn tick(self: &Self) -> int {
+        let before = self.game.active_tab();
+        if self.input.key_pressed(38) || self.input.key_pressed(43) {
+            if before >= 0 { self.game.close(); } else { self.game.open(0); }
+            self.reset_selection();
+            return 0;
+        }
+        let tab = self.game.active_tab();
+        if tab < 0 { self.previous_tab = -1; return 0; }
+        if tab != self.previous_tab { self.reset_selection(); self.previous_tab = tab; }
+        self.ensure_selection();
+        for i in Range(0, 3) {
+            if self.input.key_pressed(27 + i) {
+                if self.game.open(i) { self.reset_selection(); }
+            }
+        }
+        if self.input.key_pressed(17) { self.next_role(-1); }
+        if self.input.key_pressed(5) { self.next_role(1); }
+        if self.input.key_pressed(40) && self.selected > 0 { self.selected = self.selected - 1; }
+        if self.input.key_pressed(42) { self.selected = self.selected + 1; }
+        let page_size = self.page_size();
+        if self.input.key_pressed(39) { self.selected = max(0, self.selected - page_size); }
+        if self.input.key_pressed(41) { self.selected = self.selected + page_size; }
+        self.ensure_selection();
+        if self.game.active_tab() > 0 && (self.input.key_pressed(0) || self.input.key_pressed(44)) { self.act(); }
+        0
+    }
+    fn page_size(self: &Self) -> int { if self.game.active_tab() == 2 { 5 } else { 8 } }
+    fn next_role(self: &Self, direction: int) {
+        let mut candidate = self.role;
+        for i in Range(0, 4) {
+            candidate = (candidate + direction + 4) % 4;
+            if self.game.member_present(candidate) { self.role = candidate; return; }
+        }
+    }
+    fn ensure_selection(self: &Self) {
+        if !self.game.member_present(self.role) { self.next_role(1); }
+        let count = self.game.inventory_count(self.game.active_tab(), self.category);
+        if self.selected >= count { self.selected = max(0, count - 1); }
+        if self.selected < 0 { self.selected = 0; }
+    }
+    fn act(self: &Self) {
+        let tab = self.game.active_tab();
+        let id = self.game.inventory_item(tab, self.category, self.selected);
+        let ok = if tab == 1 { self.game.use_item(self.role, id) }
+            else { if tab == 2 { self.game.equip(self.role, id) } else { false } };
+        self.feedback = if ok { "操作成功" } else { "条件不符或效果尚未支持" };
+        self.ensure_selection();
+    }
+    fn hit(self: &Self, key: int, rect: gui.Rect, enabled: bool,
+        x: float, y: float, press: bool, release: bool) -> bool {
+        let over = native.contains(rect, x, y);
+        if enabled && press && over { self.held = key; }
+        return enabled && release && over && self.held == key;
+    }
+    fn allowed(self: &Self, layout: &native.NativeLayout, id: int, kind: int) -> bool {
+        let name = layout.names[id];
+        if kind == 3 { return name == "youshang" || name == "xuecao" || name == "BtnSystem"; }
+        if kind == 2 {
+            for i in Range(0, 4) {
+                if name == "ImgRole" + number(i) { return self.role == i; }
+            }
+            if name == "StaticRoleName" { return false; }
+        }
+        if kind == 1 && name == "PropertyText" { return false; }
+        if kind == 0 {
+            let mut node = id;
+            while node >= 0 {
+                let ancestor = layout.names[node];
+                for i in Range(0, 4) {
+                    let suffix = number(i + 1);
+                    if ancestor == "RolePanel" + suffix || ancestor == "xiakuang" + suffix {
+                        return self.game.member_present(i);
+                    }
+                    if ancestor == "ImgCurtain" + suffix { return !self.game.member_present(i); }
+                }
+                node = layout.parents[node];
+            }
+        }
+        true
+    }
+    fn draw(self: &Self, c: &Canvas, layout: &native.NativeLayout, kind: int,
+        x: float, y: float, down: bool) {
+        if layout.handle == null { return; }
+        let art = layout.handle!;
+        let tab_names: array<string> = ["Role", "Property", "Equipment", "Magic", "Forging", "Task", "System"];
+        for i in Range(0, art.draw_count()) {
+            let id = art.draw_window_id(i);
+            if !self.allowed(layout, id, kind) { continue; }
+            let rect = layout.rects[id];
+            let name = layout.names[id];
+            let mut enabled = true;
+            let mut selected = false;
+            if kind == 4 {
+                for t in Range(0, 7) {
+                    if name == tab_names[t] {
+                        enabled = self.game.tab_enabled(t); selected = self.game.active_tab() == t;
+                    }
+                }
+                if kind == 1 || kind == 2 {
+                    let property_categories: array<string> = ["NewProp", "PropCure", "Attack", "Auxiliary", "PropMaterial", "PropScenario"];
+                    let equipment_categories: array<string> = ["BtnEquipmentClass5", "BtnEquipmentClass0", "BtnEquipmentClass1", "BtnEquipmentClass2", "BtnEquipmentClass3", "BtnEquipmentClass4"];
+                    for category in Range(0, 6) {
+                        let button = if kind == 1 { property_categories[category] } else { equipment_categories[category] };
+                        if name == button { selected = self.category == category - 1; }
+                    }
+                }
+            }
+            let over = native.contains(rect, x, y) && art.draw_is_interactive(i);
+            let state = if !enabled { 3 } else { if selected || (over && down) { 2 } else { if over { 1 } else { 0 } } };
+            let mut texture = art.draw_texture_com_id(i);
+            let mut u0 = art.draw_u0(i); let mut v0 = art.draw_v0(i);
+            let mut u1 = art.draw_u1(i); let mut v1 = art.draw_v1(i);
+            if state == 3 && art.draw_disabled_texture_com_id(i) != 0 {
+                texture = art.draw_disabled_texture_com_id(i);
+                u0 = art.draw_disabled_u0(i); v0 = art.draw_disabled_v0(i);
+                u1 = art.draw_disabled_u1(i); v1 = art.draw_disabled_v1(i);
+            } else if state == 2 && art.draw_pressed_texture_com_id(i) != 0 {
+                texture = art.draw_pressed_texture_com_id(i);
+                u0 = art.draw_pressed_u0(i); v0 = art.draw_pressed_v0(i);
+                u1 = art.draw_pressed_u1(i); v1 = art.draw_pressed_v1(i);
+            } else if state == 1 && art.draw_hover_texture_com_id(i) != 0 {
+                texture = art.draw_hover_texture_com_id(i);
+                u0 = art.draw_hover_u0(i); v0 = art.draw_hover_v0(i);
+                u1 = art.draw_hover_u1(i); v1 = art.draw_hover_v1(i);
+            }
+            let mut fraction = 1.0;
+            if kind == 0 {
+                for r in Range(0, 4) {
+                    if name == "ImgHp" + number(r + 1) {
+                        fraction = resource_fraction(self.game.member_value(r, 1), self.game.member_value(r, 2));
+                    }
+                    if name == "ImgMp" + number(r + 1) {
+                        fraction = resource_fraction(self.game.member_value(r, 3), self.game.member_value(r, 4));
+                    }
+                }
+            }
+            if texture != 0 {
+                c.ui.image_rect(texture, c.x + rect.x * c.scale, c.y + rect.y * c.scale,
+                    c.x + (rect.x + rect.w * fraction) * c.scale, c.y + (rect.y + rect.h) * c.scale,
+                    u0, v0, u0 + (u1 - u0) * fraction, v1);
+            }
+        }
+    }
+    fn prepare_portrait(self: &Self) {
+        let role = self.game.leader();
+        if self.hud_role == role || role < 0 || role > 3 { return; }
+        let normal: array<string> = ["touxianganniu1", "touxianganniua1", "touxianganniuc1", "touxianganniud1"];
+        let hover: array<string> = ["touxianganniu2", "touxianganniub2", "touxianganniuc2", "touxianganniud2"];
+        let pressed: array<string> = ["touxianganniu3", "touxianganniub3", "touxianganniuc3", "touxianganniud3"];
+        self.portrait.image("BtnSystem", 0, "zhujiemian0", normal[role]);
+        self.portrait.image("BtnSystem", 1, "zhujiemian0", hover[role]);
+        self.portrait.image("BtnSystem", 2, "zhujiemian0", pressed[role]);
+        self.hud_role = role;
+    }
+    pub fn paint_at(self: &Self, ui: &radiance.IUiHost, mouse_x: float, mouse_y: float, down: bool) {
+        let tab = self.game.active_tab();
+        let viewport = gui.Rect(0.0, 0.0, ui.display_size_x() as float, ui.display_size_y() as float);
+        let scale = min(viewport.w / 800.0, viewport.h / 600.0);
+        let rect = gui.Rect((viewport.w - 800.0 * scale) / 2.0,
+            (viewport.h - 600.0 * scale) / 2.0, 800.0 * scale, 600.0 * scale);
+        if scale <= 0.0 { return; }
+        let c = &Canvas(ui, rect.x, rect.y, scale);
+        let x = (mouse_x - rect.x) / scale; let y = (mouse_y - rect.y) / scale;
+        let press = down && !self.mouse_held && !self.guard_click;
+        let release = !down && self.mouse_held && !self.guard_click;
+        self.guard_click = false;
+        if tab < 0 {
+            if self.game.available() {
+                self.prepare_portrait();
+                self.draw(c, self.portrait, 3, x, y, down);
+                if self.hit(2000, self.portrait.rect("BtnSystem"), true, x, y, press, release) {
+                    if self.game.open(0) { self.role = self.game.leader(); self.reset_selection(); }
+                }
+            }
+        } else {
+            self.ensure_selection();
+            ui.fill_rect(0.0, 0.0, viewport.w, viewport.h, 0.0, 0.0, 0.0, 0.55);
+            let layout = if tab == 0 { self.status } else { if tab == 1 { self.properties } else { self.equipment } };
+            self.draw(c, self.info, 6, x, y, down);
+            self.draw(c, self.frame, 5, x, y, down);
+            self.draw(c, layout, tab, x, y, down);
+            self.draw(c, self.toolbar, 4, x, y, down);
+            c.text(self.info.rect("staticMoney"), number(self.game.money()), 13.0);
+            if self.hit(2001, self.frame.rect("btnClose"), true, x, y, press, release) { self.game.close(); }
+            let tabs: array<string> = ["Role", "Property", "Equipment"];
+            for t in Range(0, 3) {
+                if self.hit(2100 + t, self.toolbar.rect(tabs[t]), self.game.tab_enabled(t), x, y, press, release) {
+                    if self.game.open(t) { self.reset_selection(); }
+                }
+            }
+            if tab == 0 { self.paint_status(c); }
+            else { self.paint_items(c, layout, tab, x, y, press, release, down); }
+        }
+        self.mouse_held = down;
+        if !down { self.held = -1; }
+    }
+    fn paint_status(self: &Self, c: &Canvas) {
+        for role in Range(0, 4) {
+            if !self.game.member_present(role) { continue; }
+            let s = number(role + 1);
+            c.text(self.status.rect("RoleLevel" + s), number(self.game.member_value(role, 0)), 13.0);
+            c.text(self.status.rect("jing" + s), resource(self.game, role, 1, 2), 13.0);
+            c.text(self.status.rect("shen" + s), resource(self.game, role, 3, 4), 13.0);
+            c.text(self.status.rect("qi" + s), "--", 13.0);
+            let labels: array<string> = ["武 ", "防 ", "速 ", "运 "];
+            for i in Range(0, 4) {
+                let value = labels[i] + number(self.game.member_value(role, 5 + i))
+                    + if i == 3 { "  灵 " + number(self.game.member_value(role, 9)) } else { "" };
+                c.text(self.status.rect("RoleInfo" + s + "_" + number(i + 1)), value, 13.0);
+            }
+            let elements: array<string> = ["RoleWater", "RoleFire", "RoleThunder", "RoleWind", "RoleDust"];
+            for i in Range(0, 5) { c.text(self.status.rect(elements[i] + s), number(self.game.member_value(role, 11 + i)), 13.0); }
+        }
+    }
+    fn paint_items(self: &Self, c: &Canvas, layout: &native.NativeLayout, tab: int,
+        x: float, y: float, press: bool, release: bool, down: bool) {
+        let property_categories: array<string> = ["NewProp", "PropCure", "Attack", "Auxiliary", "PropMaterial", "PropScenario"];
+        let equipment_categories: array<string> = ["BtnEquipmentClass5", "BtnEquipmentClass0", "BtnEquipmentClass1", "BtnEquipmentClass2", "BtnEquipmentClass3", "BtnEquipmentClass4"];
+        for i in Range(0, 6) {
+            let name = if tab == 1 { property_categories[i] } else { equipment_categories[i] };
+            if self.hit(2200 + i, layout.rect(name), true, x, y, press, release) {
+                self.category = i - 1; self.selected = 0; self.feedback = ""; self.last_item = 0;
+            }
+        }
+        let left = if tab == 1 { "PropertyLeftArrowButton" } else { "BtnLeftArrow" };
+        let right = if tab == 1 { "PropertyRightArrowButton" } else { "BtnRightArrow" };
+        if self.hit(2300, layout.rect(left), true, x, y, press, release) { self.next_role(-1); }
+        if self.hit(2301, layout.rect(right), true, x, y, press, release) { self.next_role(1); }
+        let header = if tab == 1 { "PropertyText" } else { "StaticRoleName" };
+        c.text(layout.rect(header), self.game.member_name(self.role), 13.0);
+        let list = layout.rect(if tab == 1 { "PropertyList" } else { "List" });
+        let count = self.game.inventory_count(tab, self.category);
+        let page_size = self.page_size();
+        if native.contains(list, x, y) {
+            let wheel = c.ui.mouse_wheel();
+            if wheel > 0.0 { self.selected = max(0, self.selected - page_size); }
+            if wheel < 0.0 { self.selected = self.selected + page_size; }
+            self.ensure_selection();
+        }
+        let page = self.selected / page_size;
+        for row in Range(0, page_size) {
+            let index = page * page_size + row;
+            let id = self.game.inventory_item(tab, self.category, index);
+            if id <= 0 { continue; }
+            let bounds = gui.Rect(list.x, list.y + (row as float) * 21.0, list.w, 21.0);
+            if self.selected == index {
+                c.ui.fill_rect(c.x + bounds.x * c.scale, c.y + bounds.y * c.scale,
+                    c.x + (bounds.x + bounds.w) * c.scale, c.y + (bounds.y + bounds.h) * c.scale,
+                    0.1, 0.45, 0.55, 0.22);
+            }
+            c.text(gui.Rect(bounds.x + 3.0, bounds.y + 3.0, bounds.w - 50.0, 17.0), self.game.item_name(id), 13.0);
+            c.text(gui.Rect(bounds.x + bounds.w - 42.0, bounds.y + 3.0, 40.0, 17.0), number(self.game.item_quantity(id)), 13.0);
+            if self.hit(2400 + row, bounds, true, x, y, press, release) {
+                self.selected = index; self.feedback = "";
+                if self.last_item == id && self.clock - self.last_click < 0.35 {
+                    self.act(); self.last_item = 0;
+                } else { self.last_item = id; self.last_click = self.clock; }
+            }
+        }
+        c.text(gui.Rect(list.x + 3.0, list.y + list.h - 14.0, list.w - 6.0, 14.0),
+            if count == 0 { "没有物品" } else { number(page + 1) + "/" + number(max(1, (count + page_size - 1) / page_size)) }, 11.0);
+        let id = self.game.inventory_item(tab, self.category, self.selected);
+        if id > 0 {
+            c.text(layout.rect(if tab == 1 { "PropertyDescription" } else { "StaticDescription" }),
+                self.game.item_description(id), 13.0);
+            let enabled = if tab == 1 { self.game.can_use(self.role, id) } else { self.game.can_equip(self.role, id) };
+            let action = if self.feedback != "" { self.feedback }
+                else { if enabled { "双击或 Space " + if tab == 1 { "使用" } else { "装备" } } else { "条件不符或效果尚未支持" } };
+            c.text(layout.rect(if tab == 1 { "PropertyProp" } else { "StaticProperty" }),
+                self.game.item_effect(id) + "\n" + action, 13.0);
+        }
+        if tab == 2 {
+            c.text(layout.rect("StaticLevel"), number(self.game.member_value(self.role, 0)), 13.0);
+            for i in Range(0, 5) {
+                c.text(layout.rect("StaticAttr" + number(i + 1)), number(self.game.member_value(self.role, i + 5)), 13.0);
+            }
+            for i in Range(0, 6) {
+                let name = "ImageRoleEquip" + number(i + 1);
+                let r = layout.rect(name);
+                let equipped = self.game.equipped_item(self.role, i);
+                if equipped > 0 {
+                    c.text(gui.Rect(r.x + 24.0, r.y + 4.0, r.w - 24.0, r.h - 4.0), self.game.item_name(equipped), 13.0);
+                }
+            }
+        }
+        let preview = if id > 0 { id } else { if tab == 2 { self.game.equipped_item(self.role, 0) } else { 0 } };
+        self.paint_preview(c, layout, tab, preview, x, y, press, down);
+    }
+    fn paint_preview(self: &Self, c: &Canvas, layout: &native.NativeLayout, tab: int,
+        id: int, x: float, y: float, press: bool, down: bool) {
+        if id <= 0 { self.preview_item = 0; return; }
+        let label = layout.rect("PropertyClassImage");
+        let panel = layout.rect(if tab == 1 { "PropertyWindow" } else { "PanelList" });
+        let bottom = if tab == 1 { self.toolbar.rect("Role").y } else { layout.rect("touxiang").y };
+        let area = gui.Rect(label.x + label.w, 0.0, panel.x - label.x - label.w, bottom);
+        if area.w <= 0.0 || area.h <= 0.0 { return; }
+        if self.preview_item != id { self.preview_item = id; self.preview_yaw = 0.4; self.dragging_preview = false; }
+        if press && native.contains(area, x, y) { self.dragging_preview = true; }
+        if !down { self.dragging_preview = false; }
+        if self.dragging_preview {
+            self.preview_yaw = self.preview_yaw + c.ui.mouse_drag_delta_x(0) * 0.01;
+            c.ui.reset_mouse_drag_delta(0);
+        }
+        let pixels = c.scale;
+        let texture = self.game.preview_texture(id, area.w * pixels, area.h * pixels, self.preview_yaw);
+        if texture != 0 {
+            c.ui.clip_rect(c.x + area.x * c.scale, c.y + area.y * c.scale,
+                c.x + (area.x + area.w) * c.scale, c.y + (area.y + area.h) * c.scale, () => {
+                    c.ui.image_rect(texture, c.x + area.x * c.scale, c.y + area.y * c.scale,
+                        c.x + (area.x + area.w) * c.scale, c.y + (area.y + area.h) * c.scale,
+                        0.0, 0.0, 1.0, 1.0);
+            });
+        }
+    }
+    pub fn render(self: &Self, ui: &radiance.IUiHost, dt: float) -> int {
+        if self.game.active_tab() < 0 && !self.game.available() { return 0; }
+        self.clock = self.clock + max(0.0, dt);
+        if self.game.active_tab() < 0 {
+            self.prepare_portrait();
+            self.paint_at(ui, ui.mouse_pos_x(), ui.mouse_pos_y(), ui.mouse_down(0));
+            return 0;
+        }
+        ui.with_font(1, () => { ui.window_fullscreen("##pal4_game_menu", 128, () => {
+            self.paint_at(ui, ui.mouse_pos_x(), ui.mouse_pos_y(), ui.mouse_down(0));
+        }); });
+        0
+    }
+}
+
+pub fn make(game: &openpal4.IPal4MenuState, input: &scripting_services.IInputService,
+    status: ?&scripting_services.IUiLayoutHandle, properties: ?&scripting_services.IUiLayoutHandle,
+    equipment: ?&scripting_services.IUiLayoutHandle, portrait: ?&scripting_services.IUiLayoutHandle,
+    toolbar: ?&scripting_services.IUiLayoutHandle, frame: ?&scripting_services.IUiLayoutHandle,
+    info: ?&scripting_services.IUiLayoutHandle) -> &GameMenu {
+    let status_art = native.make(status);
+    let roles: array<string> = ["tianhe1", "hanlinsha1", "liumenli1", "ziying1"];
+    for i in Range(0, 4) { status_art.image("RolePanel" + number(i + 1), 0, "kuang0", roles[i]); }
+    return &GameMenu(game, input, status_art, native.make(properties), native.make(equipment),
+        native.make(portrait), native.make(toolbar), native.make(frame), native.make(info),
+        0, -1, 0, -1, -1, false, true, -1, 0.0, -1.0, 0, 0, 0.4, false, "");
+}
+
+fn resource(game: &openpal4.IPal4MenuState, role: int, current: int, maximum: int) -> string {
+    number(game.member_value(role, current)) + "/" + number(game.member_value(role, maximum))
+}
+fn resource_fraction(current: int, maximum: int) -> float {
+    if maximum <= 0 { return 0.0; }
+    max(0.0, min(1.0, (current as float) / (maximum as float)))
+}
+fn number(n: int) -> string {
+    if n == 0 { return "0"; }
+    let mut value = if n > 0 { -n } else { n };
+    let mut out: string = "";
+    let digits: array<string> = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"];
+    while value < 0 { out = digits[-(value % 10)] + out; value = value / 10; }
+    if n < 0 { "-" + out } else { out }
+}

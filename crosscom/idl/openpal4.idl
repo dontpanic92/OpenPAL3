@@ -112,6 +112,44 @@ interface IPal4ScriptFactory: IUnknown {
     // fullscreen layout. `OpenPAL4Director` owns the resulting box
     // and drives it from `update` / `render`.
     IPal4LoadingOverlay make_pal4_loading_overlay();
+    IPal4GameMenu make_pal4_game_menu(IPal4MenuState game, IInputService input);
+}
+
+[uuid(d8800081-5242-4c84-a965-c48c94c81101)]
+interface IPal4MenuState: IUnknown {
+    bool available();
+    int active_tab();
+    bool tab_enabled(int tab);
+    bool open(int tab);
+    void close();
+    bool member_present(int role);
+    int leader();
+    &str member_name(int role);
+    // level, HP, max HP, MP, max MP, physical, toughness, speed, luck, will, EXP
+    int member_value(int role, int field);
+    int money();
+    int inventory_count(int tab, int category);
+    int inventory_item(int tab, int category, int index);
+    int item_quantity(int id);
+    &str item_name(int id);
+    &str item_description(int id);
+    &str item_effect(int id);
+    int item_price(int id);
+    int equipped_item(int role, int position);
+    bool can_equip(int role, int id);
+    bool equip(int role, int id);
+    bool can_use(int role, int id);
+    bool use_item(int role, int id);
+    // Queue an isolated model preview; returns 0 until the next update has rendered it.
+    int preview_texture(int id, float width, float height, float yaw);
+}
+[uuid(d8800081-5242-4c84-a965-c48c94c81102)]
+class Pal4MenuState: IPal4MenuState {}
+
+[uuid(d8800081-5242-4c84-a965-c48c94c81103), protosept(scriptable)]
+interface IPal4GameMenu: IUnknown {
+    void tick();
+    void render(IUiHost ui, float dt);
 }
 
 [uuid(b6f4d2a8-3c91-4e07-8a55-1d2e9f0c7b63)]
@@ -179,6 +217,7 @@ interface IPal4GameContext: IUnknown {
     // `Pal4AppContext::set_leader`; only the actor controller whose
     // `player_id` matches drives input.
     int current_leader();
+    bool menu_input_blocked();
 
     // Walks every `SceneEventTrigger` registered for the current
     // scene, dispatching each one's check callback with the

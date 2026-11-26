@@ -411,6 +411,9 @@ pub struct StateSnapshot {
     /// continuation completes.
     #[serde(default)]
     pub world_map_open: bool,
+    /// PAL4 gameplay menu: 0=status, 1=inventory, 2=equipment; None=closed.
+    #[serde(default)]
+    pub menu_tab: Option<i32>,
     /// `true` while the free-fly debug camera is enabled (plot frozen).
     #[serde(default)]
     pub debug_camera: bool,

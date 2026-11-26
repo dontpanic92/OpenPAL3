@@ -7,7 +7,10 @@
 //! entity, animation) flows in through generic scriptable engine
 //! protos at controller-construction time, not through this object.
 
-use std::cell::Cell;
+use std::{
+    cell::{Cell, RefCell},
+    rc::Weak,
+};
 
 use crosscom::ComRc;
 use radiance::comdef::IScene;
@@ -19,6 +22,7 @@ use super::comdef::{IPal4GameContext, IPal4GameContextImpl};
 
 pub struct Pal4GameContext {
     current_leader: Cell<usize>,
+    session: RefCell<Weak<RefCell<super::session::Pal4Session>>>,
     /// The scene whose collision world owns the EVF segment triggers.
     /// `check_event_triggers` drives the world's evaluation; the result
     /// is read back via `Pal4Scene::test_event_triggers`.
@@ -31,6 +35,7 @@ impl Pal4GameContext {
     pub fn create(scene: ComRc<IScene>) -> ComRc<IPal4GameContext> {
         ComRc::from_object(Self {
             current_leader: Cell::new(0),
+            session: RefCell::new(Weak::new()),
             scene,
         })
     }
@@ -41,9 +46,19 @@ impl Pal4GameContext {
     pub fn set_current_leader(&self, leader: usize) {
         self.current_leader.set(leader);
     }
+
+    pub fn set_session(&self, session: Weak<RefCell<super::session::Pal4Session>>) {
+        *self.session.borrow_mut() = session;
+    }
 }
 
 impl IPal4GameContextImpl for Pal4GameContext {
+    fn menu_input_blocked(&self) -> bool {
+        self.session
+            .borrow()
+            .upgrade()
+            .is_some_and(|session| session.borrow().menu_input_blocked())
+    }
     fn current_leader(&self) -> std::os::raw::c_int {
         self.current_leader.get() as i32
     }

@@ -15,6 +15,9 @@
 //! `ui.image(...)` without inspection.
 
 pub trait RenderTarget {
+    /// Offscreen background. Backends without configurable targets may ignore it.
+    fn set_clear_color(&mut self, _color: [f32; 4]) {}
+
     /// Current target extent in pixels.
     fn extent(&self) -> (u32, u32);
 

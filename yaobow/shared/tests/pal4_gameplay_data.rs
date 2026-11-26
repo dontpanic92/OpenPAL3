@@ -71,3 +71,42 @@ fn original_database_initializes_and_persists_gameplay() {
         0
     );
 }
+
+#[test]
+#[ignore = "requires original PAL4 assets; set PAL4_ASSET_ROOT"]
+fn original_recovery_skills_use_verified_parameters_and_consume_once() {
+    let root = std::env::var("PAL4_ASSET_ROOT").unwrap();
+    let catalog = GameplayCatalog::load(&init_virtual_fs(&root, None)).unwrap();
+    let mut state = Pal4PersistentState::new(PAL4_APP_NAME.into());
+    state.initialize_players(&catalog).unwrap();
+    state.set_in_team(1, true);
+    for id in [3000, 3003, 3004, 3006] {
+        state.add_property(id, 2, &catalog).unwrap();
+    }
+    state.set_player_resource_percent(-1, -1, 0);
+    assert!(!state.use_property(0, 3000, &catalog)); // Not a revival effect.
+    assert_eq!(state.equipment_count(3000), 2);
+    state.player_mut(0).hp = 1;
+    assert!(state.use_property(0, 3000, &catalog));
+    assert_eq!(state.player(0).unwrap().hp, 210);
+    assert_eq!(state.equipment_count(3000), 1);
+    assert!(!state.use_property(0, 3000, &catalog));
+    assert!(state.use_property(0, 3006, &catalog));
+    assert_eq!(state.player(0).unwrap().mp, 30);
+    state.player_mut(0).hp = 1;
+    assert!(state.use_property(0, 3003, &catalog));
+    assert_eq!(state.player(0).unwrap().hp, 210);
+    state.player_mut(0).hp = 1;
+    state.player_mut(1).hp = 1;
+    assert!(state.use_property(0, 3004, &catalog));
+    assert_eq!(state.player(0).unwrap().hp, 210);
+    assert_eq!(state.player(1).unwrap().hp, state.player(1).unwrap().max_hp);
+    assert_eq!(state.player(2).unwrap().hp, 0);
+    assert_eq!(state.equipment_count(3004), 1);
+    state.grant_menu(1, false);
+    let restored: Pal4PersistentState =
+        serde_json::from_str(&serde_json::to_string(&state).unwrap()).unwrap();
+    assert!(!restored.menu_enabled(1));
+    assert!(restored.menu_enabled(2));
+    assert_eq!(restored.equipment_count(3004), 1);
+}

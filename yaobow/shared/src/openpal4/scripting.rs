@@ -1832,13 +1832,26 @@ fn check_pack_property(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4Functio
 }
 
 fn grant_system_ui(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
-    as_params!(vm,_ui_id:i32,_grant_ui:i32);
+    as_params!(vm, ui_id: i32, enabled: i32);
+    vm.vm_context
+        .persistent_state_mut()
+        .grant_menu(ui_id, enabled != 0);
     Pal4FunctionState::Completed
 }
 
 fn open_system_ui(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
-    as_params!(vm,_ui_id:i32);
-    Pal4FunctionState::Completed
+    as_params!(vm, ui_id: i32);
+    if !vm.vm_context.session().request_menu(ui_id, true) {
+        log::warn!("giOpenSystemUi: unavailable or unsupported menu {ui_id}");
+        return Pal4FunctionState::Completed;
+    }
+    Pal4FunctionState::Yield(Box::new(|vm, _| {
+        if vm.vm_context.session().menu_tab().is_some() {
+            ContinuationState::Loop
+        } else {
+            ContinuationState::Completed
+        }
+    }))
 }
 
 fn grant_smith_system(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {

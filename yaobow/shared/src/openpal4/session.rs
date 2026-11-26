@@ -65,6 +65,10 @@ pub struct RuntimeSnapshot {
 /// leaks into the loaded one.
 #[derive(Default)]
 pub struct Pal4SessionTransient {
+    menu_tab: Cell<Option<i32>>,
+    menu_forced: Cell<bool>,
+    menu_input_cooldown: Cell<u8>,
+    menu_host_available: Cell<bool>,
     /// `true` while a `giShowWorldMap` continuation is waiting for
     /// a destination pick. Surfaced via `/v1/state.world_map_open`
     /// so external drivers know they must `POST /v1/world_map/choose`
@@ -122,6 +126,47 @@ pub struct Pal4Session {
 }
 
 impl Pal4Session {
+    pub fn menu_tab(&self) -> Option<i32> {
+        self.transient.menu_tab.get()
+    }
+
+    pub fn menu_forced(&self) -> bool {
+        self.transient.menu_forced.get()
+    }
+
+    pub fn menu_input_blocked(&self) -> bool {
+        self.menu_tab().is_some() || self.transient.menu_input_cooldown.get() > 0
+    }
+
+    pub fn advance_menu_input_frame(&self) {
+        self.transient
+            .menu_input_cooldown
+            .set(self.transient.menu_input_cooldown.get().saturating_sub(1));
+    }
+
+    pub fn set_menu_host_available(&self, available: bool) {
+        self.transient.menu_host_available.set(available);
+    }
+
+    pub fn request_menu(&self, tab: i32, forced: bool) -> bool {
+        if !(0..=2).contains(&tab)
+            || !self.state.menu_enabled(tab)
+            || !self.transient.menu_host_available.get()
+        {
+            return false;
+        }
+        self.transient.menu_tab.set(Some(tab));
+        self.transient.menu_forced.set(forced);
+        true
+    }
+
+    pub fn close_menu(&self) {
+        self.transient.menu_tab.set(None);
+        self.transient.menu_forced.set(false);
+        // Cover render-time mouse dismissal and the following controller tick.
+        self.transient.menu_input_cooldown.set(2);
+    }
+
     /// Fresh playthrough seeded with the PAL4 save namespace.
     pub fn new() -> Self {
         Self {
@@ -365,8 +410,10 @@ impl Pal4Session {
     /// that already captured a higher baseline).
     fn reset_transient(&mut self) {
         let prev_gen = self.transient.deferred_load_generation.get();
+        let menu_host = self.transient.menu_host_available.get();
         self.transient = Pal4SessionTransient::default();
         self.transient.deferred_load_generation.set(prev_gen);
+        self.transient.menu_host_available.set(menu_host);
     }
 
     /// Persist the current playthrough to `slot`. Scene / block /
@@ -438,6 +485,27 @@ pub type Pal4SessionHandle = Rc<RefCell<Pal4Session>>;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn menu_requests_respect_grants_and_block_closing_input_without_changing_script_lock() {
+        let session = Pal4Session::new();
+        assert!(!session.request_menu(1, false));
+        session.set_menu_host_available(true);
+        assert!(session.request_menu(1, true));
+        assert!(session.menu_forced());
+        assert!(session.state().player_locked());
+        session.close_menu();
+        assert!(session.menu_input_blocked());
+        session.advance_menu_input_frame();
+        assert!(session.menu_input_blocked());
+        session.advance_menu_input_frame();
+        assert!(!session.menu_input_blocked());
+        assert!(session.state().player_locked());
+        assert!(!session.request_menu(3, true));
+        let mut session = session;
+        session.state_mut().grant_menu(1, false);
+        assert!(!session.request_menu(1, true));
+    }
 
     #[test]
     fn save_runtime_folds_scene_derived_values_into_state() {
@@ -627,4 +695,3 @@ mod tests {
         assert_eq!(session.take_common_dialog_choice(), 1);
     }
 }
-

@@ -133,6 +133,7 @@ fn every_response_roundtrips() {
             dt: 0.0167,
             inventory: vec![agent_server::protocol::InventoryEntry { id: 101, count: 3 }],
             world_map_open: true,
+            menu_tab: Some(1),
             debug_camera: true,
             camera_eye: [10.0, 20.0, 30.0],
             camera_target: [1.0, 2.0, 3.0],

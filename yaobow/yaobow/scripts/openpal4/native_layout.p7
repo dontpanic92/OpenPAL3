@@ -1,0 +1,50 @@
+import scripting_services;
+import radiance_scripting.ui as geometry;
+
+pub struct NativeLayout(
+    pub handle: ?&scripting_services.IUiLayoutHandle,
+    pub names: array<string>,
+    pub parents: array<int>,
+    pub rects: array<geometry.Rect>,
+) {
+    pub fn find(self: &Self, name: string) -> int {
+        for i in Range(0, self.names.len()) {
+            if self.names[i] == name { return i; }
+        }
+        return -1;
+    }
+
+    pub fn rect(self: &Self, name: string) -> geometry.Rect {
+        let id = self.find(name);
+        if id < 0 { return geometry.Rect(0.0, 0.0, 0.0, 0.0); }
+        self.rects[id]
+    }
+
+    pub fn image(self: &Self, name: string, state: int, set: string, image: string) {
+        let id = self.find(name);
+        if id >= 0 {
+            if self.handle != null { self.handle!.set_window_image(id, state, set, image); }
+        }
+    }
+}
+
+pub fn make(handle: ?&scripting_services.IUiLayoutHandle) -> &NativeLayout {
+    let mut names: array<string> = [];
+    let mut parents: array<int> = [];
+    let mut rects: array<geometry.Rect> = [];
+    if handle != null {
+        let layout = handle!;
+        for i in Range(0, layout.window_count()) {
+            names.push(layout.window_name(i));
+            parents.push(layout.window_parent(i));
+            rects.push(geometry.Rect(layout.window_rect(i, 0), layout.window_rect(i, 1),
+                layout.window_rect(i, 2), layout.window_rect(i, 3)));
+        }
+    }
+    return &NativeLayout(handle, names, parents, rects);
+}
+
+pub fn contains(rect: geometry.Rect, x: float, y: float) -> bool {
+    rect.w > 0.0 && rect.h > 0.0 && x >= rect.x && x < rect.x + rect.w
+        && y >= rect.y && y < rect.y + rect.h
+}

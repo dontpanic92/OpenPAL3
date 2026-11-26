@@ -248,6 +248,9 @@ fn read_window(node: roxmltree::Node, parent: Option<u32>, out: &mut Vec<Window>
                     "Image" => {
                         window.image = parse_image_ref(&pvalue);
                     }
+                    "BackgroundImage" | "olBackgroundImage" if window.image.is_none() => {
+                        window.image = parse_image_ref(&pvalue);
+                    }
                     "olNormalImage" => {
                         window.overlay_normal_image = parse_image_ref(&pvalue);
                     }

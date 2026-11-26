@@ -65,6 +65,13 @@ appropriate HTTP status:
 | `GET`  | `/v1/script/globals?start=N&limit=M`| Window over the AngelScript shared-globals array (story-plot flags). Response is `{len, start, globals}`. `len` is the full underlying array size; clients diff `globals[]` between actions to detect plot progression. |
 | `GET`  | `/v1/script/trace/drain?after_seq=N&n=M` | Drain buffered VM execution-trace events with `seq > after_seq`. Capped at `n` per call (default 1024). Response is `{next_seq, dropped, capturing, events}`; see the **Trace** section below for the event reference. Streamed via repeated drains using the returned `next_seq` cursor. |
 
+PAL4 also exposes `menu_tab`: `null` when the gameplay menu is closed,
+`0` for status, `1` for inventory, and `2` for equipment. Open/close with an
+`Escape` key tap, then use `Num1`/`Num2`/`Num3` to select a tab. While open,
+movement and world-trigger dispatch are blocked; close the menu before
+interacting with scene objects. `script_running` can remain false while a
+player-opened menu is active.
+
 ### Control
 
 | Method | Path                                | Body                                                  |

@@ -7,7 +7,7 @@
 //! `yaobow_editor` UI-layout previewer both consume the same handle
 //! through this single Rust impl.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -55,11 +55,11 @@ struct DrawCmd {
     /// Default (normal-state) image. Always populated — we never emit
     /// a `DrawCmd` without at least the normal-state image resolved
     /// (or a pure text label).
-    base: StateImage,
+    base: Cell<StateImage>,
     /// Optional state imagery for interactive widgets.
-    hover: StateImage,
-    pressed: StateImage,
-    disabled: StateImage,
+    hover: Cell<StateImage>,
+    pressed: Cell<StateImage>,
+    disabled: Cell<StateImage>,
     /// Frames for `OiramLook/StaticSequence` windows carrying a
     /// `SegImage` property (e.g. PAL4 loading-screen `juaner` fairy:
     /// 4 frames `juaner1..juaner4`). Empty for non-sequence draws —
@@ -87,6 +87,8 @@ pub struct UiLayoutHandle {
     text_dump: String,
     native_w: u32,
     native_h: u32,
+    window_rects: Vec<[f32; 4]>,
+    resolved_sets: HashMap<String, ResolvedSet>,
     /// Uploaded imageset PNG com_ids, one per `set:` name. Released
     /// on `Drop` via the same pending-forget queue `ImageHandle` uses.
     uploaded_com_ids: Vec<i64>,
@@ -247,13 +249,8 @@ impl UiLayoutHandle {
         // Pre-order walk that builds resolved (x,y,w,h) per window
         // against the inherited parent area, while emitting draw cmds
         // for any window with an `Image` property.
-        let mut draws: Vec<DrawCmd> = Vec::new();
-        if let Some(root) = layout.root() {
-            let (rx, ry, rw, rh) = root.area.resolve(native_w as f32, native_h as f32);
-            let rw = if rw > 0.0 { rw } else { native_w as f32 };
-            let rh = if rh > 0.0 { rh } else { native_h as f32 };
-            emit_draws(root, rx, ry, rw, rh, &layout, &resolved_sets, &mut draws);
-        }
+        let draws = build_draws(&layout, &resolved_sets, native_w as f32, native_h as f32);
+        let window_rects = resolve_window_rects(&layout, native_w as f32, native_h as f32);
         log::info!(
             "UiLayoutHandle({}): produced {} draw cmd(s), native={}x{}",
             vfs_path,
@@ -273,6 +270,8 @@ impl UiLayoutHandle {
             text_dump,
             native_w,
             native_h,
+            window_rects,
+            resolved_sets,
             uploaded_com_ids,
             pending_forgets,
             last_string: RefCell::new(String::new()),
@@ -332,110 +331,122 @@ impl IUiLayoutHandleImpl for UiLayoutHandle {
     fn draw_texture_com_id(&self, i: i32) -> i32 {
         self.draws
             .get(i as usize)
-            .map(|d| d.base.texture_com_id as i32)
+            .map(|d| d.base.get().texture_com_id as i32)
             .unwrap_or(0)
     }
     fn draw_u0(&self, i: i32) -> f32 {
-        self.draws.get(i as usize).map(|d| d.base.u0).unwrap_or(0.0)
+        self.draws
+            .get(i as usize)
+            .map(|d| d.base.get().u0)
+            .unwrap_or(0.0)
     }
     fn draw_v0(&self, i: i32) -> f32 {
-        self.draws.get(i as usize).map(|d| d.base.v0).unwrap_or(0.0)
+        self.draws
+            .get(i as usize)
+            .map(|d| d.base.get().v0)
+            .unwrap_or(0.0)
     }
     fn draw_u1(&self, i: i32) -> f32 {
-        self.draws.get(i as usize).map(|d| d.base.u1).unwrap_or(1.0)
+        self.draws
+            .get(i as usize)
+            .map(|d| d.base.get().u1)
+            .unwrap_or(1.0)
     }
     fn draw_v1(&self, i: i32) -> f32 {
-        self.draws.get(i as usize).map(|d| d.base.v1).unwrap_or(1.0)
+        self.draws
+            .get(i as usize)
+            .map(|d| d.base.get().v1)
+            .unwrap_or(1.0)
     }
 
     fn draw_hover_texture_com_id(&self, i: i32) -> i32 {
         self.draws
             .get(i as usize)
-            .map(|d| d.hover.texture_com_id as i32)
+            .map(|d| d.hover.get().texture_com_id as i32)
             .unwrap_or(0)
     }
     fn draw_hover_u0(&self, i: i32) -> f32 {
         self.draws
             .get(i as usize)
-            .map(|d| d.hover.u0)
+            .map(|d| d.hover.get().u0)
             .unwrap_or(0.0)
     }
     fn draw_hover_v0(&self, i: i32) -> f32 {
         self.draws
             .get(i as usize)
-            .map(|d| d.hover.v0)
+            .map(|d| d.hover.get().v0)
             .unwrap_or(0.0)
     }
     fn draw_hover_u1(&self, i: i32) -> f32 {
         self.draws
             .get(i as usize)
-            .map(|d| d.hover.u1)
+            .map(|d| d.hover.get().u1)
             .unwrap_or(1.0)
     }
     fn draw_hover_v1(&self, i: i32) -> f32 {
         self.draws
             .get(i as usize)
-            .map(|d| d.hover.v1)
+            .map(|d| d.hover.get().v1)
             .unwrap_or(1.0)
     }
     fn draw_pressed_texture_com_id(&self, i: i32) -> i32 {
         self.draws
             .get(i as usize)
-            .map(|d| d.pressed.texture_com_id as i32)
+            .map(|d| d.pressed.get().texture_com_id as i32)
             .unwrap_or(0)
     }
     fn draw_pressed_u0(&self, i: i32) -> f32 {
         self.draws
             .get(i as usize)
-            .map(|d| d.pressed.u0)
+            .map(|d| d.pressed.get().u0)
             .unwrap_or(0.0)
     }
     fn draw_pressed_v0(&self, i: i32) -> f32 {
         self.draws
             .get(i as usize)
-            .map(|d| d.pressed.v0)
+            .map(|d| d.pressed.get().v0)
             .unwrap_or(0.0)
     }
     fn draw_pressed_u1(&self, i: i32) -> f32 {
         self.draws
             .get(i as usize)
-            .map(|d| d.pressed.u1)
+            .map(|d| d.pressed.get().u1)
             .unwrap_or(1.0)
     }
     fn draw_pressed_v1(&self, i: i32) -> f32 {
         self.draws
             .get(i as usize)
-            .map(|d| d.pressed.v1)
+            .map(|d| d.pressed.get().v1)
             .unwrap_or(1.0)
     }
     fn draw_disabled_texture_com_id(&self, i: i32) -> i32 {
         self.draws
             .get(i as usize)
-            .map(|d| d.disabled.texture_com_id as i32)
+            .map(|d| d.disabled.get().texture_com_id as i32)
             .unwrap_or(0)
     }
     fn draw_disabled_u0(&self, i: i32) -> f32 {
         self.draws
             .get(i as usize)
-            .map(|d| d.disabled.u0)
+            .map(|d| d.disabled.get().u0)
             .unwrap_or(0.0)
     }
     fn draw_disabled_v0(&self, i: i32) -> f32 {
         self.draws
             .get(i as usize)
-            .map(|d| d.disabled.v0)
+            .map(|d| d.disabled.get().v0)
             .unwrap_or(0.0)
     }
     fn draw_disabled_u1(&self, i: i32) -> f32 {
         self.draws
             .get(i as usize)
-            .map(|d| d.disabled.u1)
+            .map(|d| d.disabled.get().u1)
             .unwrap_or(1.0)
     }
     fn draw_disabled_v1(&self, i: i32) -> f32 {
         self.draws
             .get(i as usize)
-            .map(|d| d.disabled.v1)
+            .map(|d| d.disabled.get().v1)
             .unwrap_or(1.0)
     }
     fn draw_is_interactive(&self, i: i32) -> bool {
@@ -507,6 +518,40 @@ impl IUiLayoutHandleImpl for UiLayoutHandle {
     fn window_count(&self) -> i32 {
         self.layout.windows.len() as i32
     }
+    fn window_parent(&self, i: i32) -> i32 {
+        self.layout
+            .windows
+            .get(i as usize)
+            .and_then(|window| window.parent)
+            .map_or(-1, |parent| parent as i32)
+    }
+    fn window_rect(&self, i: i32, component: i32) -> f32 {
+        self.window_rects
+            .get(i as usize)
+            .and_then(|rect| rect.get(component as usize))
+            .copied()
+            .unwrap_or(0.0)
+    }
+    fn set_window_image(&self, i: i32, state: i32, imageset: &str, image: &str) -> bool {
+        let reference = cegui_layout::ImageRef {
+            set: imageset.to_string(),
+            image: image.to_string(),
+        };
+        let Some(image) = resolve_state_image(&reference, &self.resolved_sets) else {
+            return false;
+        };
+        let Some(draw) = self.draws.iter().find(|draw| draw.window_id as i32 == i) else {
+            return false;
+        };
+        match state {
+            0 => draw.base.set(image),
+            1 => draw.hover.set(image),
+            2 => draw.pressed.set(image),
+            3 => draw.disabled.set(image),
+            _ => return false,
+        }
+        true
+    }
     fn window_name(&self, i: i32) -> &str {
         let mut buf = self.name_scratch.borrow_mut();
         *buf = self
@@ -531,6 +576,115 @@ impl IUiLayoutHandleImpl for UiLayoutHandle {
     }
 }
 
+fn resolve_window_rects(layout: &LayoutFile, width: f32, height: f32) -> Vec<[f32; 4]> {
+    let mut rects: Vec<[f32; 4]> = Vec::with_capacity(layout.windows.len());
+    for window in &layout.windows {
+        let parent = window
+            .parent
+            .and_then(|id| rects.get(id as usize))
+            .copied()
+            .unwrap_or([0.0, 0.0, width, height]);
+        let (x, y, w, h) = window.area.resolve(parent[2], parent[3]);
+        rects.push([
+            parent[0] + x,
+            parent[1] + y,
+            if w > 0.0 { w } else { parent[2] },
+            if h > 0.0 { h } else { parent[3] },
+        ]);
+    }
+    rects
+}
+
+fn build_draws(
+    layout: &LayoutFile,
+    sets: &HashMap<String, ResolvedSet>,
+    width: f32,
+    height: f32,
+) -> Vec<DrawCmd> {
+    let mut draws = Vec::new();
+    if let Some(root) = layout.root() {
+        emit_draws(root, 0.0, 0.0, width, height, layout, sets, &mut draws);
+    }
+    draws
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn displaced_root_geometry_and_state_images_share_the_native_canvas() {
+        let layout = cegui_layout::parse_layout_str(
+            r#"<GUILayout>
+                <Window Type="DefaultWindow" Name="Root">
+                <Property Name="UnifiedAreaRect" Value="{{0,695},{0,165},{0,800},{0,600}}" />
+                <Window Type="OiramLook/StaticImage" Name="Frame">
+                <Property Name="UnifiedAreaRect" Value="{{0,0},{0,0},{0,105},{0,435}}" />
+                <Property Name="olBackgroundImage" Value="set:test image:normal" />
+                <Window Type="OiramLook/Button" Name="Close">
+                <Property Name="UnifiedAreaRect" Value="{{0,59},{0,389},{0,99},{0,429}}" />
+                <Property Name="olNormalImage" Value="set:test image:normal" />
+                </Window></Window></Window></GUILayout>"#,
+        )
+        .unwrap();
+        let imageset = cegui_imageset::parse_imageset_str(
+            r#"<Imageset Name="test" Imagefile="test.png" NativeHorzRes="800" NativeVertRes="600">
+                <Image Name="normal" XPos="0" YPos="0" Width="10" Height="10" />
+                <Image Name="hover" XPos="50" YPos="0" Width="10" Height="10" />
+                </Imageset>"#,
+        )
+        .unwrap();
+        let resolved_sets = HashMap::from([(
+            "test".into(),
+            ResolvedSet {
+                com_id: -1,
+                imageset,
+                tex_w: 100,
+                tex_h: 100,
+            },
+        )]);
+        let window_rects = resolve_window_rects(&layout, 800.0, 600.0);
+        let draws = build_draws(&layout, &resolved_sets, 800.0, 600.0);
+        assert_eq!(
+            draws.len(),
+            2,
+            "background-only windows must produce artwork"
+        );
+        let index = draws.iter().position(|draw| draw.window_id == 2).unwrap();
+        assert_eq!(
+            [
+                draws[index].x,
+                draws[index].y,
+                draws[index].w,
+                draws[index].h
+            ],
+            [754.0, 554.0, 40.0, 40.0]
+        );
+        assert_eq!(window_rects[2], [754.0, 554.0, 40.0, 40.0]);
+        let handle = UiLayoutHandle {
+            layout,
+            draws,
+            window_rects,
+            resolved_sets,
+            text_dump: String::new(),
+            native_w: 800,
+            native_h: 600,
+            uploaded_com_ids: Vec::new(),
+            pending_forgets: Rc::new(RefCell::new(Vec::new())),
+            last_string: RefCell::new(String::new()),
+            name_scratch: RefCell::new(String::new()),
+            type_scratch: RefCell::new(String::new()),
+            text_scratch: RefCell::new(String::new()),
+        };
+        assert_eq!(handle.window_parent(2), 1);
+        let normal_u0 = handle.draw_u0(index as i32);
+        assert!(handle.set_window_image(2, 1, "test", "hover"));
+        assert!(handle.draw_hover_u0(index as i32) > normal_u0);
+        assert_eq!(handle.draw_u0(index as i32), normal_u0);
+        assert!(!handle.set_window_image(2, 0, "test", "missing"));
+        assert_eq!(handle.draw_u0(index as i32), normal_u0);
+    }
+}
 /// Recursive walker that turns the layout tree into a flat draw list.
 fn emit_draws(
     window: &Window,
@@ -590,10 +744,10 @@ fn emit_draws(
             y: ay,
             w: aw,
             h: ah,
-            base,
-            hover,
-            pressed,
-            disabled,
+            base: Cell::new(base),
+            hover: Cell::new(hover),
+            pressed: Cell::new(pressed),
+            disabled: Cell::new(disabled),
             frames,
             is_interactive,
             text: window.text.clone().unwrap_or_default(),
@@ -605,10 +759,10 @@ fn emit_draws(
             y: ay,
             w: aw,
             h: ah,
-            base: StateImage::empty(),
-            hover: StateImage::empty(),
-            pressed: StateImage::empty(),
-            disabled: StateImage::empty(),
+            base: Cell::new(StateImage::empty()),
+            hover: Cell::new(StateImage::empty()),
+            pressed: Cell::new(StateImage::empty()),
+            disabled: Cell::new(StateImage::empty()),
             frames: Vec::new(),
             is_interactive: false,
             text: window.text.clone().unwrap_or_default(),

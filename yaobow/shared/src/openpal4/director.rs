@@ -55,6 +55,12 @@ pub struct Pal4DebugBundle {
 }
 
 pub struct OpenPAL4Director {
+    game_menu: RefCell<
+        Option<(
+            ComRc<super::comdef::IPal4MenuState>,
+            ComRc<super::comdef::IPal4GameMenu>,
+        )>,
+    >,
     vm: Rc<RefCell<ScriptVm<Pal4VmContext>>>,
     #[allow(dead_code)]
     control: FreeViewController,
@@ -195,6 +201,7 @@ impl OpenPAL4Director {
             rotating_entities.clone(),
         );
         Self {
+            game_menu: RefCell::new(None),
             vm: Rc::new(RefCell::new(create_script_vm(vm_context))),
             control: FreeViewController::new(input),
             debug: RefCell::new(None),
@@ -417,7 +424,24 @@ impl OpenPAL4Director {
     /// scenes attach the same scripted controller. Idempotent; the
     /// last call wins.
     pub fn set_actor_controller_factory(&self, factory: ComRc<super::comdef::IPal4ScriptFactory>) {
+        let (session, input) = {
+            let vm = self.vm.borrow();
+            (vm.vm_context.session_handle(), vm.vm_context.input.clone())
+        };
+        let state = super::menu_state::Pal4MenuState::create(session.clone());
+        let input = radiance_scripting::services::input::InputService::create(input);
+        let menu = factory.make_pal4_game_menu(state.clone(), input);
+        session.borrow().set_menu_host_available(true);
+        *self.game_menu.borrow_mut() = Some((state, menu));
         *self.actor_controller_factory.borrow_mut() = Some(factory);
+    }
+
+    pub(crate) fn set_menu_preview(&self, preview: super::menu_preview::Pal4MenuPreview) {
+        if let Some((state, _)) = self.game_menu.borrow().as_ref() {
+            state
+                .inner::<super::menu_state::Pal4MenuState>()
+                .set_preview(preview);
+        }
     }
 
     fn refresh_debug_snapshot(&self, delta_sec: f32) {
@@ -685,6 +709,46 @@ impl IDirectorImpl for OpenPAL4Director {
 
     fn update(&self, delta_sec: f32) -> Option<crosscom::ComRc<radiance::comdef::IDirector>> {
         let _timer = radiance::perf::timer("pal4.director.update_total_ns");
+        let menu = self.game_menu.borrow().clone();
+        if let Some((state, menu)) = menu {
+            let (session, available) = {
+                let vm = self.vm.borrow();
+                (
+                    vm.vm_context.session_handle(),
+                    vm.is_idle()
+                        && !vm.vm_context.is_player_locked()
+                        && !vm.vm_context.movie_playing(),
+                )
+            };
+            {
+                let session = session.borrow();
+                session.advance_menu_input_frame();
+                if session
+                    .menu_tab()
+                    .is_some_and(|tab| !session.state().menu_enabled(tab))
+                    || (!available && !session.menu_forced() && session.menu_tab().is_some())
+                {
+                    session.close_menu();
+                }
+            }
+            state
+                .inner::<super::menu_state::Pal4MenuState>()
+                .set_available(available);
+            menu.tick();
+            state
+                .inner::<super::menu_state::Pal4MenuState>()
+                .update_preview(session.borrow().menu_tab());
+            if session.borrow().menu_tab().is_some() {
+                self.vm.borrow_mut().vm_context_mut().update(delta_sec);
+                self.end_agent_frame();
+                return None;
+            }
+            // Do not feed the closing input into scene interaction or periodic scripts.
+            if session.borrow().menu_input_blocked() {
+                self.end_agent_frame();
+                return None;
+            }
+        }
         // Agent commands were already drained this frame by the
         // app-lifetime `Pal4AgentDispatcher` in `on_updating` (which
         // runs before this `update`), so `pause` / `step` / `input` /
@@ -835,6 +899,14 @@ impl IDirectorImpl for OpenPAL4Director {
 
 impl IUiLayerImpl for OpenPAL4Director {
     fn render(&self, ui: ComRc<IUiHost>, dt: f32) {
+        let menu = self
+            .game_menu
+            .borrow()
+            .as_ref()
+            .map(|(_, menu)| menu.clone());
+        if let Some(menu) = menu {
+            menu.render(ui.clone(), dt);
+        }
         // Tilde edge-detect → toggle visibility. Done in Rust (rather
         // than in script) so the script overlay stays oblivious to the
         // input engine: it only needs to know "render me when called".
@@ -1234,6 +1306,11 @@ impl OpenPAL4Director {
     /// `set_function_by_name2` path so the script side is identical
     /// to a real collision.
     fn handle_fire_scene_trigger(&self, params: FireTriggerParams) -> AgentResponse {
+        if self.vm.borrow().vm_context.session().menu_tab().is_some() {
+            return AgentResponse::err(AgentError::conflict(
+                "close the gameplay menu before firing a trigger",
+            ));
+        }
         if self.vm.borrow().current_function_name().is_some() {
             return AgentResponse::err(AgentError::conflict(
                 "a script is currently running; wait for it to finish before firing a trigger",
@@ -1275,6 +1352,11 @@ impl OpenPAL4Director {
     /// `npcInfo.npc` talk handler — as if the player had pressed
     /// "Examine" / talked to it.
     fn handle_interact_object(&self, params: NameParams) -> AgentResponse {
+        if self.vm.borrow().vm_context.session().menu_tab().is_some() {
+            return AgentResponse::err(AgentError::conflict(
+                "close the gameplay menu before interacting",
+            ));
+        }
         if self.vm.borrow().current_function_name().is_some() {
             return AgentResponse::err(AgentError::conflict(
                 "a script is currently running; wait for it to finish before interacting",
@@ -1449,6 +1531,7 @@ impl OpenPAL4Director {
             dt,
             inventory,
             world_map_open: app.session().world_map_open(),
+            menu_tab: app.session().menu_tab(),
             ..Default::default()
         }
     }

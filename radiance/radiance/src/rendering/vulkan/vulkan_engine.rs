@@ -402,6 +402,7 @@ impl RenderingEngine for VulkanRenderingEngine {
             target_fb,
             target_extent,
             target_descriptor,
+            target.clear_color(),
             &self.scratch_opaque,
             &self.scratch_cutout,
             &self.scratch_transparent_ordered,

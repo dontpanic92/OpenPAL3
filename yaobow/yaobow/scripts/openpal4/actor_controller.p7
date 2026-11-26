@@ -121,7 +121,8 @@ pub struct[openpal4.IPal4ActorController] Pal4PartyController(
     }
 
     pub fn on_updating(self: &Self, delta_sec: float) -> int {
-        if self.locked {
+        if self.locked || self.game_ctx.menu_input_blocked()
+            || self.input.key_pressed(38) || self.input.key_pressed(43) {
             return 0;
         }
 

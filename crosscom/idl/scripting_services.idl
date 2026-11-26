@@ -423,6 +423,11 @@ interface IUiLayoutHandle: IUnknown {
     int window_count();
     &str window_name(int i);
     &str window_type(int i);
+    int window_parent(int i);
+    // Absolute native-canvas rectangle: 0=x, 1=y, 2=width, 3=height.
+    float window_rect(int i, int component);
+    // Replace imagery from an already uploaded imageset. State: normal/hover/pressed/disabled=0..3.
+    bool set_window_image(int i, int state, &str imageset, &str image);
 }
 // The concrete `class UiLayoutHandle: IUiLayoutHandle {}` lives in
 // `shared_services.idl` so the ComObject macro generates in `shared`,

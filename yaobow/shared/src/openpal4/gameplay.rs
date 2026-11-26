@@ -164,15 +164,81 @@ pub struct PropertyDefinition {
     pub skill_id: i32,
 }
 
+#[derive(Debug, Clone)]
+pub struct SkillDefinition {
+    pub kind: i32,
+    pub trigger: i32,
+    pub duration: i32,
+    pub function: i32,
+    pub parameters: [f32; 9],
+    pub attached: i32,
+    pub mutex: i32,
+    pub status: i32,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct RecoveryEffect {
+    pub hp: bool,
+    pub amount: f32,
+    pub proportional: bool,
+}
+
 #[derive(Debug, Default)]
 pub struct GameplayCatalog {
     pub roles: BTreeMap<usize, RoleDefinition>,
     pub levels: HashMap<(usize, i32), LevelDefinition>,
     pub equipment: BTreeMap<i32, EquipmentDefinition>,
     pub properties: BTreeMap<i32, PropertyDefinition>,
+    pub skills: BTreeMap<i32, SkillDefinition>,
 }
 
 impl GameplayCatalog {
+    pub fn recovery_effects(&self, mut id: i32) -> Option<Vec<RecoveryEffect>> {
+        let mut visited = Vec::new();
+        let mut effects = Vec::new();
+        while id != 0 {
+            if visited.contains(&id) || visited.len() >= 16 {
+                return None;
+            }
+            visited.push(id);
+            let skill = self.skills.get(&id)?;
+            if skill.trigger != 2 || skill.duration != 0 || skill.mutex != 0 || skill.status != 0 {
+                return None;
+            }
+            if skill.function != 9132 {
+                if skill.function != 9118 || ![0, 2, 3].contains(&skill.kind) {
+                    return None;
+                }
+                let p = skill.parameters;
+                if p[0] != 1.0 || p[1] != 0.0 || p[2] != 0.0 {
+                    return None;
+                }
+                for start in [3, 6] {
+                    if p[start] == 0.0 {
+                        continue;
+                    }
+                    if ![2.0, 6.0].contains(&p[start])
+                        || p[start + 1] <= 0.0
+                        || ![0.0, 4.0].contains(&p[start + 2])
+                    {
+                        return None;
+                    }
+                    effects.push(RecoveryEffect {
+                        hp: p[start] == 2.0,
+                        amount: p[start + 1],
+                        proportional: p[start + 2] == 4.0,
+                    });
+                }
+            }
+            id = skill.attached;
+        }
+        if effects.is_empty() {
+            None
+        } else {
+            Some(effects)
+        }
+    }
+
     pub fn can_equip(&self, slot: usize, level: i32, id: i32) -> bool {
         self.equipment
             .get(&id)
@@ -279,6 +345,32 @@ impl GameplayCatalog {
             ensure!(
                 catalog.properties.insert(id, property).is_none(),
                 "duplicate property {id}"
+            );
+        }
+        let table = required_table(database, "Skill")?;
+        for values in &table.rows {
+            let row = Row { table, values };
+            let id = row.integer("ID")?;
+            let mut parameters = [0.0; 9];
+            for (index, parameter) in parameters.iter_mut().enumerate() {
+                *parameter = match row.value(&format!("SKILL_PARAM_{}", index + 1))? {
+                    Value::Float(value) if value.is_finite() => *value,
+                    _ => bail!("invalid PAL4 skill parameter for {id}"),
+                };
+            }
+            let skill = SkillDefinition {
+                kind: row.integer("TYPE")?,
+                trigger: row.integer("TRIGER")?,
+                duration: row.integer("EXIST_TIME")?,
+                function: row.integer("FUNCTION")?,
+                parameters,
+                attached: row.integer("ATTACHED_SKILL")?,
+                mutex: row.integer("MUTEX_ID")?,
+                status: row.integer("STATUS_ID")?,
+            };
+            ensure!(
+                catalog.skills.insert(id, skill).is_none(),
+                "duplicate skill {id}"
             );
         }
         Ok(catalog)

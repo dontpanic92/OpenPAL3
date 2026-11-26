@@ -15,6 +15,7 @@ import radiance;
 import shared.pal4_debug;
 import yaobow.openpal4.debug_overlay;
 import yaobow.openpal4.loading_overlay;
+import yaobow.openpal4.game_menu;
 import shared.openpal3;
 import shared.openpal4;
 import yaobow.openpal3.start_menu as pal3_start_menu;
@@ -44,6 +45,18 @@ pub struct[yaobow_services.IYaobowScriptApp, openpal3.IPal3ScriptFactory, openpa
         self: &Self,
     ) -> &openpal4.IPal4LoadingOverlay {
         return loading_overlay.make_loading_overlay(self.ctx);
+    }
+
+    pub fn make_pal4_game_menu(self: &Self, game: &openpal4.IPal4MenuState,
+        input: &scripting_services.IInputService) -> &openpal4.IPal4GameMenu {
+        return game_menu.make(game, input,
+            self.ctx.pal4().open_layout("/gamedata/ui/layouts/RoleStateWindow.xml"),
+            self.ctx.pal4().open_layout("/gamedata/ui/layouts/PropertyWindow.xml"),
+            self.ctx.pal4().open_layout("/gamedata/ui/layouts/EquipmentWindow.xml"),
+            self.ctx.pal4().open_layout("/gamedata/ui/layouts/portrait.xml"),
+            self.ctx.pal4().open_layout("/gamedata/ui/layouts/sysToolBar.xml"),
+            self.ctx.pal4().open_layout("/gamedata/ui/layouts/frameToolbar.xml"),
+            self.ctx.pal4().open_layout("/gamedata/ui/layouts/gameInfo.xml"));
     }
 
     pub fn make_actor_controller(

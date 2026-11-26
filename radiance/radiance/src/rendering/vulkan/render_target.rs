@@ -67,6 +67,7 @@ pub struct VulkanRenderTarget {
 
     width: u32,
     height: u32,
+    clear_color: [f32; 4],
 
     render_pass: RenderPass,
     attachments: Option<Attachments>,
@@ -169,11 +170,16 @@ impl VulkanRenderTarget {
             command_buffer,
             render_finished_semaphore,
             in_flight_fence,
+            clear_color: [0.0, 0.0, 0.0, 1.0],
         })
     }
 
     pub fn vk_render_pass(&self) -> vk::RenderPass {
         self.render_pass.vk_render_pass()
+    }
+
+    pub fn clear_color(&self) -> [f32; 4] {
+        self.clear_color
     }
 
     pub fn vk_framebuffer(&self) -> vk::Framebuffer {
@@ -212,6 +218,9 @@ impl VulkanRenderTarget {
 }
 
 impl RenderTarget for VulkanRenderTarget {
+    fn set_clear_color(&mut self, color: [f32; 4]) {
+        self.clear_color = color;
+    }
     fn extent(&self) -> (u32, u32) {
         (self.width, self.height)
     }

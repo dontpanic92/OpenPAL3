@@ -326,11 +326,10 @@ effective contributions separate, represents six equipped positions, and
 keeps backpack counts separate from script-equipped grants. Save JSON includes
 these fields; this schema change intentionally has no legacy-save migration.
 
-The current state work does **not** expose an in-game equipment menu, establish
-standalone unequip interactions, preserve forged instance properties, implement
-attached-skill effects, or infer consumable healing from skill IDs. Attached-skill
-references are loaded as data for later work, not silently treated as completed
-gameplay.
+The phase-two state work did not expose a menu or implement item effects.
+The phase-three slice below adds those interfaces for verified recovery forms.
+Standalone unequip interactions, forged instance properties, and general
+attached-skill/status-effect handling remain unimplemented.
 
 Run the original-data integration check without committing extracted data:
 
@@ -344,3 +343,153 @@ A live agent-driven check also reached the idle Q01 opening with Tianhe at
 in a newly written temporary save, and reloaded that save with identical party
 resources. The temporary slot was removed afterwards; no existing slot was
 overwritten. This is a state/persistence check, not native UI parity.
+
+## Phase-three gameplay menu
+
+The functional p7 menu is `yaobow\yaobow\scripts\openpal4\game_menu.p7`.
+It reads and mutates the authoritative session through `IPal4MenuState`;
+there is no separate script-owned inventory or stat model. Escape opens/closes
+the menu during free movement. Inside the menu, 1/2/3 select status/items/
+equipment, Q/E change party member, arrows select items/change pages, and
+Space confirms a supported use/equip action. Mouse controls use press/release
+latching in a shared letterboxed 800x600 coordinate system.
+
+Native runtime menu IDs were verified independently of the database `UI` enum:
+
+| Runtime ID | Menu |
+| --- | --- |
+| 0 | Status |
+| 1 | Properties/inventory |
+| 2 | Equipment |
+| 3 | Magic |
+| 4 | Forging |
+| 5 | Quests |
+| 6 | System |
+
+`giOpenSystemUi` at `0x005d60b0` sends `ID+1` to the toolbar dispatcher
+at `0x00482a20`; the toolbar's widget references establish the mapping.
+`giGrantSystemUi` at `0x005d6080` changes flag `8+ID`; initialization
+`0x005c1b40` enables these flags by default. Unlocks are now saved.
+Only the first three tabs are implemented. Unsupported script-open requests
+log a warning instead of displaying the wrong menu or suspending indefinitely.
+Supported script-open requests yield until the menu closes. Menu dismissal
+does not alter a cutscene's persistent control lock.
+
+Recovery is decoded from `Skill`, not hardcoded item IDs. Native function
+9118 dispatches to `0x0057fbe0`; parameter groups 4/5/6 and 7/8/9 describe
+attribute, amount and mode. Attribute 2 is current HP and 6 is current MP
+(registrations at `0x005808d0` onward). Helper `0x005806f0` establishes mode
+0 as an additive value and mode 4 as an effective-maximum multiplier.
+Function 9132 dispatches to visual-effect callback `0x005803c0`, so the
+common attached skill 17062 adds no character-stat mutation.
+
+The supported subset requires an immediate, deterministic, nonbattle-compatible
+recovery chain, only HP/MP restoration, and no unknown status/mutex effects.
+It honors property menu-use/character flags and friendly-single/party targets,
+does not revive, and consumes one item only after a supported state change.
+Unsupported chains and no-op/full-resource actions are conservatively disabled;
+this is not a claim that every native item-use rejection rule is reproduced.
+Visual effects are not played by the menu yet.
+
+The initial functional layout used custom controls over the original
+status/property/equipment artwork. The native composition increment below
+replaces that opaque overlay.
+Item icon fields are empty in the inspected database; per-item icons are not
+fabricated. The model-preview increment below renders original 3D assets
+instead. Full native camera/presentation parity remains phase-four work.
+
+Validation includes recorded-host p7 keyboard/mouse interactions, disabled tabs,
+cutscene-lock preservation, and original-data single/party recovery tests.
+A live Q01 test loaded an isolated temporary save fixture with low HP and owned
+items, opened the menu, verified held movement was blocked, consumed property
+3000 once, equipped head item 3558, saved and reloaded the results, and verified
+the menu closed after reload. The fixture slot was removed; existing slots
+were not overwritten. Original chest/reward route validation remains phase six.
+
+### Native portrait entry and menu composition
+
+The exploration HUD now paints the original upper-right `portrait.xml`
+`BtnSystem` entry at native `(715,15,68,68)`. Clicking and releasing it opens
+the gameplay menu; it is hidden while cutscene/script control prevents opening.
+Portrait variants follow the current leader. The HUD uses background image
+draws without an invisible fullscreen input-capturing window.
+
+The menu composes `RoleStateWindow.xml` / `PropertyWindow.xml` /
+`EquipmentWindow.xml`, `sysToolBar.xml`, `frameToolbar.xml`, and `gameInfo.xml`
+on the same fitted 800x600 canvas. Original normal/hover/pressed/disabled art
+drives the bottom tabs, right-side categories and close control. Live stats,
+resource gauges, quantities, descriptions and equipped names are painted into
+their declared native widgets, rather than into a custom panel over the art.
+The right-side frame is drawn behind content/category buttons. Unsupported
+toolbar tabs remain disabled. The model previews described below now fill the
+empty preview region; complete native animations/effects remain unimplemented.
+
+The native close button resolves to `(754,554,40,40)`: its layout root already
+contributes `(695,165)`. The shared layout handle now exposes cached absolute
+widget bounds and parent IDs, and applies the root offset only once.
+Background-only frame widgets (`BackgroundImage` / `olBackgroundImage`) also
+produce draw commands. Named image replacement reuses each layout's uploaded
+imagesets for leader and party portrait variants.
+
+Keyboard controls remain available. Native inventory rows use release selection
+and double-click or Space to perform a supported action; wheel and arrow keys
+change list pages, and the header arrows / Q/E change the selected party member.
+The first category still uses the existing all-items view; native recent-item
+tracking is not implemented. Rage and playtime are not fabricated where those
+fields lack authoritative runtime data.
+
+Recorded-host regressions cover portrait opening, disabled native tabs,
+release-outside cancellation, native close/input isolation and item double-click.
+Portrait/close geometry is exercised at 800x600, widescreen and 2x coordinates.
+A live asset-backed check captured the
+HUD/status/inventory/equipment composition and repeated use/equip/save/reload
+through keyboard controls. Desktop focus restrictions prevented reliable
+automated OS mouse delivery; pointer behavior was checked through the same
+production p7 hit-testing code with injected pointer coordinates instead.
+
+### Original item/equipment model previews
+
+The left preview area now renders the selected property's/equipment's actual
+`PA_MODEL` / `EA_MODEL` with its database-selected texture. Weapons resolve in
+`PALWeapon`; armor/accessories can resolve in `PALObject`. The equipment page
+falls back to the currently equipped weapon when its backpack list is empty.
+The existing native character portrait is preserved; no extra 3D character
+panel is invented.
+
+Preview geometry is read from the original DFF, with material texture names
+rewritten on the parsed copy before mesh creation. Namespaced texture-store
+keys include model path and selected skin, so shared meshes such as DHA
+(properties 3000/3004/3006) and WTA (equipment 3501/3503) cannot retain another
+item's pixels. Untextured `hook_*` attachment-marker atomics are excluded from
+the preview without deleting their frames or changing the gameplay loader.
+Original archive/model files are never modified.
+
+The preview uses a private scene and the existing engine offscreen-render
+target path, with an opt-in transparent clear color (editor targets retain
+their opaque default). Camera framing fits transformed render-object bounds
+and target aspect, rather than assuming a model is centered at the origin.
+This is functional automatic framing, not a claim that the original game's
+per-item camera angles have been reconstructed.
+
+The image is clipped between the native left class strip, list panel and
+toolbar/portrait boundaries. Drag inside it to rotate. Resolutions are bounded
+to 1024 pixels on the longest side while preserving aspect. Model/target work
+runs during director update; script-side rendering only queues the request and
+samples a ready texture. Missing models log once per selection rather than
+retrying every frame or displaying a fabricated substitute.
+
+UI painting precedes director update in `CoreRadianceEngine`. A tab/key change
+can therefore retire a target *after* that frame's imgui draw list referenced
+it. Retired previews retain their scene, target and descriptor for three
+frames before destruction; the texture cache's delayed com-ID eviction alone
+does not retain an external target's backend descriptor.
+
+Validation covers original model/skin lookup, camera/extent calculations,
+preview-enabled p7 behavior and a live temporary-save fixture. Live checks
+switch DHA/WTA texture variants, preview armor, repeatedly
+close/reopen, equip an item, restore a save, and exercise the equipped-weapon
+fallback. Transparent composition and original model imagery are captured in
+session screenshots, not committed as game assets.
+The desktop window manager did not apply the automated resize request; target
+sizing and camera-aspect behavior are covered by focused calculation tests,
+not claimed as live resize verification.

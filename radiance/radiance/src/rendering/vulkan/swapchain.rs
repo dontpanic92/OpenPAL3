@@ -844,6 +844,7 @@ impl SwapChain {
         framebuffer: vk::Framebuffer,
         extent: vk::Extent2D,
         per_frame_descriptor_set: vk::DescriptorSet,
+        clear_color: [f32; 4],
         opaque_objects: &[Rc<VulkanRenderObject>],
         cutout_objects: &[Rc<VulkanRenderObject>],
         transparent_objects: &[Rc<VulkanRenderObject>],
@@ -861,7 +862,7 @@ impl SwapChain {
         let clear_values = [
             vk::ClearValue {
                 color: vk::ClearColorValue {
-                    float32: [0f32, 0f32, 0f32, 1f32],
+                    float32: clear_color,
                 },
             },
             vk::ClearValue {

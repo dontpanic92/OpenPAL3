@@ -925,7 +925,7 @@ impl Pal4Service {
 
         let director = OpenPAL4Director::new(
             component_factory.clone(),
-            loader,
+            loader.clone(),
             scene_manager,
             ui,
             input_engine,
@@ -939,6 +939,16 @@ impl Pal4Service {
         }
         if let Some(factory) = self.script_factory.borrow().clone() {
             director.set_actor_controller_factory(factory.clone());
+        }
+        #[cfg(vulkan)]
+        if let Some(cache) = self.texture_cache.borrow().clone() {
+            let catalog = loader.gameplay_catalog().expect("PAL4 gameplay catalog");
+            director.set_menu_preview(super::menu_preview::Pal4MenuPreview::new(
+                loader,
+                rendering_engine.clone(),
+                cache,
+                catalog,
+            ));
         }
         // The loading overlay is built per-launch (it captures the
         // host context for lazy `open_layout`) and pre-warmed once;
