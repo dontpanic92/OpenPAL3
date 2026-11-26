@@ -75,6 +75,20 @@ impl Pal4MenuState {
 
     fn inventory_ids(&self, tab: i32, category: i32) -> Vec<i32> {
         let session = self.session.borrow();
+        if category == -1 {
+            return session
+                .state()
+                .recent_inventory_ids(tab == 2)
+                .into_iter()
+                .filter(|id| {
+                    if tab == 1 {
+                        self.catalog.properties.contains_key(id)
+                    } else {
+                        tab == 2 && self.catalog.equipment.contains_key(id)
+                    }
+                })
+                .collect();
+        }
         let mut ids: Vec<_> = session
             .state()
             .inventory_iter()
@@ -169,6 +183,8 @@ impl IPal4MenuStateImpl for Pal4MenuState {
             8 => player.effective_stats.integer("CA_LUCKY"),
             9 => player.effective_stats.integer("CA_WILL"),
             10 => player.experience,
+            16 => player.rage,
+            17 => super::states::persistent_state::PlayerState::MAX_RAGE,
             11..=15 => player.effective_stats.integer(
                 [
                     "EFE_WATER",

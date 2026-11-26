@@ -181,6 +181,10 @@ impl Pal4MenuPreview {
             &config,
             chunks,
         );
+        entity
+            .transform()
+            .borrow_mut()
+            .rotate_axis_angle_local(&Vec3::EAST, 30.0_f32.to_radians());
         let scene = CoreScene::create();
         scene.add_entity(entity.clone());
         scene.load();

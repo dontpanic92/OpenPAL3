@@ -2288,7 +2288,8 @@ fn resume_ui_timer(_: &str, _vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionSt
     Pal4FunctionState::Completed
 }
 
-fn set_full_rage(_: &str, _vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
+fn set_full_rage(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
+    vm.vm_context.persistent_state_mut().restore_party_rage();
     Pal4FunctionState::Completed
 }
 

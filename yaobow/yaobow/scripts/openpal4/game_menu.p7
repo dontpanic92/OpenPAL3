@@ -25,13 +25,14 @@ pub struct[openpal4.IPal4GameMenu] GameMenu(
     pub role: int, pub category: int, pub selected: int,
     previous_tab: int, held: int, mouse_held: bool, guard_click: bool,
     hud_role: int, clock: float, last_click: float, last_item: int,
-    preview_item: int, preview_yaw: float, dragging_preview: bool,
+    preview_item: int, preview_yaw: float, preview_start: float, dragging_preview: bool,
     pub feedback: string,
 ) {
     fn reset_selection(self: &Self) {
         self.category = -1; self.selected = 0; self.held = -1;
         self.feedback = ""; self.guard_click = true; self.last_item = 0;
         self.dragging_preview = false;
+        self.preview_item = 0;
     }
     pub fn tick(self: &Self) -> int {
         let before = self.game.active_tab();
@@ -118,6 +119,7 @@ pub struct[openpal4.IPal4GameMenu] GameMenu(
         x: float, y: float, down: bool) {
         if layout.handle == null { return; }
         let art = layout.handle!;
+        art.set_animation_time(self.clock);
         let tab_names: array<string> = ["Role", "Property", "Equipment", "Magic", "Forging", "Task", "System"];
         for i in Range(0, art.draw_count()) {
             let id = art.draw_window_id(i);
@@ -132,21 +134,26 @@ pub struct[openpal4.IPal4GameMenu] GameMenu(
                         enabled = self.game.tab_enabled(t); selected = self.game.active_tab() == t;
                     }
                 }
-                if kind == 1 || kind == 2 {
-                    let property_categories: array<string> = ["NewProp", "PropCure", "Attack", "Auxiliary", "PropMaterial", "PropScenario"];
-                    let equipment_categories: array<string> = ["BtnEquipmentClass5", "BtnEquipmentClass0", "BtnEquipmentClass1", "BtnEquipmentClass2", "BtnEquipmentClass3", "BtnEquipmentClass4"];
-                    for category in Range(0, 6) {
-                        let button = if kind == 1 { property_categories[category] } else { equipment_categories[category] };
-                        if name == button { selected = self.category == category - 1; }
-                    }
+            }
+            if kind == 1 || kind == 2 {
+                let property_categories: array<string> = ["NewProp", "PropCure", "Attack", "Auxiliary", "PropMaterial", "PropScenario"];
+                let equipment_categories: array<string> = ["BtnEquipmentClass5", "BtnEquipmentClass0", "BtnEquipmentClass1", "BtnEquipmentClass2", "BtnEquipmentClass3", "BtnEquipmentClass4"];
+                for category in Range(0, 6) {
+                    let button = if kind == 1 { property_categories[category] } else { equipment_categories[category] };
+                    if name == button { selected = self.category == category - 1; }
                 }
             }
             let over = native.contains(rect, x, y) && art.draw_is_interactive(i);
-            let state = if !enabled { 3 } else { if selected || (over && down) { 2 } else { if over { 1 } else { 0 } } };
+            let state = if !enabled { 3 } else { if over && down { 2 }
+                else { if selected { 4 } else { if over { 1 } else { 0 } } } };
             let mut texture = art.draw_texture_com_id(i);
             let mut u0 = art.draw_u0(i); let mut v0 = art.draw_v0(i);
             let mut u1 = art.draw_u1(i); let mut v1 = art.draw_v1(i);
-            if state == 3 && art.draw_disabled_texture_com_id(i) != 0 {
+            if state == 4 && art.draw_selected_texture_com_id(i) != 0 {
+                texture = art.draw_selected_texture_com_id(i);
+                u0 = art.draw_selected_u0(i); v0 = art.draw_selected_v0(i);
+                u1 = art.draw_selected_u1(i); v1 = art.draw_selected_v1(i);
+            } else if state == 3 && art.draw_disabled_texture_com_id(i) != 0 {
                 texture = art.draw_disabled_texture_com_id(i);
                 u0 = art.draw_disabled_u0(i); v0 = art.draw_disabled_v0(i);
                 u1 = art.draw_disabled_u1(i); v1 = art.draw_disabled_v1(i);
@@ -167,6 +174,9 @@ pub struct[openpal4.IPal4GameMenu] GameMenu(
                     }
                     if name == "ImgMp" + number(r + 1) {
                         fraction = resource_fraction(self.game.member_value(r, 3), self.game.member_value(r, 4));
+                    }
+                    if name == "ImgRage" + number(r + 1) {
+                        fraction = resource_fraction(self.game.member_value(r, 16), self.game.member_value(r, 17));
                     }
                 }
             }
@@ -239,7 +249,7 @@ pub struct[openpal4.IPal4GameMenu] GameMenu(
             c.text(self.status.rect("RoleLevel" + s), number(self.game.member_value(role, 0)), 13.0);
             c.text(self.status.rect("jing" + s), resource(self.game, role, 1, 2), 13.0);
             c.text(self.status.rect("shen" + s), resource(self.game, role, 3, 4), 13.0);
-            c.text(self.status.rect("qi" + s), "--", 13.0);
+            c.text(self.status.rect("qi" + s), resource(self.game, role, 16, 17), 13.0);
             let labels: array<string> = ["武 ", "防 ", "速 ", "运 "];
             for i in Range(0, 4) {
                 let value = labels[i] + number(self.game.member_value(role, 5 + i))
@@ -332,7 +342,10 @@ pub struct[openpal4.IPal4GameMenu] GameMenu(
         let bottom = if tab == 1 { self.toolbar.rect("Role").y } else { layout.rect("touxiang").y };
         let area = gui.Rect(label.x + label.w, 0.0, panel.x - label.x - label.w, bottom);
         if area.w <= 0.0 || area.h <= 0.0 { return; }
-        if self.preview_item != id { self.preview_item = id; self.preview_yaw = 0.4; self.dragging_preview = false; }
+        if self.preview_item != id {
+            self.preview_item = id; self.preview_yaw = -0.1745329252;
+            self.preview_start = self.clock; self.dragging_preview = false;
+        }
         if press && native.contains(area, x, y) { self.dragging_preview = true; }
         if !down { self.dragging_preview = false; }
         if self.dragging_preview {
@@ -340,7 +353,8 @@ pub struct[openpal4.IPal4GameMenu] GameMenu(
             c.ui.reset_mouse_drag_delta(0);
         }
         let pixels = c.scale;
-        let texture = self.game.preview_texture(id, area.w * pixels, area.h * pixels, self.preview_yaw);
+        let yaw = self.preview_yaw - (self.clock - self.preview_start) * 0.8726646260;
+        let texture = self.game.preview_texture(id, area.w * pixels, area.h * pixels, yaw);
         if texture != 0 {
             c.ui.clip_rect(c.x + area.x * c.scale, c.y + area.y * c.scale,
                 c.x + (area.x + area.w) * c.scale, c.y + (area.y + area.h) * c.scale, () => {
@@ -375,7 +389,7 @@ pub fn make(game: &openpal4.IPal4MenuState, input: &scripting_services.IInputSer
     for i in Range(0, 4) { status_art.image("RolePanel" + number(i + 1), 0, "kuang0", roles[i]); }
     return &GameMenu(game, input, status_art, native.make(properties), native.make(equipment),
         native.make(portrait), native.make(toolbar), native.make(frame), native.make(info),
-        0, -1, 0, -1, -1, false, true, -1, 0.0, -1.0, 0, 0, 0.4, false, "");
+        0, -1, 0, -1, -1, false, true, -1, 0.0, -1.0, 0, 0, 0.0, 0.0, false, "");
 }
 
 fn two_digits(value: int) -> string {

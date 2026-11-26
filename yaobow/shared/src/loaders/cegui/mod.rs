@@ -11,5 +11,6 @@
 pub mod imageset;
 pub mod layout;
 pub mod scheme;
+pub(crate) mod sequence;
 pub mod skin;
 pub mod ui_layout_handle;

@@ -417,6 +417,13 @@ interface IUiLayoutHandle: IUnknown {
     float draw_frame_v0(int i, int frame);
     float draw_frame_u1(int i, int frame);
     float draw_frame_v1(int i, int frame);
+    // Sample native HoverSegImage sequences at their declared frame durations.
+    void set_animation_time(float seconds);
+    int draw_selected_texture_com_id(int i);
+    float draw_selected_u0(int i);
+    float draw_selected_v0(int i);
+    float draw_selected_u1(int i);
+    float draw_selected_v1(int i);
 
     // Window-tree metadata, indexed in pre-order traversal of the
     // original XML (independent of the draw-list ordering above).
@@ -426,7 +433,7 @@ interface IUiLayoutHandle: IUnknown {
     int window_parent(int i);
     // Absolute native-canvas rectangle: 0=x, 1=y, 2=width, 3=height.
     float window_rect(int i, int component);
-    // Replace imagery from an already uploaded imageset. State: normal/hover/pressed/disabled=0..3.
+    // Replace uploaded imagery. State: normal/hover/pressed/disabled/selected=0..4.
     bool set_window_image(int i, int state, &str imageset, &str image);
 }
 // The concrete `class UiLayoutHandle: IUiLayoutHandle {}` lives in

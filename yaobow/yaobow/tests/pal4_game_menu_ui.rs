@@ -186,6 +186,7 @@ impl Harness {
                 anchor(menu.frame, "btnClose",754.0,554.0,40.0,40.0);
                 anchor(menu.info, "staticTimeInfo",12.0,81.0,89.0,14.0);
                 anchor(menu.info, "staticGameTimeInfo",12.0,124.0,89.0,14.0);
+                anchor(menu.status, "qi1",12.0,258.0,140.0,14.0);
                 anchor(menu.properties, "PropertyList",377.0,35.0,306.0,189.0);
                 anchor(menu.properties, "PropertyClassImage",0.0,0.0,51.0,236.0);
                 anchor(menu.properties, "PropertyWindow",338.0,0.0,379.0,240.0);
@@ -209,7 +210,7 @@ impl Harness {
         session.set_menu_host_available(true);
         session.state_mut().set_player_locked(false);
         session.state_mut().player_mut(0).hp = 10;
-        for id in [3000, 3001, 3100] {
+        for id in [3100, 3001, 3000] {
             session.state_mut().add_property(id, 2, &catalog).unwrap();
         }
         session
@@ -285,6 +286,34 @@ fn native_menu_displays_saved_and_current_session_time_separately() {
         calls
             .iter()
             .any(|call| matches!(call, UiCall::TextAt { s, .. } if s == "01:02:01"))
+    );
+}
+
+#[test]
+fn menu_new_category_is_real_history_and_rage_is_authoritative() {
+    let h = Harness::new();
+    assert_eq!(h.bridge.inventory_item(1, -1, 0), 3000);
+    let catalog = h.state.borrow().catalog();
+    h.state
+        .borrow_mut()
+        .state_mut()
+        .add_property(3100, 1, &catalog)
+        .unwrap();
+    assert_eq!(h.bridge.inventory_item(1, -1, 0), 3100);
+    assert_eq!(h.bridge.inventory_item(1, 0, 0), 3000);
+    h.state.borrow_mut().state_mut().player_mut(0).rage = 37;
+    h.key(38);
+    let (recorder, ui) = RecordingUiHost::create();
+    recorder.set_display_size(800, 600);
+    let id = h.host.intern(ui);
+    let ui = h.host.foreign_box("radiance.comdef.IUiHost", id).unwrap();
+    h.frame(ui, 0., 0., false);
+    assert!(
+        recorder
+            .calls
+            .borrow()
+            .iter()
+            .any(|c| matches!(c,UiCall::TextAt { s,.. } if s=="37/100"))
     );
 }
 

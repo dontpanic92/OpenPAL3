@@ -397,7 +397,7 @@ status/property/equipment artwork. The native composition increment below
 replaces that opaque overlay.
 Item icon fields are empty in the inspected database; per-item icons are not
 fabricated. The model-preview increment below renders original 3D assets
-instead. Full native camera/presentation parity remains phase-four work.
+instead. Native preview orientation and animation are described below.
 
 Validation includes recorded-host p7 keyboard/mouse interactions, disabled tabs,
 cutscene-lock preservation, and original-data single/party recovery tests.
@@ -423,7 +423,8 @@ resource gauges, quantities, descriptions and equipped names are painted into
 their declared native widgets, rather than into a custom panel over the art.
 The right-side frame is drawn behind content/category buttons. Unsupported
 toolbar tabs remain disabled. The model previews described below now fill the
-empty preview region; complete native animations/effects remain unimplemented.
+empty preview region. Native hover sequences and preview rotation are implemented;
+decorative particle effects are outside this menu-state/UI slice.
 
 The native close button resolves to `(754,554,40,40)`: its layout root already
 contributes `(695,165)`. The shared layout handle now exposes cached absolute
@@ -435,9 +436,9 @@ imagesets for leader and party portrait variants.
 Keyboard controls remain available. Native inventory rows use release selection
 and double-click or Space to perform a supported action; wheel and arrow keys
 change list pages, and the header arrows / Q/E change the selected party member.
-The first category still uses the existing all-items view; native recent-item
-tracking is not implemented. Rage remains unavailable rather than displaying
-an invented combat value. Playtime now uses the session clocks described below.
+The first category is the native recent-items view, not an all-items alias.
+Rage now reads the saved current resource and drives the native gauge.
+Playtime uses the session clocks described below.
 
 Recorded-host regressions cover portrait opening, disabled native tabs,
 release-outside cancellation, native close/input isolation and item double-click.
@@ -448,6 +449,54 @@ through keyboard controls. The initial pointer checks used production p7
 hit-testing with injected coordinates. Subsequent dialog validation corrected
 the Windows automation to select the actual, nonzero-client-area game window
 and use DPI-aware coordinates, enabling physical OS mouse input.
+
+### Completed native menu polish
+
+Property acquisition at `0x004c6860` maintains six recent stack references:
+an existing stack is moved to the newest end even when already capped at 99.
+Exhausting a stack removes its reference (`0x004c6a30`). The menu shows recent
+owned properties newest-first; ordinary categories still include older stock.
+Equipment creation (`0x004c3d20`, recent-list handling at `0x004c3e0a`) similarly
+retains six acquisition instances, not six distinct definitions. Bounded
+acquisition IDs and equipped-slot associations preserve that distinction when
+identical old backpack copies coexist with newly equipped copies. Transfers
+do not masquerade as new grants. Recency and slot associations are saved.
+The existing plain-equipment rows remain grouped by database definition;
+forged per-instance modifiers are not introduced here.
+
+Current rage is distinct from `CA_ADDITIONAL_RAGE`. Native initialization
+`0x004c80f0` clears the resource array; attribute setter `0x0043fd90`
+(rage branch `0x0043fe1c`) constrains index 8 to 0..100. New characters start
+at zero, and status text/gauges read this saved resource. Level/equipment
+recalculation preserves it within bounds. `giSetFullRage` now restores only
+current party members, matching the native loop at `0x005d7ef0`. This is not
+a new combat simulation or an invented rage value derived from level data.
+
+`HoverSegImage` animations use the shipped `.seqimage` frames and durations,
+sharing the same parser as dialog indicators. The layout handle uploads any
+additional frame atlases at construction and samples hover imagery through
+`set_animation_time`; rendering never uploads textures mid-frame. Native
+`olSelectedImage` is separate from `olPushedImage`, so selected categories and
+tabs no longer use a permanently pressed image. Disabled/pressed/hover states
+retain their original artwork.
+
+Native property setup `0x00472f70` and equipment setup around `0x0048c8e0`
+apply a 30-degree X tilt, initial 10-degree Y orientation, and animated
+Y velocity 50 degrees/second. `0x004440a0` stores the enabled rotation vector;
+`0x00443f30` integrates it against elapsed time. The existing fitted preview
+now reproduces this orientation/spin while retaining manual drag rotation.
+Changing selection or reopening resets the preview's initial orientation.
+
+Focused state/recorded-host tests cover acquisition caps, re-grants, exhaustion,
+duplicate-equipment ownership, transfer behavior, rage persistence and native
+UI text. Original-asset checks resolve all menu hover frames and selected art.
+Live Q01 checks use OS mouse input for portrait opening, tabs/categories,
+double-click use/equip, preview dragging and closing. They verify real hover
+frames, rotating previews, rage/recency save-reload and 1600x900 preview resizing.
+The live movement check also caught a missing session binding in staged scene
+swaps; that path now binds the same context as synchronous loads, preventing
+WASD from leaking through an open menu after loading. Temporary slots are removed
+without changing existing saves.
 
 ### Native dialogs and playtime
 
@@ -553,8 +602,9 @@ The preview uses a private scene and the existing engine offscreen-render
 target path, with an opt-in transparent clear color (editor targets retain
 their opaque default). Camera framing fits transformed render-object bounds
 and target aspect, rather than assuming a model is centered at the origin.
-This is functional automatic framing, not a claim that the original game's
-per-item camera angles have been reconstructed.
+Framing remains fitted to model bounds rather than copying the original fixed
+preview world's geometry; orientation and angular velocity match the native
+setup documented above.
 
 The image is clipped between the native left class strip, list panel and
 toolbar/portrait boundaries. Drag inside it to rotate. Resolutions are bounded
@@ -575,6 +625,6 @@ switch DHA/WTA texture variants, preview armor, repeatedly
 close/reopen, equip an item, restore a save, and exercise the equipped-weapon
 fallback. Transparent composition and original model imagery are captured in
 session screenshots, not committed as game assets.
-The desktop window manager did not apply the automated resize request; target
-sizing and camera-aspect behavior are covered by focused calculation tests,
-not claimed as live resize verification.
+The original resize attempt targeted a helper window. Follow-up validation
+selects the nonzero-client game HWND and confirms live model-preview resizing
+to 1600x900, including save/reload and drag rotation without descriptor errors.

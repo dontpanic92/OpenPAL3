@@ -34,11 +34,15 @@ pub struct PlayerState {
     #[serde(default)]
     pub max_mp: i32,
     #[serde(default)]
+    pub rage: i32,
+    #[serde(default)]
     pub in_team: bool,
     #[serde(default)]
     pub skills: Vec<i32>,
     #[serde(default)]
     pub equipment: PlayerEquipment,
+    #[serde(default)]
+    pub equipment_instances: [Option<u64>; 6],
     #[serde(default)]
     pub experience: i32,
     #[serde(default)]
@@ -55,14 +59,26 @@ impl Default for PlayerState {
             max_hp: 0,
             mp: 0,
             max_mp: 0,
+            rage: 0,
             in_team: false,
             skills: Vec::new(),
             equipment: PlayerEquipment::default(),
+            equipment_instances: [None; 6],
             experience: 0,
             base_stats: CharacterStats::default(),
             effective_stats: CharacterStats::default(),
         }
     }
+}
+
+impl PlayerState {
+    pub const MAX_RAGE: i32 = 100;
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct RecentEquipment {
+    item_id: i32,
+    instance: u64,
 }
 
 /// Serializable snapshot of PAL4 game progress. Saved as slot-based
@@ -116,6 +132,12 @@ pub struct Pal4PersistentState {
     /// Inventory / owned equipment as item-id -> count.
     #[serde(default)]
     inventory: HashMap<i32, i32>,
+    #[serde(default)]
+    recent_properties: Vec<i32>,
+    #[serde(default)]
+    recent_equipment: Vec<RecentEquipment>,
+    #[serde(default)]
+    next_equipment_instance: u64,
     /// Snapshot of the shared angelscript `ScriptGlobalContext.vars`,
     /// which hold cross-scene story-plot flags.
     #[serde(default)]
@@ -159,6 +181,9 @@ impl Pal4PersistentState {
             player_locked: true,
             players,
             inventory: HashMap::new(),
+            recent_properties: Vec::new(),
+            recent_equipment: Vec::new(),
+            next_equipment_instance: 0,
             script_globals: Vec::new(),
             menu_grants: default_menu_grants(),
             play_seconds: 0.0,
@@ -457,8 +482,10 @@ impl Pal4PersistentState {
             );
         }
         *self.player_mut(slot).equipment.at_mut(position) = Some(equip_id);
+        let instance = self.record_equipment_grant(equip_id, 1);
+        self.player_mut(slot).equipment_instances[position as usize] = instance;
         if let Some(previous) = previous {
-            self.add_equipment(previous, 1);
+            self.change_equipment_count(previous, 1);
         }
         self.recalculate_player(slot, catalog)
     }
@@ -482,6 +509,7 @@ impl Pal4PersistentState {
         player.max_mp = effective.integer("CA_MAX_MP").max(0);
         player.hp = player.hp.clamp(0, player.max_hp);
         player.mp = player.mp.clamp(0, player.max_mp);
+        player.rage = player.rage.clamp(0, PlayerState::MAX_RAGE);
         player.effective_stats = effective;
         Ok(())
     }
@@ -516,13 +544,20 @@ impl Pal4PersistentState {
             .equipment
             .at_mut(position)
             .replace(id);
-        candidate.remove_equipment(id, 1);
+        let instance = candidate
+            .recent_equipment
+            .iter()
+            .rev()
+            .find(|entry| entry.item_id == id && !candidate.instance_equipped(entry.instance))
+            .map(|entry| entry.instance);
+        candidate.player_mut(slot).equipment_instances[position as usize] = instance;
+        candidate.change_equipment_count(id, -1);
         if let Some(previous) = previous {
             anyhow::ensure!(
                 candidate.equipment_count(previous) < i32::MAX,
                 "PAL4 backpack quantity overflow for {previous}"
             );
-            candidate.add_equipment(previous, 1);
+            candidate.change_equipment_count(previous, 1);
         }
         candidate.recalculate_player(slot, catalog)?;
         *self = candidate;
@@ -570,9 +605,60 @@ impl Pal4PersistentState {
         player.mp = player.max_mp;
     }
 
+    pub fn restore_party_rage(&mut self) {
+        for player in self.players.values_mut().filter(|player| player.in_team) {
+            player.rage = PlayerState::MAX_RAGE;
+        }
+    }
+
     // --- Inventory / equipment ----------------------------------------
 
     pub fn add_equipment(&mut self, equip_id: i32, count: i32) {
+        let before = self.equipment_count(equip_id);
+        self.change_equipment_count(equip_id, count);
+        let after = self.equipment_count(equip_id);
+        if after > before {
+            let _ = self.record_equipment_grant(equip_id, after - before);
+        } else if after < before {
+            let available: Vec<_> = self
+                .recent_equipment
+                .iter()
+                .filter(|entry| {
+                    entry.item_id == equip_id && !self.instance_equipped(entry.instance)
+                })
+                .map(|entry| entry.instance)
+                .collect();
+            let untracked = (before - available.len() as i32).max(0);
+            let remove = (before - after - untracked).max(0) as usize;
+            let removed: Vec<_> = available.into_iter().take(remove).collect();
+            self.recent_equipment
+                .retain(|entry| !removed.contains(&entry.instance));
+        }
+    }
+
+    fn record_equipment_grant(&mut self, id: i32, count: i32) -> Option<u64> {
+        let count = count.max(0) as u64;
+        let end = self.next_equipment_instance.saturating_add(count);
+        for instance in end - count.min(6)..end {
+            if self.recent_equipment.len() >= 6 {
+                self.recent_equipment.remove(0);
+            }
+            self.recent_equipment.push(RecentEquipment {
+                item_id: id,
+                instance,
+            });
+        }
+        self.next_equipment_instance = end;
+        (count > 0).then(|| end - 1)
+    }
+
+    fn instance_equipped(&self, instance: u64) -> bool {
+        self.players
+            .values()
+            .any(|player| player.equipment_instances.contains(&Some(instance)))
+    }
+
+    fn change_equipment_count(&mut self, equip_id: i32, count: i32) {
         let entry = self.inventory.entry(equip_id).or_insert(0);
         *entry = entry.saturating_add(count).max(0);
         if *entry == 0 {
@@ -597,14 +683,41 @@ impl Pal4PersistentState {
         let quantity = self.equipment_count(id).saturating_add(count).clamp(0, 99);
         if quantity == 0 {
             self.inventory.remove(&id);
+            self.recent_properties.retain(|&recent| recent != id);
         } else {
             self.inventory.insert(id, quantity);
+            if count > 0 {
+                self.recent_properties.retain(|&recent| recent != id);
+                if self.recent_properties.len() >= 6 {
+                    self.recent_properties.remove(0);
+                }
+                self.recent_properties.push(id);
+            }
         }
         Ok(())
     }
 
     pub fn has_equipment(&self, equip_id: i32) -> bool {
         self.inventory.get(&equip_id).copied().unwrap_or(0) > 0
+    }
+
+    pub fn recent_inventory_ids(&self, equipment: bool) -> Vec<i32> {
+        let recent: Vec<_> = if equipment {
+            self.recent_equipment
+                .iter()
+                .filter(|entry| !self.instance_equipped(entry.instance))
+                .map(|entry| entry.item_id)
+                .collect()
+        } else {
+            self.recent_properties.clone()
+        };
+        let mut ids = Vec::new();
+        for &id in recent.iter().rev() {
+            if self.equipment_count(id) > 0 && !ids.contains(&id) {
+                ids.push(id);
+            }
+        }
+        ids
     }
 
     pub fn equipment_count(&self, equip_id: i32) -> i32 {
@@ -787,6 +900,7 @@ mod tests {
             .insert("EFE_WATER".to_string(), 12);
         player.hp = 1;
         player.mp = 2;
+        player.rage = 37;
         state.set_player_level(0, 2, &catalog).unwrap();
         let player = state.player(0).unwrap();
         assert_eq!(
@@ -795,6 +909,7 @@ mod tests {
         );
         assert_eq!(player.effective_stats.integer("CA_PHYSICAL"), 40);
         assert_eq!(player.effective_stats.integer("EFE_WATER"), 12);
+        assert_eq!(player.rage, 37);
         assert!(state.set_player_level(0, 100, &catalog).is_err());
         assert!(state.set_player_level(usize::MAX, 1, &catalog).is_err());
         assert_eq!(state.player(0).unwrap().level, 2);
@@ -834,6 +949,98 @@ mod tests {
             state.player(0).unwrap().effective_stats
         );
         assert_eq!(restored.equipment_count(3501), 3);
+    }
+
+    #[test]
+    fn recent_properties_refresh_cap_and_clear_only_when_exhausted() {
+        use crate::openpal4::gameplay::PropertyDefinition;
+        let mut catalog = catalog();
+        for id in 3000..3008 {
+            catalog.properties.insert(
+                id,
+                PropertyDefinition {
+                    id,
+                    name: String::new(),
+                    description: String::new(),
+                    detail: String::new(),
+                    category: 0,
+                    target: 1,
+                    model: String::new(),
+                    texture: String::new(),
+                    usable_by: [true; 4],
+                    usable_in_menu: true,
+                    droppable: true,
+                    price: 0,
+                    skill_id: 0,
+                },
+            );
+        }
+        let mut state = Pal4PersistentState::new(PAL4_APP_NAME.into());
+        for id in 3000..3008 {
+            state.add_property(id, 2, &catalog).unwrap();
+        }
+        assert_eq!(
+            state.recent_inventory_ids(false),
+            [3007, 3006, 3005, 3004, 3003, 3002]
+        );
+        state.add_property(3003, 100, &catalog).unwrap();
+        state.add_property(3003, 1, &catalog).unwrap();
+        assert_eq!(state.equipment_count(3003), 99);
+        assert_eq!(
+            state.recent_inventory_ids(false),
+            [3003, 3007, 3006, 3005, 3004, 3002]
+        );
+        state.add_property(3003, -1, &catalog).unwrap();
+        assert_eq!(state.recent_inventory_ids(false)[0], 3003);
+        state.add_property(3003, -98, &catalog).unwrap();
+        state.add_property(3000, 0, &catalog).unwrap();
+        let restored: Pal4PersistentState =
+            serde_json::from_str(&serde_json::to_string(&state).unwrap()).unwrap();
+        assert_eq!(
+            restored.recent_inventory_ids(false),
+            [3007, 3006, 3005, 3004, 3002]
+        );
+    }
+
+    #[test]
+    fn equipment_recency_counts_grants_not_transfers_and_persists_rage() {
+        let catalog = catalog();
+        let mut state = Pal4PersistentState::new(PAL4_APP_NAME.into());
+        state.initialize_players(&catalog).unwrap();
+        state.add_equipment(3502, 1);
+        state.add_equipment(3501, 6);
+        assert_eq!(state.recent_inventory_ids(true), [3501]);
+        state.add_equipment(3671, 1);
+        assert_eq!(state.recent_inventory_ids(true), [3671, 3501]);
+        state.equip_from_inventory(0, 3501, &catalog).unwrap();
+        state.equip_from_inventory(0, 3502, &catalog).unwrap();
+        assert_eq!(state.recent_inventory_ids(true), [3671, 3501]);
+        state.player_mut(1).in_team = true;
+        state.player_mut(2).rage = 37;
+        state.restore_party_rage();
+        let restored: Pal4PersistentState =
+            serde_json::from_str(&serde_json::to_string(&state).unwrap()).unwrap();
+        assert_eq!(restored.player(0).unwrap().rage, 100);
+        assert_eq!(restored.player(1).unwrap().rage, 100);
+        assert_eq!(restored.player(2).unwrap().rage, 37);
+        assert_eq!(restored.recent_inventory_ids(true), [3671, 3501]);
+    }
+
+    #[test]
+    fn recent_equipment_distinguishes_equipped_new_copies_from_old_backpack_copies() {
+        let catalog = catalog();
+        let mut state = Pal4PersistentState::new(PAL4_APP_NAME.into());
+        state.initialize_players(&catalog).unwrap();
+        state.add_equipment(3501, 1);
+        state.add_player_equip(0, 3502, &catalog).unwrap();
+        state.add_player_equip(0, 3501, &catalog).unwrap();
+        assert_eq!(state.recent_inventory_ids(true), [3502, 3501]);
+        state.equip_from_inventory(0, 3502, &catalog).unwrap();
+        assert_eq!(state.recent_inventory_ids(true), [3501]);
+        state.remove_equipment(3501, 2);
+        assert!(state.recent_inventory_ids(true).is_empty());
+        state.add_player_equip(0, 3501, &catalog).unwrap();
+        assert_eq!(state.recent_inventory_ids(true), [3502]);
     }
 
     #[test]

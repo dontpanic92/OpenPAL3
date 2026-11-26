@@ -343,6 +343,11 @@ impl Pal4SceneSwap {
                         app.session_handle(),
                     )
                 };
+                if let Some(context) = scene.game_context.as_ref() {
+                    context
+                        .inner::<super::game_context::Pal4GameContext>()
+                        .set_session(Rc::downgrade(&session));
+                }
                 *scene_cell.borrow_mut() = scene;
                 scene_manager.push_scene(scene_root);
 

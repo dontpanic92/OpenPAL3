@@ -17,6 +17,7 @@ use mini_fs::{EntryKind, MiniFs, StoreExt};
 
 use crate::loaders::cegui::imageset::{self as cegui_imageset, Imageset};
 use crate::loaders::cegui::layout::{self as cegui_layout, LayoutFile, Window};
+use crate::loaders::cegui::sequence::SequenceAnimation;
 use radiance_scripting::comdef::services::{IUiLayoutHandle, IUiLayoutHandleImpl};
 use radiance_scripting::services::texture_cache::{ImguiTextureCache, next_handle_com_id};
 
@@ -60,11 +61,13 @@ struct DrawCmd {
     hover: Cell<StateImage>,
     pressed: Cell<StateImage>,
     disabled: Cell<StateImage>,
+    selected: Cell<StateImage>,
     /// Frames for `OiramLook/StaticSequence` windows carrying a
     /// `SegImage` property (e.g. PAL4 loading-screen `juaner` fairy:
     /// 4 frames `juaner1..juaner4`). Empty for non-sequence draws —
     /// the script renderer falls back to `base` in that case.
     frames: Vec<StateImage>,
+    hover_animation: Option<SequenceAnimation>,
     /// `true` if any alt state is configured OR the widget type is a
     /// known interactive type (`OiramLook/Button`, etc.). The script
     /// renderer uses this to decide whether to query hover/click for
@@ -130,6 +133,10 @@ impl UiLayoutHandle {
             vfs_path,
             imageset_dir
         );
+        let sequence_dir = format!(
+            "{}/sequence_images",
+            imageset_dir.trim_end_matches("/imagesets")
+        );
         let mut imageset_index = ImagesetIndex::new(imageset_dir);
 
         let mut resolved_sets: HashMap<String, ResolvedSet> = HashMap::new();
@@ -140,21 +147,52 @@ impl UiLayoutHandle {
         // olDisabled) in document order so the upload order is
         // deterministic.
         let mut unique_sets: Vec<String> = Vec::new();
+        let mut hover_animations = HashMap::new();
+        for window in &layout.windows {
+            if let Some(property) = window.properties.iter().find(|p| p.name == "HoverSegImage") {
+                let path = format!("{}/{}.seqimage", sequence_dir, property.value);
+                let animation = (|| {
+                    let bytes = vfs.read_to_end(&path)?;
+                    SequenceAnimation::parse(&bytes)
+                })();
+                match animation {
+                    Ok(sequence) => {
+                        hover_animations.insert(window.id, sequence);
+                    }
+                    Err(error) => {
+                        log::warn!("UI hover sequence {path}: {error:#}");
+                    }
+                }
+            }
+        }
         {
             let mut seen: std::collections::HashSet<String> = Default::default();
             for window in &layout.windows {
-                let candidates: [&Option<crate::loaders::cegui::layout::ImageRef>; 5] = [
+                let selected = window
+                    .properties
+                    .iter()
+                    .find(|p| p.name == "olSelectedImage")
+                    .and_then(|p| cegui_layout::parse_image_ref(&p.value));
+                let candidates: [&Option<crate::loaders::cegui::layout::ImageRef>; 6] = [
                     &window.image,
                     &window.overlay_normal_image,
                     &window.overlay_highlight_image,
                     &window.overlay_pushed_image,
                     &window.overlay_disabled_image,
+                    &selected,
                 ];
                 for slot in candidates {
                     if let Some(refr) = slot {
                         let key = refr.set.to_lowercase();
                         if seen.insert(key.clone()) {
                             unique_sets.push(refr.set.clone());
+                        }
+                        if let Some(sequence) = hover_animations.get(&window.id) {
+                            for (reference, _) in &sequence.frames {
+                                if seen.insert(reference.set.to_lowercase()) {
+                                    unique_sets.push(reference.set.clone());
+                                }
+                            }
                         }
                     }
                 }
@@ -249,7 +287,10 @@ impl UiLayoutHandle {
         // Pre-order walk that builds resolved (x,y,w,h) per window
         // against the inherited parent area, while emitting draw cmds
         // for any window with an `Image` property.
-        let draws = build_draws(&layout, &resolved_sets, native_w as f32, native_h as f32);
+        let mut draws = build_draws(&layout, &resolved_sets, native_w as f32, native_h as f32);
+        for draw in &mut draws {
+            draw.hover_animation = hover_animations.remove(&draw.window_id);
+        }
         let window_rects = resolve_window_rects(&layout, native_w as f32, native_h as f32);
         log::info!(
             "UiLayoutHandle({}): produced {} draw cmd(s), native={}x{}",
@@ -364,6 +405,31 @@ impl IUiLayoutHandleImpl for UiLayoutHandle {
             .get(i as usize)
             .map(|d| d.hover.get().texture_com_id as i32)
             .unwrap_or(0)
+    }
+    fn draw_selected_texture_com_id(&self, i: i32) -> i32 {
+        self.draws
+            .get(i as usize)
+            .map_or(0, |d| d.selected.get().texture_com_id as i32)
+    }
+    fn draw_selected_u0(&self, i: i32) -> f32 {
+        self.draws
+            .get(i as usize)
+            .map_or(0., |d| d.selected.get().u0)
+    }
+    fn draw_selected_v0(&self, i: i32) -> f32 {
+        self.draws
+            .get(i as usize)
+            .map_or(0., |d| d.selected.get().v0)
+    }
+    fn draw_selected_u1(&self, i: i32) -> f32 {
+        self.draws
+            .get(i as usize)
+            .map_or(1., |d| d.selected.get().u1)
+    }
+    fn draw_selected_v1(&self, i: i32) -> f32 {
+        self.draws
+            .get(i as usize)
+            .map_or(1., |d| d.selected.get().v1)
     }
     fn draw_hover_u0(&self, i: i32) -> f32 {
         self.draws
@@ -532,6 +598,21 @@ impl IUiLayoutHandleImpl for UiLayoutHandle {
             .copied()
             .unwrap_or(0.0)
     }
+    fn set_animation_time(&self, seconds: f32) {
+        if !seconds.is_finite() || seconds < 0. {
+            return;
+        }
+        for draw in &self.draws {
+            if let Some(sequence) = &draw.hover_animation {
+                if let Some(image) =
+                    resolve_state_image(sequence.frame(seconds as f64), &self.resolved_sets)
+                {
+                    draw.hover.set(image);
+                }
+            }
+        }
+    }
+
     fn set_window_image(&self, i: i32, state: i32, imageset: &str, image: &str) -> bool {
         let reference = cegui_layout::ImageRef {
             set: imageset.to_string(),
@@ -548,6 +629,7 @@ impl IUiLayoutHandleImpl for UiLayoutHandle {
             1 => draw.hover.set(image),
             2 => draw.pressed.set(image),
             3 => draw.disabled.set(image),
+            4 => draw.selected.set(image),
             _ => return false,
         }
         true
@@ -624,6 +706,8 @@ mod tests {
                 <Window Type="OiramLook/Button" Name="Close">
                 <Property Name="UnifiedAreaRect" Value="{{0,59},{0,389},{0,99},{0,429}}" />
                 <Property Name="olNormalImage" Value="set:test image:normal" />
+                <Property Name="olPushedImage" Value="set:test image:normal" />
+                <Property Name="olSelectedImage" Value="set:test image:hover" />
                 </Window></Window></Window></GUILayout>"#,
         )
         .unwrap();
@@ -661,7 +745,7 @@ mod tests {
             [754.0, 554.0, 40.0, 40.0]
         );
         assert_eq!(window_rects[2], [754.0, 554.0, 40.0, 40.0]);
-        let handle = UiLayoutHandle {
+        let mut handle = UiLayoutHandle {
             layout,
             draws,
             window_rects,
@@ -681,8 +765,71 @@ mod tests {
         assert!(handle.set_window_image(2, 1, "test", "hover"));
         assert!(handle.draw_hover_u0(index as i32) > normal_u0);
         assert_eq!(handle.draw_u0(index as i32), normal_u0);
+        handle.draws[index].hover_animation = Some(
+            SequenceAnimation::parse(
+                br#"
+            <SequenceImage FrameCount="2" LoopCount="0">
+              <ImageFrame Index="0" Duration="0.1" Imageset="test" Image="normal"/>
+              <ImageFrame Index="1" Duration="0.3" Imageset="test" Image="hover"/>
+            </SequenceImage>"#,
+            )
+            .unwrap(),
+        );
+        handle.set_animation_time(0.);
+        assert_eq!(handle.draw_hover_u0(index as i32), normal_u0);
+        assert!(handle.draw_selected_u0(index as i32) > handle.draw_pressed_u0(index as i32));
+        handle.set_animation_time(0.2);
+        assert!(handle.draw_hover_u0(index as i32) > normal_u0);
+        handle.set_animation_time(0.5);
+        assert_eq!(handle.draw_hover_u0(index as i32), normal_u0);
         assert!(!handle.set_window_image(2, 0, "test", "missing"));
         assert_eq!(handle.draw_u0(index as i32), normal_u0);
+    }
+
+    #[test]
+    #[ignore = "requires original PAL4 assets; set PAL4_ASSET_ROOT"]
+    fn original_menu_hover_sequences_resolve_all_declared_frames() {
+        let vfs = packfs::init_virtual_fs(&std::env::var("PAL4_ASSET_ROOT").unwrap(), None);
+        let mut index = ImagesetIndex::new("/gamedata/ui/imagesets".into());
+        for file in ["sysToolBar", "PropertyWindow", "EquipmentWindow"] {
+            let layout =
+                cegui_layout::load_layout(&vfs, &format!("/gamedata/ui/layouts/{file}.xml"))
+                    .unwrap();
+            for window in layout.windows {
+                if let Some(property) = window
+                    .properties
+                    .iter()
+                    .find(|p| p.name == "olSelectedImage")
+                {
+                    let reference = cegui_layout::parse_image_ref(&property.value).unwrap();
+                    let (atlas, _) = index.load(&vfs, &reference.set).unwrap();
+                    assert!(
+                        atlas.get(&reference.image).is_some(),
+                        "{file}/{}",
+                        window.name
+                    );
+                }
+                if let Some(property) = window.properties.iter().find(|p| p.name == "HoverSegImage")
+                {
+                    let sequence = SequenceAnimation::parse(
+                        &vfs.read_to_end(format!(
+                            "/gamedata/ui/sequence_images/{}.seqimage",
+                            property.value
+                        ))
+                        .unwrap(),
+                    )
+                    .unwrap();
+                    for (reference, _) in sequence.frames {
+                        let (atlas, _) = index.load(&vfs, &reference.set).unwrap();
+                        assert!(
+                            atlas.get(&reference.image).is_some(),
+                            "{file}/{}",
+                            window.name
+                        );
+                    }
+                }
+            }
+        }
     }
 }
 /// Recursive walker that turns the layout tree into a flat draw list.
@@ -732,6 +879,13 @@ fn emit_draws(
         .as_ref()
         .and_then(|r| resolve_state_image(r, resolved_sets))
         .unwrap_or(StateImage::empty());
+    let selected = window
+        .properties
+        .iter()
+        .find(|p| p.name == "olSelectedImage")
+        .and_then(|p| cegui_layout::parse_image_ref(&p.value))
+        .and_then(|r| resolve_state_image(&r, resolved_sets))
+        .unwrap_or(pressed);
 
     if let Some(base) = base {
         let is_interactive = is_interactive_widget(&window.window_type)
@@ -748,7 +902,9 @@ fn emit_draws(
             hover: Cell::new(hover),
             pressed: Cell::new(pressed),
             disabled: Cell::new(disabled),
+            selected: Cell::new(selected),
             frames,
+            hover_animation: None,
             is_interactive,
             text: window.text.clone().unwrap_or_default(),
         });
@@ -763,7 +919,9 @@ fn emit_draws(
             hover: Cell::new(StateImage::empty()),
             pressed: Cell::new(StateImage::empty()),
             disabled: Cell::new(StateImage::empty()),
+            selected: Cell::new(StateImage::empty()),
             frames: Vec::new(),
+            hover_animation: None,
             is_interactive: false,
             text: window.text.clone().unwrap_or_default(),
         });
