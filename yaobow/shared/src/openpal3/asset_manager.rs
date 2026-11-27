@@ -180,11 +180,19 @@ impl AssetManager {
                             .iter()
                             .map(|l| {
                                 let p = l.position();
-                                SceneLight::with_range(
+                                let mut light = SceneLight::with_range(
                                     Vec3::new(p[0], p[1], p[2]),
                                     l.color,
                                     l.range,
-                                )
+                                );
+                                let p = l.shader_position();
+                                light.shading = Some(radiance::scene::SceneLightShading {
+                                    position: Vec3::new(p[0], p[1], p[2]),
+                                    diffuse: l.diffuse_color(),
+                                    ambient: l.ambient_color(),
+                                    attenuation: l.attenuation(),
+                                });
+                                light
                             })
                             .collect::<Vec<_>>(),
                     )),

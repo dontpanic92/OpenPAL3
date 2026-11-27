@@ -64,6 +64,15 @@ fn depth_for_blend(blend: BlendMode) -> DepthMode {
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct MaterialParams {
     pub tint: [f32; 4],
+    /// Material ambient reflectance, consumed by PAL3 CVD lighting.
+    pub ambient: [f32; 4],
+    /// Material emissive RGB and its scene-dependent strength in the w lane.
+    pub emissive: [f32; 4],
+    /// PAL3 CVD's two selected lights; position.w marks an enabled entry.
+    pub light_positions: [[f32; 4]; 2],
+    pub light_colors: [[f32; 4]; 2],
+    pub light_ambient: [[f32; 4]; 2],
+    pub light_attenuation: [[f32; 4]; 2],
     pub alpha_ref: f32,
     /// Per-material scalar uploaded to the fragment shader as
     /// `MaterialParamsGpu.misc.y`. Currently consumed only by
@@ -104,6 +113,12 @@ impl Default for MaterialParams {
     fn default() -> Self {
         Self {
             tint: [1.0, 1.0, 1.0, 1.0],
+            ambient: [1.; 4],
+            emissive: [0.; 4],
+            light_positions: [[0.; 4]; 2],
+            light_colors: [[0.; 4]; 2],
+            light_ambient: [[0.; 4]; 2],
+            light_attenuation: [[1., 0., 0., 0.]; 2],
             // Alpha-test punch-through threshold (half coverage). Texels
             // below 50% alpha are discarded; the rest are kept. This is how
             // RenderWare 3.x / Gamebox rendered hair, fur, and foliage —
@@ -952,6 +967,7 @@ impl GradientYMaterialDef {
             uv_offset: [low[2], 0.0],
             fog_exempt: false,
             casts_shadow: false,
+            ..Default::default()
         };
 
         MaterialDef::builder(ShaderProgram::GradientY)

@@ -25,6 +25,12 @@ use std::sync::Arc;
 #[derive(Hash, Eq, PartialEq, Clone, Copy)]
 struct MaterialParamsBits {
     tint: [u32; 4],
+    ambient: [u32; 4],
+    emissive: [u32; 4],
+    light_positions: [[u32; 4]; 2],
+    light_colors: [[u32; 4]; 2],
+    light_ambient: [[u32; 4]; 2],
+    light_attenuation: [[u32; 4]; 2],
     alpha_ref: u32,
     uv_scale: [u32; 2],
     uv_offset: [u32; 2],
@@ -39,9 +45,59 @@ impl From<&MaterialParams> for MaterialParamsBits {
                 p.tint[2].to_bits(),
                 p.tint[3].to_bits(),
             ],
+            ambient: p.ambient.map(f32::to_bits),
+            emissive: p.emissive.map(f32::to_bits),
+            light_positions: p.light_positions.map(|p| p.map(f32::to_bits)),
+            light_colors: p.light_colors.map(|c| c.map(f32::to_bits)),
+            light_ambient: p.light_ambient.map(|c| c.map(f32::to_bits)),
+            light_attenuation: p.light_attenuation.map(|a| a.map(f32::to_bits)),
             alpha_ref: p.alpha_ref.to_bits(),
             uv_scale: [p.uv_scale[0].to_bits(), p.uv_scale[1].to_bits()],
             uv_offset: [p.uv_offset[0].to_bits(), p.uv_offset[1].to_bits()],
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn material_cache_separates_native_colors_emission_strength_and_selected_lights() {
+        let base = MaterialParams::default();
+        let variants = [
+            MaterialParams {
+                ambient: [0.1; 4],
+                ..base
+            },
+            MaterialParams {
+                emissive: [0.2, 0.3, 0.4, 0.7],
+                ..base
+            },
+            MaterialParams {
+                emissive: [0., 0., 0., 0.7],
+                ..base
+            },
+            MaterialParams {
+                light_positions: [[0.; 4], [50., 60., 70., 1.]],
+                ..base
+            },
+            MaterialParams {
+                light_colors: [[0.; 4], [0.2, 0.3, 0.4, 1.]],
+                ..base
+            },
+            MaterialParams {
+                light_ambient: [[0.; 4], [0.2, 0.3, 0.4, 1.]],
+                ..base
+            },
+            MaterialParams {
+                light_attenuation: [[1., 0., 0., 0.], [0.01, 0.01, 0., 0.]],
+                ..base
+            },
+        ];
+        let baseline = MaterialParamsBits::from(&base);
+        for params in variants {
+            assert!(baseline != MaterialParamsBits::from(&params));
         }
     }
 }

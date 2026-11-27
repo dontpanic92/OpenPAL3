@@ -6,13 +6,14 @@ use crate::openpal3::loaders::cvd_loader::{
 use crosscom::ComRc;
 use mini_fs::{MiniFs, StoreExt};
 use radiance::comdef::{IComponentImpl, IEntity, IEntityExt};
-use radiance::math::{Quaternion, Transform, Vec2, Vec3};
+use radiance::math::{Mat44, Quaternion, Transform, Vec2, Vec3};
 use radiance::rendering::{
     BlendMode, ComponentFactory, MaterialDef, Pal3PropMaterialDef, VertexBuffer, VertexComponents,
 };
 use radiance::scene::CoreEntity;
+use radiance::scene::{SceneLightShading, SceneLighting};
 use std::{
-    cell::Cell,
+    cell::{Cell, RefCell},
     path::{Path, PathBuf},
     rc::Rc,
 };
@@ -92,6 +93,9 @@ fn new_from_cvd_model_node<P: AsRef<Path>>(
         mesh_time: Cell::new(0.),
         playback_time: Cell::new(0.),
         playback: Cell::new(Playback::External),
+        playback_rate: Cell::new(1.),
+        lighting: Cell::new(CvdLighting::default()),
+        lighting_context: RefCell::new(None),
         meshes,
     };
 
@@ -160,6 +164,100 @@ enum Playback {
     Once,
 }
 
+#[derive(Clone, Copy, PartialEq)]
+struct CvdLighting {
+    emissive_factor: f32,
+    positions: [[f32; 4]; 2],
+    colors: [[f32; 4]; 2],
+    ambient: [[f32; 4]; 2],
+    attenuation: [[f32; 4]; 2],
+}
+
+impl Default for CvdLighting {
+    fn default() -> Self {
+        Self {
+            emissive_factor: 0.7,
+            positions: [[0.; 4]; 2],
+            colors: [[0.; 4]; 2],
+            ambient: [[0.; 4]; 2],
+            attenuation: [[1., 0., 0., 0.]; 2],
+        }
+    }
+}
+
+struct CvdSceneLighting {
+    emissive_factor: f32,
+    lights: Vec<SceneLightShading>,
+}
+
+struct CvdLightingContext {
+    scene: Rc<CvdSceneLighting>,
+    transforms: Vec<Rc<RefCell<Transform>>>,
+}
+
+impl CvdSceneLighting {
+    fn new(lighting: &SceneLighting, cpk_name: &str, is_night: bool) -> Self {
+        let mut emissive_factor = 0.7;
+        // Original scene policy at 0x423540; the night flag is compared to 1.
+        if is_night
+            && !["m19", "m20", "m25"]
+                .iter()
+                .any(|name| cpk_name.eq_ignore_ascii_case(name))
+        {
+            emissive_factor = 0.;
+        }
+        Self {
+            emissive_factor,
+            lights: lighting
+                .lights
+                .iter()
+                .map(|l| {
+                    l.shading.unwrap_or(SceneLightShading {
+                        position: l.position,
+                        diffuse: l.color,
+                        ambient: l.color,
+                        attenuation: [1., 0., 0.],
+                    })
+                })
+                .collect(),
+        }
+    }
+
+    fn select(&self, point: Vec3) -> CvdLighting {
+        let mut result = CvdLighting {
+            emissive_factor: self.emissive_factor,
+            ..Default::default()
+        };
+        let mut scores = [0.; 2];
+        for light in &self.lights {
+            // GetEffectOnPoint (0x100132a0) ranks brightness, not distance.
+            // Selection clamps attenuation; the vertex effect does not.
+            let distance = Vec3::sub(&light.position, &point).norm();
+            let [a0, a1, a2] = light.attenuation;
+            let attenuation = (1. / (a0 + distance * (a1 + distance * a2))).min(1.);
+            let score = light.diffuse.iter().sum::<f32>() / 3. * attenuation;
+            let slot = if score > scores[0] {
+                scores[1] = scores[0];
+                result.positions[1] = result.positions[0];
+                result.colors[1] = result.colors[0];
+                result.ambient[1] = result.ambient[0];
+                result.attenuation[1] = result.attenuation[0];
+                0
+            } else if score > scores[1] {
+                1
+            } else {
+                continue;
+            };
+            scores[slot] = score;
+            result.positions[slot] = [light.position.x, light.position.y, light.position.z, 1.];
+            result.colors[slot] = [light.diffuse[0], light.diffuse[1], light.diffuse[2], 1.];
+            result.ambient[slot] = [light.ambient[0], light.ambient[1], light.ambient[2], 1.];
+            result.attenuation[slot] = [a0, a1, a2, 0.];
+        }
+        result
+    }
+}
+
 pub struct CvdModelComponent {
     entity: ComRc<IEntity>,
     component_factory: Rc<dyn ComponentFactory>,
@@ -171,6 +269,9 @@ pub struct CvdModelComponent {
     mesh_time: Cell<f32>,
     playback_time: Cell<f64>,
     playback: Cell<Playback>,
+    playback_rate: Cell<f32>,
+    lighting: Cell<CvdLighting>,
+    lighting_context: RefCell<Option<CvdLightingContext>>,
     meshes: Vec<CvdMesh>,
 }
 
@@ -178,14 +279,16 @@ ComObject_CvdModel!(super::CvdModelComponent);
 
 impl IComponentImpl for CvdModelComponent {
     fn on_loading(&self) -> crosscom::Void {
+        self.refresh_lighting();
         let mut objects = vec![];
         let frame = sample_mesh_frame(&self.mesh_timestamps, self.mesh_time.get());
         for mesh in &self.meshes {
             for material in &mesh.materials {
+                let material = self.material_for_render(material);
                 objects.push(self.component_factory.create_render_object(
                     mesh.sampled_vertices(frame),
                     mesh.indices.clone(),
-                    material,
+                    &material,
                     mesh.frames.len() > 1,
                 ));
             }
@@ -206,9 +309,11 @@ impl IComponentImpl for CvdModelComponent {
             || !delta_sec.is_finite()
             || delta_sec <= 0.
         {
+            self.refresh_render_lighting();
             return;
         }
-        let time = self.playback_time.get() + f64::from(delta_sec);
+        let time =
+            self.playback_time.get() + f64::from(delta_sec) * f64::from(self.playback_rate.get());
         let time = match playback {
             Playback::Loop => time % duration,
             Playback::Once => time.min(duration),
@@ -235,7 +340,61 @@ impl CvdModelComponent {
             mesh_time: Cell::new(0.),
             playback_time: Cell::new(0.),
             playback: Cell::new(Playback::External),
+            playback_rate: Cell::new(1.),
+            lighting: Cell::new(CvdLighting::default()),
+            lighting_context: RefCell::new(None),
             meshes: vec![],
+        }
+    }
+
+    fn material_for_render(&self, material: &MaterialDef) -> MaterialDef {
+        let mut params = *material.params();
+        let lighting = self.lighting.get();
+        params.emissive[3] = lighting.emissive_factor;
+        params.light_positions = lighting.positions;
+        params.light_colors = lighting.colors;
+        params.light_ambient = lighting.ambient;
+        params.light_attenuation = lighting.attenuation;
+        material.clone().with_params(params)
+    }
+
+    fn refresh_lighting(&self) -> bool {
+        let context = self.lighting_context.borrow();
+        let Some(context) = context.as_ref() else {
+            return false;
+        };
+        let mut min = [f32::INFINITY; 3];
+        let mut max = [f32::NEG_INFINITY; 3];
+        for (a, b) in self.meshes.iter().filter_map(|m| m.bounds) {
+            for i in 0..3 {
+                min[i] = min[i].min(a[i]);
+                max[i] = max[i].max(b[i]);
+            }
+        }
+        let center = if min[0].is_finite() {
+            Vec3::new(
+                (min[0] + max[0]) * 0.5,
+                (min[1] + max[1]) * 0.5,
+                (min[2] + max[2]) * 0.5,
+            )
+        } else {
+            Vec3::new(0., 0., 0.)
+        };
+        let world = context
+            .transforms
+            .iter()
+            .fold(Mat44::new_identity(), |world, transform| {
+                Mat44::multiplied(&world, transform.borrow().matrix())
+            });
+        let lighting = context.scene.select(Vec3::crossed_mat(&center, &world));
+        self.lighting.replace(lighting) != lighting
+    }
+
+    fn refresh_render_lighting(&self) {
+        if self.refresh_lighting() && self.entity.get_rendering_component().is_some() {
+            // Reuse the immutable material cache, replacing draws only when
+            // the selected pair changes. Never mutate another node's material.
+            self.on_loading();
         }
     }
 
@@ -334,6 +493,7 @@ impl CvdModelComponent {
             .borrow_mut()
             .set_matrix(*transform.matrix());
         if self.mesh_time.replace(mesh_time) == mesh_time {
+            self.refresh_render_lighting();
             return;
         }
         if let Some(component) = self.entity.get_rendering_component() {
@@ -350,6 +510,7 @@ impl CvdModelComponent {
                 }
             }
         }
+        self.refresh_render_lighting();
     }
 }
 
@@ -481,6 +642,66 @@ fn configure_playback(entity: &ComRc<IEntity>, playback: Playback) {
     }
 }
 
+pub(super) fn configure_background_playback(entity: &ComRc<IEntity>) {
+    configure_playback(entity, Playback::Loop);
+    set_background_rate(entity);
+}
+
+fn set_background_rate(entity: &ComRc<IEntity>) {
+    if let Some(component) = entity.get_component(ICvdModel::uuid()) {
+        // Original background Attach at 0x4200b8 sets TimeScale to 0.2.
+        component
+            .inner::<CvdModelComponent>()
+            .playback_rate
+            .set(0.2);
+    }
+    for child in entity.children() {
+        set_background_rate(&child);
+    }
+}
+
+pub(super) fn configure_scene_materials(
+    entity: &ComRc<IEntity>,
+    lighting: &SceneLighting,
+    cpk_name: &str,
+    is_night: bool,
+) {
+    configure_lighting(
+        entity,
+        Rc::new(CvdSceneLighting::new(lighting, cpk_name, is_night)),
+        &[],
+    );
+}
+
+fn configure_lighting(
+    entity: &ComRc<IEntity>,
+    scene: Rc<CvdSceneLighting>,
+    parents: &[Rc<RefCell<Transform>>],
+) {
+    let mut transforms = parents.to_vec();
+    transforms.push(entity.transform());
+    if let Some(component) = entity.get_component(ICvdModel::uuid()) {
+        let component = component.inner::<CvdModelComponent>();
+        *component.lighting_context.borrow_mut() = Some(CvdLightingContext {
+            scene: scene.clone(),
+            transforms: transforms.clone(),
+        });
+        component.refresh_lighting();
+    }
+    for child in entity.children() {
+        configure_lighting(&child, scene.clone(), &transforms);
+    }
+}
+
+fn argb_color(color: u32) -> [f32; 4] {
+    [
+        ((color >> 16) & 255) as f32 / 255.,
+        ((color >> 8) & 255) as f32 / 255.,
+        (color & 255) as f32 / 255.,
+        (color >> 24) as f32 / 255.,
+    ]
+}
+
 pub(super) fn model_bounds(entity: &ComRc<IEntity>) -> Option<(Vec3, Vec3)> {
     let mut bounds = vec![];
     if let Some(component) = entity.get_component(ICvdModel::uuid()) {
@@ -513,6 +734,10 @@ mod animation_tests {
     use radiance::rendering::{DepthMode, ShaderProgram};
 
     fn animated_mesh() -> CvdMesh {
+        animated_mesh_with_colors([0xffffffff, 0xffffffff, 0xff0b0b0b, 0xff000000])
+    }
+
+    fn animated_mesh_with_colors(colors: [u32; 4]) -> CvdMesh {
         let frames = [0., 10.].map(|offset| {
             (0..3)
                 .map(|i| CvdVertex {
@@ -526,16 +751,273 @@ mod animation_tests {
             &frames,
             &CvdMaterial {
                 unknown_byte: 1,
-                color1: 0xffffffff,
-                color2: 0xffffffff,
-                color3: 0xff0b0b0b,
-                color4: 0xff000000,
+                color1: colors[0],
+                color2: colors[1],
+                color3: colors[2],
+                color4: colors[3],
                 texture_name: String::new(),
                 triangle_count: 1,
                 triangles: Some(vec![CvdTriangle { indices: [2, 0, 2] }]),
             },
             MaterialDef::builder(ShaderProgram::Pal3Prop).build(),
         )
+    }
+
+    #[test]
+    fn native_cvd_colors_keep_diffuse_alpha_separate_from_ambient_and_emission() {
+        let mesh = animated_mesh_with_colors([0x80402010, 0x20191919, 0xff0b0b0b, 0x407f7f7f]);
+        for material in &mesh.materials {
+            assert_eq!(
+                material.params().tint,
+                [64. / 255., 32. / 255., 16. / 255., 128. / 255.]
+            );
+            assert_eq!(
+                material.params().ambient,
+                [25. / 255., 25. / 255., 25. / 255., 32. / 255.]
+            );
+            assert_eq!(&material.params().emissive[..3], &[127. / 255.; 3]);
+        }
+    }
+
+    #[test]
+    fn native_cvd_lights_rank_full_table_brightness_instead_of_nearest_distance() {
+        use radiance::scene::SceneLight;
+        let mut lights = vec![SceneLight::new(Vec3::new(1., 0., 0.), [0.1; 3]); 18];
+        lights.push(SceneLight::with_range(
+            Vec3::new(10000., 0., 0.),
+            [0.9, 0.6, 0.3],
+            [10., 20.],
+        ));
+        lights.push(SceneLight::new(Vec3::new(-10000., 0., 0.), [0.4; 3]));
+        let scene = CvdSceneLighting::new(&SceneLighting::new([0.1; 3], lights), "m01", false);
+        let selected = scene.select(Vec3::new(0., 0., 0.));
+        assert_eq!(
+            selected.positions,
+            [[10000., 0., 0., 1.], [-10000., 0., 0., 1.]]
+        );
+        assert_eq!(selected.colors[0], [0.9, 0.6, 0.3, 1.]);
+        assert_eq!(selected.ambient[0], selected.colors[0]);
+    }
+
+    #[test]
+    fn native_cvd_scene_emission_policy_reaches_nested_materials() {
+        let root = CoreEntity::create("placement".into(), true);
+        let child = playback_node(2.);
+        root.attach(child.clone());
+        let component = child.get_component(ICvdModel::uuid()).unwrap();
+        let component = component.inner::<CvdModelComponent>();
+        for (cpk, night, expected) in [
+            ("m01", false, 0.7),
+            ("m01", true, 0.),
+            ("M19", true, 0.7),
+            ("m20", true, 0.7),
+            ("m25", true, 0.7),
+        ] {
+            configure_scene_materials(&root, &SceneLighting::default(), cpk, night);
+            for material in &component.meshes[0].materials {
+                let material = component.material_for_render(material);
+                assert_eq!(material.params().emissive[3], expected);
+                assert_eq!(material.params().tint[3], 1.);
+            }
+        }
+    }
+
+    #[test]
+    fn native_cvd_attenuation_reselects_lights_after_placement_moves_without_mutating_shared_draws()
+    {
+        use radiance::scene::SceneLight;
+        let root = CoreEntity::create("placement".into(), true);
+        root.transform()
+            .borrow_mut()
+            .set_position(&Vec3::new(5000., 0., 0.));
+        let child = playback_node(2.);
+        root.attach(child.clone());
+        let mut lamp = SceneLight::new(Vec3::new(50., 0., 0.), [1.; 3]);
+        lamp.shading = Some(SceneLightShading {
+            position: lamp.position,
+            diffuse: lamp.color,
+            ambient: [0.; 3],
+            attenuation: [0.01, 1. / 100., 0.],
+        });
+        let scene = SceneLighting::new(
+            [0.1; 3],
+            vec![
+                SceneLight::new(Vec3::new(1000., 0., 0.), [0.25; 3]),
+                SceneLight::new(Vec3::new(-1000., 0., 0.), [0.2; 3]),
+                lamp,
+            ],
+        );
+        configure_scene_materials(&root, &scene, "m01", false);
+        root.load();
+        let before = child.get_rendering_component().unwrap();
+        root.transform()
+            .borrow_mut()
+            .set_position(&Vec3::new(0., 0., 0.));
+        root.update(0.);
+        let after = child.get_rendering_component().unwrap();
+        assert!(!Rc::ptr_eq(&before, &after));
+        assert_eq!(after.render_objects().len(), 2);
+        for (a, b) in before.render_objects().iter().zip(after.render_objects()) {
+            assert_eq!(a.as_dyn().local_aabb(), b.as_dyn().local_aabb());
+        }
+        let component = child.get_component(ICvdModel::uuid()).unwrap();
+        let component = component.inner::<CvdModelComponent>();
+        let params = component.material_for_render(&component.meshes[0].materials[0]);
+        assert_eq!(params.params().light_positions[0], [50., 0., 0., 1.]);
+        assert_eq!(params.params().light_ambient[0], [0., 0., 0., 1.]);
+        assert_eq!(params.params().light_attenuation[0], [0.01, 0.01, 0., 0.]);
+        root.update(0.);
+        assert!(Rc::ptr_eq(
+            &after,
+            &child.get_rendering_component().unwrap()
+        ));
+        root.unload();
+    }
+
+    #[test]
+    #[ignore = "requires original game assets via PAL3_ASSET_PATH"]
+    fn shipped_background_cvd_loads_and_animates_uvs_at_native_rate_in_both_games() {
+        use crate::openpal3::loaders::{nav_loader::NavFile, scn_loader::ScnFile};
+        use radiance::scene::{CoreScene, ISceneExt};
+        let path = std::env::var("PAL3_ASSET_PATH").expect("PAL3_ASSET_PATH");
+        let vfs = Rc::new(packfs::init_virtual_fs(Path::new(&path), None));
+        for game in [crate::GameType::PAL3, crate::GameType::PAL3A] {
+            let assets = Rc::new(crate::openpal3::asset_manager::AssetManager::new_for_game(
+                Rc::new(super::super::mechanism_tests::UnusedFactory),
+                vfs.clone(),
+                game,
+            ));
+            let core = CoreScene::create();
+            let scene = crate::openpal3::scene::ScnScene::new(
+                core.clone(),
+                &assets,
+                "m01",
+                "1",
+                ScnFile {
+                    cpk_name: "m01".into(),
+                    scn_name: "1".into(),
+                    scn_base_name: "1".into(),
+                    scene_type: 2,
+                    is_night: false,
+                    skybox_id: 0,
+                    roles: vec![],
+                    nodes: vec![],
+                },
+                NavFile {
+                    version: 1,
+                    maps: vec![],
+                    unknown2: vec![],
+                },
+            );
+            scene.load_objects_for_test();
+            let background = core
+                .root_entities()
+                .into_iter()
+                .find(|e| e.name() == "BACKGROUND_CVD")
+                .expect("background CVD alongside POL");
+            background.load();
+            let child = background.children()[0].clone();
+            let component = child.get_component(ICvdModel::uuid()).unwrap();
+            let component = component.inner::<CvdModelComponent>();
+            let mesh = &component.meshes[0];
+            let before = mesh.sampled_vertices(sample_mesh_frame(&component.mesh_timestamps, 0.));
+            background.update(1.25);
+            assert_eq!(component.mesh_time.get(), 0.25);
+            let after = mesh.sampled_vertices(sample_mesh_frame(
+                &component.mesh_timestamps,
+                component.mesh_time.get(),
+            ));
+            assert!(
+                (0..before.count()).any(|i| {
+                    let a = before.tex_coord(i).unwrap();
+                    let b = after.tex_coord(i).unwrap();
+                    a.x != b.x || a.y != b.y
+                }),
+                "original 1.cvd must advance its UV-only animation"
+            );
+            for i in 0..before.count() {
+                let a = before.position(i).unwrap();
+                let b = after.position(i).unwrap();
+                assert!(Vec3::sub(a, b).norm() < 0.0001);
+            }
+            background.unload();
+        }
+    }
+
+    #[test]
+    #[ignore = "requires original game assets via PAL3_ASSET_PATH"]
+    fn shipped_m06_cvd_skips_empty_grey_slots_without_shifting_drawable_material_colors() {
+        fn materials(
+            entity: &ComRc<IEntity>,
+            result: &mut Vec<radiance::rendering::MaterialParams>,
+        ) {
+            if let Some(component) = entity.get_component(ICvdModel::uuid()) {
+                let component = component.inner::<CvdModelComponent>();
+                result.extend(
+                    component
+                        .meshes
+                        .iter()
+                        .flat_map(|mesh| mesh.materials.iter())
+                        .map(|m| *component.material_for_render(m).params()),
+                );
+            }
+            for child in entity.children() {
+                materials(&child, result);
+            }
+        }
+        let path = std::env::var("PAL3_ASSET_PATH").expect("PAL3_ASSET_PATH");
+        let vfs = Rc::new(packfs::init_virtual_fs(Path::new(&path), None));
+        fn empty_grey_slots(nodes: &[CvdModelNode]) -> usize {
+            nodes
+                .iter()
+                .map(|node| {
+                    let own = node.model.as_ref().map_or(0, |model| {
+                        model
+                            .mesh
+                            .materials
+                            .iter()
+                            .filter(|m| {
+                                if m.color1 != 0xff7f7f7f {
+                                    return false;
+                                }
+                                assert!(
+                                    m.triangles.is_none(),
+                                    "original grey slots are not drawable"
+                                );
+                                true
+                            })
+                            .count()
+                    });
+                    own + node
+                        .children
+                        .as_ref()
+                        .map_or(0, |children| empty_grey_slots(children))
+                })
+                .sum()
+        }
+        let original = cvd_load_from_file(&vfs, "/scene/m06/2/_e.cvd").unwrap();
+        assert_eq!(empty_grey_slots(&original.models), 15);
+        for game in [crate::GameType::PAL3, crate::GameType::PAL3A] {
+            let assets = crate::openpal3::asset_manager::AssetManager::new_for_game(
+                Rc::new(super::super::mechanism_tests::UnusedFactory),
+                vfs.clone(),
+                game,
+            );
+            let entity = assets.load_scn_cvd("m06", "2", "_e.cvd", false, 1).unwrap();
+            configure_scene_materials(&entity, &SceneLighting::default(), "m06", false);
+            let mut params = vec![];
+            materials(&entity, &mut params);
+            assert_eq!(
+                params.len(),
+                9,
+                "seven drawable materials include two transparent pairs"
+            );
+            for p in params {
+                assert_eq!(p.tint, [1.; 4]);
+                assert_eq!(p.ambient, [1.; 4]);
+                assert_eq!(p.emissive, [0., 0., 0., 0.7]);
+            }
+        }
     }
 
     #[test]
@@ -872,7 +1354,15 @@ impl CvdMesh {
         );
 
         CvdMesh {
-            materials: material_passes(material, cvd_material.unknown_byte),
+            materials: {
+                let mut params = *material.params();
+                // Native D3DMATERIAL upload at 0x10012121. Shipped geometry
+                // effects consume diffuse/ambient/emissive, not specular/power.
+                params.tint = argb_color(cvd_material.color1);
+                params.ambient = argb_color(cvd_material.color2);
+                params.emissive = argb_color(cvd_material.color4);
+                material_passes(material.with_params(params), cvd_material.unknown_byte)
+            },
             frames,
             indices,
             bounds,

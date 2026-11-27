@@ -122,7 +122,7 @@ impl ScnScene {
             .loading_cursor
             .get()
             .expect("scene loading not deferred");
-        let objects_end = 1 + self.scn_file.nodes.len();
+        let objects_end = 2 + self.scn_file.nodes.len();
         let total = objects_end + 6 + self.scn_file.roles.len();
         let start = Instant::now();
         // Native progress callbacks present at most once per 50ms. Yield at
@@ -137,8 +137,10 @@ impl ScnScene {
         while cursor < boundary {
             let entity = if cursor == 0 {
                 self.load_ground()
+            } else if cursor == 1 {
+                self.load_background()
             } else if cursor < objects_end {
-                self.load_object(&self.scn_file.nodes[cursor - 1])
+                self.load_object(&self.scn_file.nodes[cursor - 2])
             } else if cursor < objects_end + 6 {
                 Some(self.load_player((cursor - objects_end) as i32))
             } else {
@@ -158,7 +160,7 @@ impl ScnScene {
         } else if cursor < objects_end {
             // The main POL is the native 0..80% phase. Placed objects and
             // trigger setup occupy 80..85%; actors occupy the final 15%.
-            0.8 + 0.05 * (cursor - 1) as f32 / self.scn_file.nodes.len() as f32
+            0.8 + 0.05 * (cursor - 1) as f32 / (1 + self.scn_file.nodes.len()) as f32
         } else {
             0.85 + 0.15 * (cursor - objects_end) as f32 / (6 + self.scn_file.roles.len()) as f32
         }
@@ -1302,6 +1304,12 @@ impl ScnScene {
             return;
         };
         Self::apply_position_rotation(entity.clone(), &node.position, node.rotation.to_radians());
+        cvd_entity::configure_scene_materials(
+            &entity,
+            &self.scene.lighting(),
+            &self.cpk_name,
+            self.scn_file.is_night,
+        );
         self.scene.remove_entities_by_name(&entity.name());
         self.scene.add_entity(entity);
     }
@@ -2131,6 +2139,7 @@ impl ScnScene {
 
     fn load_objects(&self) {
         let mut entities: Vec<_> = self.load_ground().into_iter().collect();
+        entities.extend(self.load_background());
         entities.extend(
             self.scn_file
                 .nodes
@@ -2140,6 +2149,27 @@ impl ScnScene {
         for entity in entities {
             self.scene.add_entity(entity);
         }
+    }
+
+    fn load_background(&self) -> Option<ComRc<IEntity>> {
+        // Native 0x41ffa3 loads <base>/<base>.cvd in addition to the POL,
+        // always from the base folder (even when the POL has a night variant).
+        let background = self.asset_mgr.load_scn_cvd(
+            &self.cpk_name,
+            &self.scn_file.scn_base_name,
+            &(self.scn_file.scn_base_name.clone() + ".cvd"),
+            false,
+            u16::MAX,
+        )?;
+        background.set_name("BACKGROUND_CVD".into());
+        cvd_entity::configure_background_playback(&background);
+        cvd_entity::configure_scene_materials(
+            &background,
+            &self.scene.lighting(),
+            &self.cpk_name,
+            self.scn_file.is_night,
+        );
+        Some(background)
     }
 
     fn load_ground(&self) -> Option<ComRc<IEntity>> {
@@ -2269,6 +2299,12 @@ impl ScnScene {
         if let Some(p) = &entity {
             Self::apply_position_rotation(p.clone(), &obj.position, obj.rotation.to_radians());
             cvd_entity::configure_scene_playback(p, obj.node_type, obj.ladder_nav_coord1.1);
+            cvd_entity::configure_scene_materials(
+                p,
+                &self.scene.lighting(),
+                &self.cpk_name,
+                self.scn_file.is_night,
+            );
             if self.asset_mgr.game() == crate::GameType::PAL3
                 && matches!(
                     obj.node_type,

@@ -302,6 +302,12 @@ pub struct MaterialParamsGpu {
     pub tint: [f32; 4],
     pub misc: [f32; 4],
     pub uv_xform: [f32; 4],
+    pub ambient: [f32; 4],
+    pub emissive: [f32; 4],
+    pub light_positions: [[f32; 4]; 2],
+    pub light_colors: [[f32; 4]; 2],
+    pub light_ambient: [[f32; 4]; 2],
+    pub light_attenuation: [[f32; 4]; 2],
 }
 
 impl MaterialParamsGpu {
@@ -315,6 +321,12 @@ impl MaterialParamsGpu {
                 if p.fog_exempt { 1.0 } else { 0.0 },
             ],
             uv_xform: [p.uv_scale[0], p.uv_scale[1], p.uv_offset[0], p.uv_offset[1]],
+            ambient: p.ambient,
+            emissive: p.emissive,
+            light_positions: p.light_positions,
+            light_colors: p.light_colors,
+            light_ambient: p.light_ambient,
+            light_attenuation: p.light_attenuation,
         }
     }
 }

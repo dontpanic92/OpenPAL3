@@ -156,9 +156,9 @@ pub struct CvdMaterial {
     pub color2: u32,
     pub color3: u32,
     pub color4: u32,
-    /// Read directly after `color4`; the original loader decoded and then
-    /// discarded this value (`_unknown_float2`). Kept here for a lossless
-    /// round trip.
+    /// Specular power; the original loader clamps it to [0,128], although
+    /// shipped geometry shaders do not consume it. Kept losslessly under
+    /// its legacy name.
     pub unknown_float2: f32,
     pub texture_name: String,
     pub triangle_count: u32,
