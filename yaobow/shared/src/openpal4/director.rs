@@ -815,7 +815,8 @@ impl IDirectorImpl for OpenPAL4Director {
                     vm.vm_context.session_handle(),
                     vm.is_idle()
                         && !vm.vm_context.is_player_locked()
-                        && !vm.vm_context.movie_playing(),
+                        && !vm.vm_context.movie_playing()
+                        && !vm.vm_context.session().reward_busy(),
                 )
             };
             {
@@ -1019,9 +1020,22 @@ impl IUiLayerImpl for OpenPAL4Director {
                 && !vm.vm_context.is_player_locked()
                 && !vm.vm_context.movie_playing()
                 && vm.vm_context.session().menu_tab().is_none()
+                && vm.vm_context.session().reward_notice().is_none()
+                && !vm.vm_context.session().reward_busy()
                 && !self.debug_visible.get()
         };
         self.rendered_clean_frame.set(clean);
+        {
+            let vm = self.vm.borrow();
+            let session = vm.vm_context.session();
+            if let Some(text) = session.reward_notice() {
+                super::native_dialog::draw_reward_notice(
+                    vm.vm_context.ui.ui(),
+                    &vm.vm_context.loader,
+                    text,
+                );
+            }
+        }
         let menu = self
             .game_menu
             .borrow()
@@ -1438,11 +1452,14 @@ impl OpenPAL4Director {
                 "close the gameplay menu before firing a trigger",
             ));
         }
-        if self.vm.borrow().current_function_name().is_some() {
+        if self.vm.borrow().current_function_name().is_some()
+            || self.vm.borrow().vm_context.session().reward_busy()
+        {
             return AgentResponse::err(AgentError::conflict(
                 "a script is currently running; wait for it to finish before firing a trigger",
             ));
         }
+
         let (module, fn_name) = {
             let vm = self.vm.borrow();
             let app = vm.vm_context();
@@ -1490,6 +1507,37 @@ impl OpenPAL4Director {
             ));
         }
 
+        if self.vm.borrow().vm_context.session().reward_busy() {
+            return AgentResponse::err(AgentError::conflict(
+                "wait for the chest to finish opening",
+            ));
+        }
+        let native_object = {
+            let vm = self.vm.borrow();
+            vm.vm_context
+                .scene
+                .borrow()
+                .get_object(&params.name)
+                .filter(|entity| {
+                    object_component(entity).is_some_and(|component| {
+                        component.inner::<Pal4ObjectComponent>().rewards.is_some()
+                    })
+                })
+        };
+        if let Some(entity) = native_object {
+            return if self
+                .vm
+                .borrow_mut()
+                .vm_context_mut()
+                .start_object_reward(entity)
+            {
+                AgentResponse::Ok
+            } else {
+                AgentResponse::err(AgentError::conflict(
+                    "object reward is unavailable for the current leader or already collected",
+                ))
+            };
+        }
         let resolved = {
             let vm = self.vm.borrow();
             let app = vm.vm_context();
@@ -1625,7 +1673,7 @@ impl OpenPAL4Director {
         let frame = bridge.as_ref().map(|b| b.frame.get()).unwrap_or(0);
 
         let current_script_fn = vm.current_function_name();
-        let script_running = current_script_fn.is_some();
+        let script_running = current_script_fn.is_some() || app.session().reward_busy();
         let movie_playing = app.movie_playing();
         let inventory = app
             .inventory_snapshot()

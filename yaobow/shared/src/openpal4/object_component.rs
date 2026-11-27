@@ -45,6 +45,7 @@ pub struct Pal4ObjectComponent {
     /// sidestep the multiplicative load-time transform chain and gimbal
     /// lock — see the historical note in `Pal4Scene`.
     initial_transform: Mat44,
+    pub(crate) rewards: Option<std::cell::RefCell<super::rewards::ObjectRewards>>,
 }
 
 ComObject_Pal4ObjectComponent!(super::Pal4ObjectComponent);
@@ -55,10 +56,12 @@ impl Pal4ObjectComponent {
         object_type: u32,
         initial_transform: Mat44,
     ) -> ComRc<IPal4ObjectComponent> {
+        let rewards = super::rewards::ObjectRewards::from_entry(&entry, object_type);
         ComRc::from_object(Self {
             entry,
             object_type,
             initial_transform,
+            rewards,
         })
     }
 

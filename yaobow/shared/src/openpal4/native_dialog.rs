@@ -85,7 +85,12 @@ impl DialogArtwork {
     pub(crate) fn load(loader: &AssetLoader) -> anyhow::Result<Self> {
         let mut widgets = HashMap::new();
         let mut click_sequence = None;
-        for file in ["ScenarioDialog", "CommonDialog", "SelectDialog"] {
+        for file in [
+            "ScenarioDialog",
+            "CommonDialog",
+            "SelectDialog",
+            "hintWindow",
+        ] {
             let parsed =
                 layout::load_layout(loader.vfs(), &format!("/gamedata/ui/layouts/{file}.xml"))
                     .with_context(|| format!("loading {file}.xml"))?;
@@ -371,6 +376,62 @@ fn draw_text(_ui: &Ui, text: &str, x: f32, y: f32, size: f32, color: [f32; 4], c
             text.as_ptr().add(text.len()).cast(),
             0.,
             std::ptr::null(),
+        );
+    }
+}
+
+pub(crate) fn draw_reward_notice(ui: &Ui, loader: &AssetLoader, text: &str) {
+    let Some(art) = loader.dialog_artwork() else {
+        return;
+    };
+    let canvas = Canvas::new(ui.io().display_size);
+    let default = art
+        .widgets
+        .get("hintWindow/EditMessage")
+        .map_or([251. / 255., 1., 216. / 255., 1.], |widget| {
+            widget.text_color
+        });
+    let segments = dialog_markup::parse(text, default);
+    let plain: String = segments
+        .iter()
+        .map(|segment| segment.text.as_str())
+        .collect();
+    let plain = plain.trim_end_matches(['\r', '\n']);
+    let native_font = radiance::imgui::native_game_font();
+    let _font = native_font.map(|(font, _)| ui.push_font(font));
+    let size = 13.;
+    let draw_size = native_font.map_or(size, |(_, size)| size);
+    let measure = |ch: char| {
+        let mut buffer = [0; 4];
+        ui.calc_text_size(ch.encode_utf8(&mut buffer))[0] * draw_size / ui.current_font_size()
+    };
+    let width = plain
+        .lines()
+        .map(|line| line.chars().map(measure).sum::<f32>())
+        .fold(0., f32::max)
+        .min(720.);
+    let glyphs = paginate(&segments, width.max(1.), f32::MAX, size, 0., measure);
+    let height = glyphs[0]
+        .iter()
+        .map(|glyph| glyph.y + size)
+        .fold(size, f32::max);
+    let rect = [
+        400. - (width + 39.) / 2.,
+        90. - (height + 29.) / 2.,
+        width + 39.,
+        height + 29.,
+    ];
+    art.draw(ui, "hintWindow/ImgFrame", rect, 0, canvas);
+    for glyph in &glyphs[0] {
+        let mut buffer = [0; 4];
+        draw_text(
+            ui,
+            glyph.ch.encode_utf8(&mut buffer),
+            rect[0] + 21. + glyph.x,
+            rect[1] + 15. + glyph.y,
+            draw_size,
+            glyph.color,
+            canvas,
         );
     }
 }

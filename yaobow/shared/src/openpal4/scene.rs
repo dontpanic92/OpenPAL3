@@ -4,7 +4,7 @@ use crosscom::ComRc;
 use fileformats::npc::NpcInfoFile;
 use fileformats::pal4::{
     evf::{EvfEvent, EvfFile},
-    gob::{GobCommonProperties, GobObjectType},
+    gob::{GobCommonProperties, GobFixedProperty, GobObjectType, GobProperty},
 };
 use radiance::{
     audio::Codec,
@@ -83,6 +83,7 @@ impl Player {
 pub struct Pal4Scene {
     pub(crate) scene: ComRc<IScene>,
     pub(crate) players: [ComRc<IEntity>; 4],
+    pub(crate) player_interaction_diameters: [f32; 4],
     pub(crate) events: Vec<EvfEvent>,
     pub(crate) module: Option<Rc<RefCell<ScriptModule>>>,
     /// Engine-owned `Pal4GameContext` CCW shared with the four
@@ -100,6 +101,11 @@ pub struct Pal4Scene {
     /// record's `script_function`. Talking to an NPC (proximity + "F")
     /// dispatches through the same path as a GOB examine handler.
     pub(crate) npc_functions: HashMap<String, String>,
+}
+
+pub(crate) enum SceneInteraction {
+    Script(String),
+    Reward(ComRc<IEntity>),
 }
 
 /// Fallback `trigger_distance` for SOUND emitters whose entry has
@@ -131,6 +137,7 @@ impl Pal4Scene {
                 CoreEntity::create("".to_string(), false),
             ],
             events: vec![],
+            player_interaction_diameters: [0.; 4],
             module: None,
             game_context: None,
             actor_controller: None,
@@ -980,6 +987,8 @@ impl Pal4SceneLoader {
         Ok(Pal4Scene {
             scene,
             players,
+            player_interaction_diameters: ["101", "103", "106", "105"]
+                .map(|actor| self.asset_loader.actor_interaction_diameter(actor)),
             events: std::mem::take(&mut self.events),
             module: Some(module),
             game_context: Some(game_context),
@@ -1074,11 +1083,11 @@ impl Pal4Scene {
         self.events.get(event_index)
     }
 
-    pub fn test_interaction(
+    pub(crate) fn test_interaction(
         &self,
         input: Rc<RefCell<dyn InputEngine>>,
         leader: usize,
-    ) -> Option<String> {
+    ) -> Option<SceneInteraction> {
         let input = input.borrow();
         let down = input.get_key_state(radiance::input::Key::F).pressed()
             || input
@@ -1098,11 +1107,54 @@ impl Pal4Scene {
         // onto the destination once invoked. Ask for the nearest volume
         // within its own radius and read back its research-function tag.
         let position = self.players[leader].world_transform().position();
-        self.scene
+        let nearest = self
+            .scene
             .collision_world()
             .inner::<CollisionWorldComponent>()
-            .nearest_proximity_trigger(&position)
-            .map(|volume| volume.inner::<TriggerVolumeComponent>().tag())
+            .nearest_proximity_trigger(&position);
+        let mut distance = nearest.as_ref().map_or(f32::INFINITY, |volume| {
+            volume
+                .inner::<TriggerVolumeComponent>()
+                .distance_xz(&position)
+        });
+        let mut interaction = nearest
+            .map(|volume| SceneInteraction::Script(volume.inner::<TriggerVolumeComponent>().tag()));
+        for entity in self.scene.find_entities_by_tag(TAG_OBJECT) {
+            if !entity.enabled() || !entity.visible() {
+                continue;
+            }
+            let Some(component) = object_component(&entity) else {
+                continue;
+            };
+            let component = component.inner::<Pal4ObjectComponent>();
+            let Some(rewards) = &component.rewards else {
+                continue;
+            };
+            if !rewards.borrow().available() || component.entry().active == 0 {
+                continue;
+            }
+            let origin = entity.world_transform().position();
+            let height_limited = component
+                .entry()
+                .get_property(GobFixedProperty::HEIGHT_LIMIT)
+                .and_then(GobProperty::value_i32)
+                .unwrap_or(0)
+                != 0;
+            let tolerance = self.player_interaction_diameters[leader];
+            if height_limited
+                && !(origin.y > position.y - tolerance && origin.y < position.y + tolerance)
+            {
+                continue;
+            }
+            let dx = origin.x - position.x;
+            let dz = origin.z - position.z;
+            let candidate = (dx * dx + dz * dz).sqrt();
+            if candidate <= component.trigger_distance() && candidate < distance {
+                distance = candidate;
+                interaction = Some(SceneInteraction::Reward(entity));
+            }
+        }
+        interaction
     }
 
     pub fn get_player_metadata(&self, player_id: usize) -> Player {

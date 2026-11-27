@@ -1407,28 +1407,20 @@ fn set_object_visible(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4Function
 }
 
 fn add_property(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
-    as_params!(vm, property_id: i32, property_value: i32, _show_notice: i32);
-    let catalog = vm.vm_context.session().catalog();
-    if let Err(error) =
-        vm.vm_context
-            .persistent_state_mut()
-            .add_property(property_id, property_value, &catalog)
-    {
-        log::warn!("giAddProperty: {error:#}");
-    }
+    as_params!(vm, property_id: i32, property_value: i32, show_notice: i32);
+    vm.vm_context.change_reward(
+        super::rewards::Reward::Property(property_id, property_value, false),
+        show_notice != 0,
+    );
     Pal4FunctionState::Completed
 }
 
 fn del_property(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
-    as_params!(vm, property_id: i32, property_value: i32, _show_notice: i32);
-    let catalog = vm.vm_context.session().catalog();
-    if let Err(error) = vm.vm_context.persistent_state_mut().add_property(
-        property_id,
-        property_value.saturating_neg(),
-        &catalog,
-    ) {
-        log::warn!("giDelProperty: {error:#}");
-    }
+    as_params!(vm, property_id: i32, property_value: i32, show_notice: i32);
+    vm.vm_context.change_reward(
+        super::rewards::Reward::Property(property_id, property_value, true),
+        show_notice != 0,
+    );
     Pal4FunctionState::Completed
 }
 
@@ -1533,15 +1525,11 @@ fn add_quest_complete_percentage(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> P
 }
 
 fn add_equipment(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
-    as_params!(vm, equipment_id: i32, _show_notice: i32);
-    let catalog = vm.vm_context.session().catalog();
-    if catalog.equipment.contains_key(&equipment_id) {
-        vm.vm_context
-            .persistent_state_mut()
-            .add_equipment(equipment_id, 1);
-    } else {
-        log::warn!("giAddEquipment: unknown equipment {equipment_id}");
-    }
+    as_params!(vm, equipment_id: i32, show_notice: i32);
+    vm.vm_context.change_reward(
+        super::rewards::Reward::Equipment(equipment_id, None, false),
+        show_notice != 0,
+    );
     Pal4FunctionState::Completed
 }
 
@@ -1983,14 +1971,20 @@ fn script_clear_ctx_but_current(_: &str, _vm: &mut ScriptVm<Pal4VmContext>) -> P
 }
 
 fn add_money(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
-    as_params!(vm, money_amount: i32, _add_money: i32);
-    vm.vm_context.persistent_state_mut().add_money(money_amount);
+    as_params!(vm, money_amount: i32, show_notice: i32);
+    vm.vm_context.change_reward(
+        super::rewards::Reward::Money(money_amount, false),
+        show_notice != 0,
+    );
     Pal4FunctionState::Completed
 }
 
 fn pay_money(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
-    as_params!(vm, money_amount: i32, _pay_money: i32);
-    vm.vm_context.persistent_state_mut().pay_money(money_amount);
+    as_params!(vm, money_amount: i32, show_notice: i32);
+    vm.vm_context.change_reward(
+        super::rewards::Reward::Money(money_amount, true),
+        show_notice != 0,
+    );
     Pal4FunctionState::Completed
 }
 
@@ -2164,13 +2158,11 @@ fn check_equip_in_inventory(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4Fu
 }
 
 fn remove_equipment(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
-    as_params!(vm, equip_id: i32, _show_notice: i32);
-    let catalog = vm.vm_context.session().catalog();
-    if catalog.equipment.contains_key(&equip_id) {
-        vm.vm_context
-            .persistent_state_mut()
-            .remove_equipment(equip_id, 1);
-    }
+    as_params!(vm, equip_id: i32, show_notice: i32);
+    vm.vm_context.change_reward(
+        super::rewards::Reward::Equipment(equip_id, None, true),
+        show_notice != 0,
+    );
     Pal4FunctionState::Completed
 }
 

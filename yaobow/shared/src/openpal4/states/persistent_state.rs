@@ -133,6 +133,8 @@ pub struct Pal4PersistentState {
     #[serde(default)]
     inventory: HashMap<i32, i32>,
     #[serde(default)]
+    object_rewards: HashMap<String, super::super::rewards::RewardProgress>,
+    #[serde(default)]
     recent_properties: Vec<i32>,
     #[serde(default)]
     recent_equipment: Vec<RecentEquipment>,
@@ -182,6 +184,7 @@ impl Pal4PersistentState {
             player_locked: true,
             players,
             inventory: HashMap::new(),
+            object_rewards: HashMap::new(),
             recent_properties: Vec::new(),
             recent_equipment: Vec::new(),
             next_equipment_instance: 0,
@@ -373,6 +376,21 @@ impl Pal4PersistentState {
         self.money
     }
 
+    pub(crate) fn object_reward(
+        &self,
+        key: &str,
+    ) -> Option<&super::super::rewards::RewardProgress> {
+        self.object_rewards.get(key)
+    }
+
+    pub(crate) fn set_object_reward(
+        &mut self,
+        key: String,
+        progress: super::super::rewards::RewardProgress,
+    ) {
+        self.object_rewards.insert(key, progress);
+    }
+
     pub fn play_seconds(&self) -> f64 {
         self.play_seconds
     }
@@ -384,19 +402,15 @@ impl Pal4PersistentState {
     }
 
     pub fn add_money(&mut self, amount: i32) {
-        self.money = self.money.saturating_add(amount);
+        self.money = self.money.saturating_add(amount).clamp(0, 9_999_999);
     }
 
     /// Deduct `amount` from money, clamping at zero. Returns `true`
     /// when the player had enough to cover the full cost.
     pub fn pay_money(&mut self, amount: i32) -> bool {
-        if self.money >= amount {
-            self.money -= amount;
-            true
-        } else {
-            self.money = 0;
-            false
-        }
+        let enough = self.money >= amount;
+        self.add_money(amount.saturating_neg());
+        enough
     }
 
     // --- Quest ---------------------------------------------------------

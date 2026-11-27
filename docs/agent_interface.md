@@ -98,10 +98,15 @@ existing direct automation save/load routes.
 | `POST` | `/v1/dialog/choose`                 | `{"index":N}` — choose a 1-based on-screen item (`1` = first). PAL4 selection dialogs now wait for a decision, exposing their items through `/v1/state.dialog.choices`. A choice can also be pre-buffered before firing the trigger. Out-of-range choices do not dismiss the prompt. The VM preserves its native result conventions: select-dialog getters are 0-based; common-dialog getters are 1-based. |
 | `POST` | `/v1/world_map/choose`              | `{"scene":"M02","block":"1"}` — buffer a destination for the next `giShowWorldMap` continuation tick. While the world map is open `/v1/state.world_map_open` is `true` and the surrounding script is suspended in a `Yield`. The buffered choice is one-shot and only consumed when the map prompt actually fires, so it's safe to pre-buffer the catalog-predicted destination before posting `/v1/scene/fire_trigger`. |
 | `POST` | `/v1/scene/fire_trigger`            | `{"name":"ev01"}` (legacy) **or** `{"name":"ev01", "wait_until_idle":true, "collect_trace":true, "timeout_ms":5000}`. With `wait_until_idle` set the dispatcher defers the response until the VM becomes idle for two consecutive frames (or `timeout_ms` elapses); the reply then carries `{settled, waited_frames, trace_seq_start, trace_seq_end, current_script_fn}` so the caller can drain just this fire's trace events without races. **409** while a script is already running; **400** when the name is unknown or has no bound function. |
-| `POST` | `/v1/object/interact`               | `{"name":"npc_lingsha"}` — fires a GOB entry's `research_function` (its "Examine" handler). **400** with `{"kind":"bad_request"}` when the entry has no examine handler. |
+| `POST` | `/v1/object/interact`               | `{"name":"npc_lingsha"}` — fires a GOB/NPC callback or starts a supported native metadata pickup/chest. **409** for hidden, disabled, exhausted, busy or wrong-leader native reward objects; **400** when no supported handler exists. Named interaction bypasses distance, but uses the same eligibility and settlement as physical input. |
 
 `action: "tap"` emits one frame of `pressed + released + is_down` and
 naturally goes back to `up` next frame. `down` / `up` are sticky.
+
+PAL4 `script_running` also remains true during a native chest's opening/reward
+sequence, even when `current_script_fn` is null. Wait for it to become false
+before issuing another gameplay interaction. Stored chest progress can be saved
+mid-opening and resumes without repeating earlier grants after load.
 
 ### UI mouse
 

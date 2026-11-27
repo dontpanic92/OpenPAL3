@@ -773,6 +773,20 @@ impl IPal4ServiceImpl for Pal4Service {
                 .ui_manager()
                 .add_game_font(&bytes, crate::GameType::PAL4.ui_font_scale());
         }
+        let loader = self.loader_for(asset_path);
+        match loader
+            .vfs()
+            .read_to_end("/gamedata/ui/fonts/SystemBold.ttf")
+        {
+            Ok(bytes) => self
+                .app
+                .engine()
+                .borrow()
+                .ui_manager()
+                .imgui_context()
+                .add_native_game_font(&bytes, 13.),
+            Err(error) => log::warn!("PAL4 native reward font unavailable: {error:#}"),
+        }
 
         modes::route(
             self,

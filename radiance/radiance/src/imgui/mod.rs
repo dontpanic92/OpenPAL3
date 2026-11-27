@@ -59,6 +59,7 @@ pub struct ImguiContext {
     /// applying it immediately would re-enter that borrow and panic
     /// ("RefCell already borrowed"). Mirrors `pending_theme`.
     pending_game_font: RefCell<Option<(Vec<u8>, f32)>>,
+    pending_native_game_font: RefCell<Option<(Vec<u8>, f32)>>,
     mouse_input: Rc<RefCell<SyntheticMouseInput>>,
 }
 
@@ -70,6 +71,7 @@ thread_local! {
     /// game font without threading a `UiManager` through. Empty until
     /// [`ImguiContext::add_game_font`] is called.
     static GAME_FONTS: RefCell<Vec<imgui::FontId>> = const { RefCell::new(Vec::new()) };
+    static NATIVE_GAME_FONT: Cell<Option<(imgui::FontId, f32)>> = const { Cell::new(None) };
 }
 
 /// `FontId` of the registered game font for the given [`GameFontSize`]
@@ -79,9 +81,15 @@ pub fn game_font(size: usize) -> Option<imgui::FontId> {
     GAME_FONTS.with(|f| f.borrow().get(size).copied())
 }
 
+/// Native game UI face and its imgui size in design pixels (before canvas scaling).
+pub fn native_game_font() -> Option<(imgui::FontId, f32)> {
+    NATIVE_GAME_FONT.with(Cell::get)
+}
+
 impl ImguiContext {
     pub fn new(platform: &mut Platform) -> Self {
         let mut context = Context::create();
+        NATIVE_GAME_FONT.with(|f| f.set(None));
         context.set_ini_filename(None);
         let applied = apply_named_theme(&mut context, DEFAULT_THEME);
 
@@ -126,6 +134,7 @@ impl ImguiContext {
             pending_theme: RefCell::new(None),
             atlas_dirty: Cell::new(false),
             pending_game_font: RefCell::new(None),
+            pending_native_game_font: RefCell::new(None),
             mouse_input: Rc::new(RefCell::new(SyntheticMouseInput::default())),
         }
     }
@@ -160,6 +169,13 @@ impl ImguiContext {
         *self.pending_game_font.borrow_mut() = Some((data.to_vec(), extra_scale));
     }
 
+    /// Queue an em-sized UI font without the regular game font's visual-height
+    /// normalization. Rasterized at design resolution; the game scales its canvas.
+    #[cfg(not(vita))]
+    pub fn add_native_game_font(&self, data: &[u8], pixel_size: f32) {
+        *self.pending_native_game_font.borrow_mut() = Some((data.to_vec(), pixel_size));
+    }
+
     /// Apply a deferred [`add_game_font`] request, if any, into the
     /// imgui `Context`. MUST be called between frames — specifically
     /// before the engine's atlas-rebuild check and the next `NewFrame`
@@ -180,7 +196,19 @@ impl ImguiContext {
             let large = add_game_font_face(&mut context, &data, 28. * dpi * scale);
             let small = add_game_font_face(&mut context, &data, 18. * dpi * scale);
             GAME_FONTS.with(|f| *f.borrow_mut() = vec![large, small]);
+            NATIVE_GAME_FONT.with(|f| f.set(None));
             self.atlas_dirty.set(true);
+        }
+        if let Some((data, pixel_size)) = self.pending_native_game_font.borrow_mut().take() {
+            let mut context = self.context.borrow_mut();
+            match add_native_game_font_face(&mut context, &data, pixel_size) {
+                Some(font) => {
+                    log::info!("Registering native game UI font ({pixel_size}px em)");
+                    NATIVE_GAME_FONT.with(|f| f.set(Some(font)));
+                    self.atlas_dirty.set(true);
+                }
+                None => log::warn!("Invalid native game UI font"),
+            }
         }
     }
 
@@ -189,6 +217,9 @@ impl ImguiContext {
 
     #[cfg(vita)]
     pub fn add_game_font(&self, _data: &[u8], _extra_scale: f32) {}
+
+    #[cfg(vita)]
+    pub fn add_native_game_font(&self, _data: &[u8], _pixel_size: f32) {}
 
     /// `FontId` of the registered game font for the given [`GameFontSize`]
     /// slot, or `None` if no game font has been registered.
@@ -376,6 +407,84 @@ fn add_game_font_face(context: &mut Context, data: &[u8], size_pixels: f32) -> i
             ..FontConfig::default()
         }),
     }])
+}
+
+#[cfg(not(vita))]
+fn add_native_game_font_face(
+    context: &mut Context,
+    data: &[u8],
+    pixel_size: f32,
+) -> Option<(imgui::FontId, f32)> {
+    let face = ttf_parser::Face::parse(data, 0).ok()?;
+    if !pixel_size.is_finite() || pixel_size <= 0. {
+        return None;
+    }
+    let ascent = f32::from(face.ascender()) * pixel_size / f32::from(face.units_per_em());
+    // stb sizes by the ascender/descender span; native CEGUI sizes the em.
+    let size = (f32::from(face.ascender()) - f32::from(face.descender())) * pixel_size
+        / f32::from(face.units_per_em());
+    if size <= 0. {
+        return None;
+    }
+    let id = context.fonts().add_font(&[FontSource::TtfData {
+        data,
+        size_pixels: size,
+        config: Some(FontConfig {
+            oversample_h: 1,
+            oversample_v: 1,
+            pixel_snap_h: true,
+            glyph_ranges: FontGlyphRanges::chinese_full(),
+            glyph_offset: [0., ascent - ascent.ceil()],
+            ..FontConfig::default()
+        }),
+    }]);
+    Some((id, size))
+}
+
+#[cfg(all(test, not(vita)))]
+mod native_font_tests {
+    use super::*;
+
+    #[test]
+    #[ignore = "requires original SystemBold.ttf; set NATIVE_GAME_FONT_TEST_PATH"]
+    fn original_bold_font_matches_native_pixel_advances_and_baseline() {
+        let data = std::fs::read(std::env::var("NATIVE_GAME_FONT_TEST_PATH").unwrap()).unwrap();
+        let mut context = Context::create();
+        let (id, size) = add_native_game_font_face(&mut context, &data, 13.).unwrap();
+        context.fonts().build_rgba32_texture();
+        let font = context.fonts().get_font(id).unwrap();
+        for (text, expected) in [
+            ("\u{5b9d}\u{7bb1}\u{5df2}\u{9501}", 52.),
+            ("\u{77ff}\u{77f3}\u{4e0d}\u{53ef}\u{6316}\u{53d6}", 78.),
+            ("A0 x3", 33.),
+            (" ().,", 17.),
+        ] {
+            for scale in [1., 1.6, 2.] {
+                let mut measured = sys::ImVec2::default();
+                unsafe {
+                    sys::ImFont_CalcTextSizeA(
+                        &mut measured,
+                        font as *const Font as *mut sys::ImFont,
+                        size * scale,
+                        f32::MAX,
+                        0.,
+                        text.as_ptr().cast(),
+                        text.as_ptr().add(text.len()).cast(),
+                        std::ptr::null_mut(),
+                    );
+                }
+                let width = measured.x;
+                assert!((width - expected * scale).abs() < 0.01, "{text}: {width}");
+            }
+        }
+        let glyph =
+            unsafe { &*sys::ImFont_FindGlyph(font as *const Font as *mut sys::ImFont, 0x5b9d) };
+        assert!(
+            (glyph.Y0 - 0.73046875).abs() < 0.001,
+            "glyph top: {}",
+            glyph.Y0
+        );
+    }
 }
 
 pub struct ImguiFrame {

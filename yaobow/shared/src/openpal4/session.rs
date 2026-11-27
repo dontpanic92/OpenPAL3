@@ -73,6 +73,8 @@ pub struct RuntimeSnapshot {
 /// leaks into the loaded one.
 #[derive(Default)]
 pub struct Pal4SessionTransient {
+    reward_busy: Cell<bool>,
+    reward_notice: Option<(String, f32)>,
     system_action: Cell<Option<SystemAction>>,
     system_busy: Cell<bool>,
     system_message: String,
@@ -143,7 +145,42 @@ pub struct Pal4Session {
 
 impl Pal4Session {
     pub fn player_input_blocked(&self) -> bool {
-        self.menu_input_blocked() || self.transient.dialog_open.get()
+        self.menu_input_blocked() || self.transient.dialog_open.get() || self.reward_busy()
+    }
+
+    pub(crate) fn reward_busy(&self) -> bool {
+        self.transient.reward_busy.get()
+    }
+
+    pub(crate) fn set_reward_busy(&self, busy: bool) {
+        self.transient.reward_busy.set(busy);
+    }
+
+    pub(crate) fn show_reward_notice(&mut self, text: String) {
+        self.transient.reward_notice = Some((text, 1.));
+    }
+
+    pub(crate) fn reward_notice(&self) -> Option<&str> {
+        self.transient
+            .reward_notice
+            .as_ref()
+            .map(|(text, _)| text.as_str())
+    }
+
+    pub(crate) fn advance_reward_notice(&mut self, seconds: f32) {
+        if seconds.is_finite() && seconds > 0. {
+            if let Some((_, remaining)) = self.transient.reward_notice.as_mut() {
+                *remaining -= seconds;
+                if *remaining <= 0. {
+                    self.transient.reward_notice = None;
+                }
+            }
+        }
+    }
+
+    pub(crate) fn clear_reward_feedback(&mut self) {
+        self.transient.reward_busy.set(false);
+        self.transient.reward_notice = None;
     }
 
     pub fn set_dialog_open(&self, open: bool) {

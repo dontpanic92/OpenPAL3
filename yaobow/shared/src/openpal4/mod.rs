@@ -25,6 +25,7 @@ pub mod modes;
 mod native_dialog;
 pub mod object_component;
 pub mod pal4_debug;
+mod rewards;
 mod save_slots;
 pub mod scene;
 pub mod scene_editor_access;

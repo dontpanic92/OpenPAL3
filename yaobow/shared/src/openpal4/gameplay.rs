@@ -192,6 +192,7 @@ pub struct GameplayCatalog {
     pub skills: BTreeMap<i32, SkillDefinition>,
     pub scene_names: HashMap<(String, String), String>,
     pub story_descriptions: BTreeMap<i32, (String, String)>,
+    pub game_strings: BTreeMap<i32, String>,
 }
 
 impl GameplayCatalog {
@@ -413,6 +414,14 @@ impl GameplayCatalog {
                     row.integer("ID")?,
                     (row.text("CHAPTER")?, row.text("MEMO")?),
                 );
+            }
+        }
+        if let Some(table) = database.tables.iter().find(|t| t.name == "GameString") {
+            for values in &table.rows {
+                let row = Row { table, values };
+                catalog
+                    .game_strings
+                    .insert(row.integer("ID")?, row.text("STRING")?);
             }
         }
         Ok(catalog)

@@ -757,3 +757,127 @@ cancellation, 45%-HP/15%-MP food restoring 90 HP/4 MP from the controlled
 of recovered resources and spent quantities through save/reload. Existing user
 saves were untouched; owned test slots/configuration and the executable
 inspection copy were removed.
+
+### Metadata pickups, chest settlement and reward notices
+
+The original GOB survey finds 484 tag-7 `GET_ITEM` objects, all with empty
+research callbacks. Ordinary pickups therefore dispatch from their PropID,
+EquipID and num metadata, not a fabricated script function. Native handler
+`0x0059da60` prefers a positive property ID over equipment, adds the requested
+property count (capped at 99), and creates one equipment instance. Its notice
+still displays the authored count. Invalid definitions and full stacks reach
+the same research-count settlement at `0x00599af0`; overflow is not a retry.
+The fixed `object-store` property, not the guessed second GOB flag, controls
+persistence. Positive research counts decrement, while negative counts remain
+unlimited; auto-disappearing exhausted objects are hidden and disabled.
+
+The survey also finds 133 metadata reward machines (OM07--OM10 chests and OQ20
+money pickups). Their task sequences contain animation (3), property (7),
+equipment (8) and money (9) tasks, with no item prerequisites. The implementation
+handles these nonrepeating, manually activated reward-only sequences without
+enabling unrelated mechanisms. Native `0x005a1400` consumes research count when
+starting; `0x00594930` grants each reward and `0x00594b80` waits for the hint to
+close before proceeding. Opening animation holds its last pose. A stored
+scene/gameplay-block/object cursor is saved alongside inventory, so loading
+during opening resumes the remaining tasks rather than awarding earlier ones
+again. Completed opening poses restore without replaying reward sounds.
+Store-zero objects reset on scene reconstruction.
+
+Native animation-task start `0x00592510` plays `WC003.wav` for objects whose
+fixed `object-marker` is 4. The sound starts with the opening task, not a guessed
+AMF event; the bundled chest ANMs have no matching event files. Resuming an
+interrupted opening replays that task's sound, while restoring a completed pose
+does not.
+
+The singleton hint at `0x004bf4a0` replaces the previous text and resets its
+one-second timer (`0x004ab840`), rather than stacking a guessed toast queue.
+The presenter reuses `hintWindow.xml`, its original nine-slice atlas cells,
+13-pixel text, pale-yellow default and inline orange item-name markup, centered
+at normalized `(0.5, 0.15)`. Notices are transient and cannot contaminate a
+clean save thumbnail. Script notification booleans now control feedback without
+preventing inventory mutation; signed counts retain each callback's native
+acquisition/removal template and display requested rather than accepted amounts.
+GameString IDs 251/252 cover properties, 251/126 equipment, and 194/267 money.
+WA06/WA07 are acquisition/loss sounds. Native AddMoney plays WA40 even when its
+notice flag is false; PayMoney has no reward sound. Money follows the clamp
+at `0x004c5870`: zero through 9,999,999.
+
+Native hint sizing at `0x00549b30` measures the text and retains the original
+frame-to-text size difference. The text receives 7 extra pixels horizontally
+and 1 vertically; combined with the layout's 32/28 frame padding, the result is
+measured text width plus 39 and height plus 29, matching the presenter. Exact
+native `systemBold` sizing is now reproduced for reward notices.
+
+`SystemBold.font` selects the shipped `SystemBold.ttf` at size 13; it is
+FZXiaoBiaoSong-B05, not the Kai dialogue face or the bundled editor font.
+CEGUIBase `0x100b6f10` calls the pixel-size routine at `0x10104510`, and glyph
+advances are integer pixels (`0x100b4ac1`). The font's em is 256 units with
+ascender/descender 231/-74. A 13-pixel em therefore corresponds to imgui's
+15.48828125-pixel vertical span, not a normalized 13-pixel imgui font. The
+native baseline is 11.73046875 design pixels; the presenter preserves its
+fractional offset instead of adding the regular game-font offset or weight.
+The dedicated face is loaded through the VFS, including packed installations,
+registered between frames, and used for both measurement and drawing. Atlas
+glyph advances are rounded at design resolution before canvas scaling.
+
+The original-font regression matches 52-pixel "宝箱已锁", 78-pixel
+"矿石不可挖取", and 33-pixel `A0 x3` widths, including 1.6x/2x scaling,
+and the first glyph's native 0.73046875-pixel top offset. This verifies
+metrics, not pixel-identical antialiasing: the renderer still uses stb instead
+of the original FreeType rasterizer. Other dialogue/menu fonts are unchanged.
+Live M13 `item201` wrong-leader interaction renders the native bold rejection
+notice through the packed font resource, leaves inventory unchanged, and expires
+normally. The original-font regression, 58 PAL4 tests, release build, affected
+all-target checks and workspace formatting pass. Owned slot 96 and the test
+process are removed.
+
+Actor-specific pickups now use the native dispatcher gate at `0x00425950`.
+`validfor=1` requires Han Lingsha and rejects with GameString 265 ("宝箱已锁");
+`validfor=3` requires Murong Ziying and rejects with 266 ("矿石不可挖取").
+Both failures display the singleton hint and play WA05 without claiming the
+object or advancing its tasks. Other values do not impose a leader gate.
+Native leader assignment at `0x004238b0` maps Player-TIANHE/LINSHA/MENGLI/ZIYING
+to 0/1/2/3. Physical and named agent interaction share the eligibility check;
+the latter reports 409 for a mismatched leader.
+
+Physical XZ selection accepts the authored radius boundary, as native
+`0x00599990` does. For height selection, `0x004253cf` calls nearest
+object dispatcher `0x005a6610` with the leader position and tolerance returned
+by `0x00443790` (twice the player object's float at offset 0xdc). Height-limited
+objects require strict bounds around the player's Y; height-limit zero bypasses
+that check. Native `0x00666cf0`/`0x00666f10` derive that float by merging the
+actor DFF's atomic bounding spheres in clump-local coordinates, cancelling the
+root world transform. DFF loading at `0x006b6ed7` prepends atomics; traversal at
+`0x006b6020` therefore reverses serialized order. This matters because sphere
+merging is order-dependent. The actor loader now computes and caches the same
+diameter during its existing parse, rather than guessing a height constant.
+Invalid sphere data is ignored and coincident centers avoid division by zero.
+
+Validation: 58 PAL4 library tests pass with original assets enabled, including
+metadata parsing, signed/silent/capped grants, equipment instance counts,
+physical selection and transient feedback reset. The release build, affected
+all-target checks and workspace format check pass. Live Q01 checks exercise
+F-key pickup, repeat rejection, native hint rendering and reward sound lookup,
+complete chest grants, settled save/load, and saves at task cursor 0 and 3.
+Loading cursor 3 grants only the remaining three portable-save items, without
+duplicating the two equipment instances. Test slots 96--98 are removed;
+existing slots 1--5 are not overwritten.
+
+The leader-gate follow-up passes nine focused reward tests, including traversal
+of the mounted original corpus (104 actor-specific pickup entries), rejection
+without settlement, valid leader grants and inclusive XZ-boundary selection.
+A live M13/1 `item201` check rejects Tianhe through both agent and F-key input,
+allows Ziying to collect through F, rejects repeats, and preserves the claim
+after save/load. Temporary slots 96--97 are removed. Release build, affected
+all-target checks and workspace formatting pass.
+
+The height/opening follow-up adds synthetic sphere tests for nested rotated
+frames, cancelled root translation/scale, contained and coincident spheres,
+invalid radii, and reverse traversal. Physical tests reject exact upper/lower
+Y boundaries and accept the height-limit-zero bypass. Live Q01 `item008`
+rejects F-key pickup at Y offsets +/-79 and accepts +78 using Tianhe's computed
+78.49662 diameter; failed attempts leave no claim. The collected claim survives
+save/load without duplication. Q01 `item101` still settles its complete chest
+rewards, resumes an opening save at cursor 0 with identical inventory, and
+rejects repeats after settled save/load. Temporary slots 96--97 and owned test
+processes are removed; existing slots 1--5 remain untouched.

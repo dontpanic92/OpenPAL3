@@ -12,7 +12,7 @@ use fileformats::{
     binrw::BinRead,
     npc::NpcInfoFile,
     pal4::{cam::CameraDataFile, evf::EvfFile, gob::GobFile, ltmap::LtMapCfg},
-    rwbs::uva::UvAnimDict,
+    rwbs::{clump::Clump, read_dff, uva::UvAnimDict},
 };
 use mini_fs::{MiniFs, StoreExt};
 use radiance::{
@@ -20,6 +20,7 @@ use radiance::{
     comdef::{IArmatureComponent, IComponent, IEntity, IScene},
     components::mesh::{event::AnimationEvent, skinned_mesh::AnimKeyFrame},
     input::InputEngine,
+    math::{Mat44, Vec3},
     rendering::{ComponentFactory, Sprite},
     scene::CoreScene,
     utils::SeekRead,
@@ -30,7 +31,7 @@ use crate::{
         Pal4TextureResolver,
         anm::{load_amf, load_anm},
         bsp::create_entity_from_bsp_model,
-        dff::{DffLoaderConfig, create_entity_from_dff_model},
+        dff::{DffLoaderConfig, create_entity_from_dff_chunks, create_entity_from_dff_model},
         smp::load_smp,
     },
     scripting::angelscript::ScriptModule,
@@ -66,6 +67,7 @@ pub struct AssetLoader {
     portraits: HashMap<String, ImageSetImage>,
     gameplay_catalog: OnceCell<Rc<GameplayCatalog>>,
     dialog_artwork: OnceCell<Option<Rc<super::native_dialog::DialogArtwork>>>,
+    actor_interaction_diameters: RefCell<HashMap<String, f32>>,
 }
 
 struct SoundEngine {
@@ -106,6 +108,7 @@ impl AssetLoader {
             portraits,
             gameplay_catalog: OnceCell::new(),
             dialog_artwork: OnceCell::new(),
+            actor_interaction_diameters: RefCell::new(HashMap::new()),
         })
     }
 
@@ -330,10 +333,19 @@ impl AssetLoader {
         default_act: Option<&str>,
     ) -> anyhow::Result<ComRc<IEntity>> {
         let model_path = format!("/gamedata/PALActor/{}/{}.dff", actor_name, actor_name);
-        let entity = create_entity_from_dff_model(
+        let bytes = self
+            .vfs
+            .read_to_end(&model_path)
+            .with_context(|| format!("opening actor DFF {model_path}"))?;
+        let chunks = read_dff(&bytes).with_context(|| format!("parsing actor DFF {model_path}"))?;
+        self.actor_interaction_diameters.borrow_mut().insert(
+            actor_name.to_owned(),
+            Self::compute_actor_interaction_diameter(&chunks),
+        );
+        let entity = create_entity_from_dff_chunks(
             &self.component_factory,
             &self.vfs,
-            model_path,
+            std::path::Path::new(&model_path),
             entity_name.to_string(),
             true,
             &DffLoaderConfig {
@@ -346,7 +358,8 @@ impl AssetLoader {
                 fog_exempt: false,
                 foliage_resolver: None,
             },
-        )?;
+            chunks,
+        );
 
         let armature = entity
             .get_component(IArmatureComponent::uuid())
@@ -371,6 +384,14 @@ impl AssetLoader {
         Ok(entity)
     }
 
+    pub(crate) fn actor_interaction_diameter(&self, actor_name: &str) -> f32 {
+        self.actor_interaction_diameters
+            .borrow()
+            .get(actor_name)
+            .copied()
+            .unwrap_or(0.)
+    }
+
     pub fn load_evf(&self, scene_name: &str, block_name: &str) -> anyhow::Result<EvfFile> {
         let path = format!(
             "/gamedata/scenedata/{}/{}/{}.evf",
@@ -383,6 +404,90 @@ impl AssetLoader {
                 .with_context(|| format!("opening EVF {}", path))?,
         );
         Ok(EvfFile::read(&mut reader).with_context(|| format!("parsing EVF {}", path))?)
+    }
+
+    pub(crate) fn compute_actor_interaction_diameter(chunks: &[Clump]) -> f32 {
+        let mut sphere: Option<(Vec3, f32)> = None;
+        for clump in chunks {
+            // Native DFF loading prepends each atomic to the clump's linked list.
+            for atomic in clump.atomics.iter().rev() {
+                let Some(target) = clump
+                    .geometries
+                    .get(atomic.geometry as usize)
+                    .and_then(|geometry| geometry.morph_targets.first())
+                else {
+                    continue;
+                };
+                if !target.radius.is_finite() || target.radius < 0. {
+                    continue;
+                }
+                let mut transform = Mat44::new_identity();
+                let mut frame_index = atomic.frame as usize;
+                for _ in 0..clump.frames.len() {
+                    let Some(frame) = clump.frames.get(frame_index) else {
+                        break;
+                    };
+                    // Native local bounds cancel the clump root's world transform.
+                    if frame.parent < 0 || frame.parent as usize == frame_index {
+                        break;
+                    }
+                    let mut local = Mat44::new_identity();
+                    for (column, vector) in [&frame.right, &frame.up, &frame.at, &frame.pos]
+                        .iter()
+                        .enumerate()
+                    {
+                        local.floats_mut()[0][column] = vector.x;
+                        local.floats_mut()[1][column] = vector.y;
+                        local.floats_mut()[2][column] = vector.z;
+                    }
+                    transform = Mat44::multiplied(&local, &transform);
+                    frame_index = frame.parent as usize;
+                }
+                let center = Vec3::crossed_mat(
+                    &Vec3::new(
+                        target.bounding_sphere_x,
+                        target.bounding_sphere_y,
+                        target.bounding_sphere_z,
+                    ),
+                    &transform,
+                );
+                if ![center.x, center.y, center.z]
+                    .iter()
+                    .all(|value| value.is_finite())
+                {
+                    continue;
+                }
+                sphere = Some(match sphere {
+                    None => (center, target.radius),
+                    Some((previous, radius)) => {
+                        let delta = Vec3::new(
+                            center.x - previous.x,
+                            center.y - previous.y,
+                            center.z - previous.z,
+                        );
+                        let distance =
+                            (delta.x * delta.x + delta.y * delta.y + delta.z * delta.z).sqrt();
+                        if distance + target.radius <= radius {
+                            (previous, radius)
+                        } else if distance == 0. {
+                            (center, target.radius.max(radius))
+                        } else {
+                            let merged = (distance + radius + target.radius) * 0.5;
+                            let shift = (merged - radius) / distance;
+                            (
+                                Vec3::new(
+                                    previous.x + delta.x * shift,
+                                    previous.y + delta.y * shift,
+                                    previous.z + delta.z * shift,
+                                ),
+                                merged,
+                            )
+                        }
+                    }
+                });
+            }
+        }
+        sphere.map_or(0., |(_, radius)| radius * 2.)
     }
 
     pub fn load_run_animation(&self, actor_name: &str) -> anyhow::Result<Animation> {

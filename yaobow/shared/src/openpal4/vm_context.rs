@@ -183,6 +183,7 @@ pub struct Pal4VmContext {
     /// dispatcher). Accessors below hand out `Ref`/`RefMut` guards
     /// over it.
     session: Rc<RefCell<Pal4Session>>,
+    pub(crate) active_reward: Option<ComRc<IEntity>>,
 
     /// Periodic block script registered by `giTimeScript(period, fn)`
     /// and cleared by `giTimeScriptTerminate` / a scene change. PAL4
@@ -253,12 +254,20 @@ impl Pal4VmContext {
             moving_entities,
             rotating_entities,
             session,
+            active_reward: None,
             time_script: None,
         }
     }
 
     pub fn update(&mut self, delta_sec: f32) {
         let _timer = radiance::perf::timer("pal4.app_context.update_total_ns");
+        let notice_dt = if self.fast_forward() {
+            delta_sec * MOTION_FAST_FORWARD_SCALE
+        } else {
+            delta_sec
+        };
+        self.session.borrow_mut().advance_reward_notice(notice_dt);
+        self.tick_object_reward();
         if let Some(source) = self.bgm_source.as_mut() {
             source.update();
         }
@@ -341,11 +350,15 @@ impl Pal4VmContext {
     }
 
     pub fn event_triggered(&mut self, delta_sec: f32) -> Option<String> {
+        if self.active_reward.is_some() {
+            return None;
+        }
         let leader = self.session.borrow().state().leader();
         let scene = self.scene.borrow();
         let from_trigger = scene
             .test_event_triggers()
-            .and_then(|event| event.function.function.to_string().ok());
+            .and_then(|event| event.function.function.to_string().ok())
+            .map(super::scene::SceneInteraction::Script);
         let from_scene =
             from_trigger.or_else(|| scene.test_interaction(self.input.clone(), leader));
         drop(scene);
@@ -353,7 +366,14 @@ impl Pal4VmContext {
         // Player-driven events win over the ambient periodic script;
         // the timer keeps accumulating so the block script fires on
         // the next idle frame instead of being skipped.
-        from_scene.or_else(|| self.poll_time_script(delta_sec))
+        match from_scene {
+            Some(super::scene::SceneInteraction::Script(function)) => Some(function),
+            Some(super::scene::SceneInteraction::Reward(entity)) => {
+                self.start_object_reward(entity);
+                None
+            }
+            None => self.poll_time_script(delta_sec),
+        }
     }
 
     /// Registers the periodic block script (`giTimeScript`). `period`
@@ -1131,6 +1151,7 @@ impl Pal4VmContext {
     /// alone so the upcoming re-evaluation can keep it seamless when it
     /// resolves to the same track.
     pub fn note_block_loaded(&mut self, scene_name: &str) {
+        self.restore_object_rewards();
         self.script_music_active = false;
         self.bgm_baseline_track = None;
         self.pending_music_scene = Some(scene_name.to_string());
