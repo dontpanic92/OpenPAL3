@@ -106,6 +106,65 @@ pub struct Pal4Scene {
 pub(crate) enum SceneInteraction {
     Script(String),
     Reward(ComRc<IEntity>),
+    Switch(ComRc<IEntity>),
+}
+
+pub(crate) fn continuous_rotation_speed(
+    entry: &fileformats::pal4::gob::GobEntry,
+    kind: u32,
+) -> Option<f32> {
+    use fileformats::pal4::gob::{GobGomTaskProperty as Task, GobMachineProperty as Machine};
+    let integer = |name, default| {
+        entry
+            .get_property(name)
+            .or_else(|| entry.get_parameter(name))
+            .and_then(GobProperty::value_i32)
+            .unwrap_or(default)
+    };
+    if kind != GobObjectType::MACHINE
+        || !entry.research_function.to_string().ok()?.is_empty()
+        || integer(Machine::AUTO_TOUCH, 0) != 1
+        || integer(Machine::REPEAT, 0) != 1
+        || integer(GobFixedProperty::RESEARCH_NUM, 0) != -1
+        || integer(GobFixedProperty::STORE, 0) != 0
+        || entry.rotation[0] != 0.
+        || entry.rotation[2] != 0.
+    {
+        return None;
+    }
+    let mut tasks = Vec::new();
+    for property in &entry.parameters {
+        if let GobProperty::GobPropertyObjectArray(array) = property {
+            if property.name() == Machine::CONDITION {
+                if array.0.iter().any(|condition| {
+                    condition
+                        .get_property(Machine::PROPID)
+                        .and_then(GobProperty::value_i32)
+                        .is_some_and(|id| id > 0)
+                }) {
+                    return None;
+                }
+            } else if property.name().starts_with(Machine::TASK_LIST_PREFIX) {
+                tasks.extend(&array.0);
+            }
+        }
+    }
+    let [task] = tasks.as_slice() else {
+        return None;
+    };
+    let int = |name| task.get_property(name).and_then(GobProperty::value_i32);
+    let float = |name| task.get_property(name).and_then(GobProperty::value_f32);
+    if int(Task::TYPE) != Some(18)
+        || int(Task::WAIT_MODE) != Some(1)
+        || float(Task::WAIT_TIME) != Some(0.)
+        || !float(Task::EXPT_TIME).is_some_and(|duration| duration.is_finite() && duration > 0.)
+        || [Task::EVEN_ROTATE_EFFECT_NAME, Task::EVEN_ROTATE_SOUND_NAME]
+            .iter()
+            .any(|name| task.get_property(name).and_then(GobProperty::value_string) != Some(""))
+    {
+        return None;
+    }
+    float(Task::EVEN_ROTATE_SPEED_Y).filter(|speed| speed.is_finite())
 }
 
 /// Fallback `trigger_distance` for SOUND emitters whose entry has
@@ -999,6 +1058,28 @@ impl Pal4SceneLoader {
 }
 
 impl Pal4Scene {
+    pub(crate) fn advance_world_mechanisms(&self, delta_sec: f32) {
+        if !delta_sec.is_finite() || delta_sec <= 0. {
+            return;
+        }
+        for entity in self.scene.find_entities_by_tag(TAG_OBJECT) {
+            if !entity.enabled() {
+                continue;
+            }
+            let Some(component) = object_component(&entity) else {
+                continue;
+            };
+            let component = component.inner::<Pal4ObjectComponent>();
+            if let Some(speed) = component.continuous_rotation {
+                // Native task 18 applies relative yaw = speed * frame seconds.
+                entity.transform().borrow_mut().rotate_axis_angle_local(
+                    &Vec3::UP,
+                    (speed * delta_sec).rem_euclid(360.).to_radians(),
+                );
+            }
+        }
+    }
+
     pub fn get_player(&self, player_id: usize) -> ComRc<IEntity> {
         self.players[player_id].clone()
     }
@@ -1127,10 +1208,15 @@ impl Pal4Scene {
                 continue;
             };
             let component = component.inner::<Pal4ObjectComponent>();
-            let Some(rewards) = &component.rewards else {
-                continue;
-            };
-            if !rewards.borrow().available() || component.entry().active == 0 {
+            let reward_available = component
+                .rewards
+                .as_ref()
+                .is_some_and(|r| r.borrow().available());
+            let switch_available = component
+                .switch
+                .as_ref()
+                .is_some_and(|s| s.borrow().available());
+            if (!reward_available && !switch_available) || component.entry().active == 0 {
                 continue;
             }
             let origin = entity.world_transform().position();
@@ -1151,7 +1237,11 @@ impl Pal4Scene {
             let candidate = (dx * dx + dz * dz).sqrt();
             if candidate <= component.trigger_distance() && candidate < distance {
                 distance = candidate;
-                interaction = Some(SceneInteraction::Reward(entity));
+                interaction = Some(if switch_available {
+                    SceneInteraction::Switch(entity)
+                } else {
+                    SceneInteraction::Reward(entity)
+                });
             }
         }
         interaction
@@ -1293,6 +1383,14 @@ impl Pal4Scene {
             return false;
         };
         entity.transform().borrow_mut().set_matrix(saved);
+        if let Some(component) = object_component(&entity) {
+            if let Some(motion) = component.inner::<Pal4ObjectComponent>().motion.as_ref() {
+                motion.borrow_mut().cancel();
+            }
+            if let Some(switch) = component.inner::<Pal4ObjectComponent>().switch.as_ref() {
+                switch.borrow_mut().cancel();
+            }
+        }
         true
     }
 }
@@ -1536,8 +1634,8 @@ mod tests {
     }
 
     /// Position-and-yaw mutation must NOT accumulate yaw across
-    /// repeated calls — a script issuing `giGOBMovment(..., rot=90)`
-    /// three times in a row must end at 90°, not 270°. This is the
+    /// repeated calls — applying a 90-degree yaw three times in a
+    /// row must end at 90°, not 270°. This is the
     /// invariant `clear_rotation()` exists to enforce; we verify it
     /// behaviourally rather than reading euler back (which is
     /// singular at gimbal lock).
@@ -1633,5 +1731,106 @@ mod tests {
         assert!(!s.set_object_position_and_yaw("nope", 0.0, 0.0, 0.0, 0.0));
         assert!(!s.set_object_scale_xy("nope", 1.0, 1.0));
         assert!(!s.reset_object("nope"));
+    }
+
+    #[test]
+    #[ignore = "requires original PAL4 assets; set PAL4_ASSET_ROOT"]
+    fn original_m17_rings_rotate_without_moving_and_respect_script_disable_reset() {
+        use common::store_ext::StoreExt2;
+        use fileformats::{
+            binrw::BinRead,
+            pal4::gob::{GobFile, GobPropertyI32},
+        };
+        let root = std::env::var("PAL4_ASSET_ROOT").unwrap();
+        let vfs = packfs::init_virtual_fs(&root, None);
+        let bytes = vfs
+            .read_to_end("/gamedata/scenedata/M17/4/GameObjs.gob")
+            .unwrap();
+        let gob = GobFile::read(&mut std::io::Cursor::new(bytes)).unwrap();
+        let mut s = Pal4Scene::new_empty();
+        let mut count = 0;
+        for (index, entry) in gob.entries.iter().enumerate() {
+            let Some(speed) = continuous_rotation_speed(entry, gob.header.object_types[index])
+            else {
+                continue;
+            };
+            count += 1;
+            let name = entry.name.to_string().unwrap();
+            let expected_speed = if name == "rotate2" { 10. } else { -10. };
+            assert_eq!(speed, expected_speed);
+            let entity = CoreEntity::create(name.clone(), true);
+            entity
+                .transform()
+                .borrow_mut()
+                .set_position(&Vec3::from(entry.position));
+            entity
+                .transform()
+                .borrow_mut()
+                .rotate_axis_angle_local(&Vec3::UP, entry.rotation[1].to_radians());
+            let initial = *entity.transform().borrow().matrix();
+            entity.add_tag(TAG_OBJECT);
+            entity.add_component(
+                IPal4ObjectComponent::uuid(),
+                Pal4ObjectComponent::create(entry.clone(), GobObjectType::MACHINE, initial)
+                    .query_interface::<IComponent>()
+                    .unwrap(),
+            );
+            s.scene.add_entity(entity.clone());
+            for _ in 0..10 {
+                s.advance_world_mechanisms(0.1);
+            }
+            let mut expected = radiance::math::Transform::new();
+            expected.set_position(&Vec3::from(entry.position));
+            expected.rotate_axis_angle_local(&Vec3::UP, (entry.rotation[1] + speed).to_radians());
+            let matrix = *entity.transform().borrow().matrix();
+            for (actual, wanted) in matrix
+                .floats()
+                .iter()
+                .flatten()
+                .zip(expected.matrix().floats().iter().flatten())
+            {
+                assert!((actual - wanted).abs() < 0.0001);
+            }
+            entity.set_enabled(false);
+            s.advance_world_mechanisms(1.);
+            assert_eq!(
+                entity.transform().borrow().matrix().floats(),
+                matrix.floats()
+            );
+            entity.set_enabled(true);
+            assert!(s.reset_object(&name));
+            for invalid in [0., -1., f32::NAN, f32::INFINITY] {
+                s.advance_world_mechanisms(invalid);
+            }
+            assert_eq!(
+                entity.transform().borrow().matrix().floats(),
+                initial.floats()
+            );
+            s.advance_world_mechanisms(1.);
+            for (actual, wanted) in entity
+                .transform()
+                .borrow()
+                .matrix()
+                .floats()
+                .iter()
+                .flatten()
+                .zip(matrix.floats().iter().flatten())
+            {
+                assert!((actual - wanted).abs() < 0.0001);
+            }
+
+            let mut restricted = entry.clone();
+            for property in &mut restricted.properties {
+                if property.name() == GobFixedProperty::STORE {
+                    *property = GobProperty::GobPropertyI32(GobPropertyI32 {
+                        ty: 1,
+                        name: GobFixedProperty::STORE.into(),
+                        value: 1,
+                    });
+                }
+            }
+            assert!(continuous_rotation_speed(&restricted, GobObjectType::MACHINE).is_none());
+        }
+        assert_eq!(count, 3);
     }
 }

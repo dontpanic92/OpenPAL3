@@ -38,6 +38,10 @@ struct Cli {
     /// by default to keep stdout small.
     #[arg(long)]
     verbose: bool,
+
+    /// Emit machine and floating-object metadata as JSON for native behavior research.
+    #[arg(long)]
+    mechanisms: bool,
 }
 
 fn main() -> Result<()> {
@@ -90,6 +94,41 @@ fn main() -> Result<()> {
     }
     blocks.sort();
     eprintln!("Discovered {} (scene, block) pairs", blocks.len());
+
+    if cli.mechanisms {
+        let mut entries = Vec::new();
+        for (scene, block) in &blocks {
+            let path = format!("/gamedata/scenedata/{scene}/{block}/GameObjs.gob");
+            let Ok(bytes) = vfs.read_to_end(&path) else {
+                continue;
+            };
+            let gob = GobFile::read(&mut std::io::Cursor::new(bytes))
+                .with_context(|| format!("parse {path}"))?;
+            for (index, entry) in gob.entries.iter().enumerate() {
+                let kind = gob
+                    .header
+                    .object_types
+                    .get(index)
+                    .copied()
+                    .unwrap_or(u32::MAX);
+                if kind == GobObjectType::MACHINE
+                    || entry
+                        .parameters
+                        .iter()
+                        .any(|property| property.name().starts_with("PAL4_GAMEOBJECT_float"))
+                {
+                    entries.push(serde_json::json!({
+                        "scene": scene,
+                        "block": block,
+                        "kind": kind,
+                        "entry": entry,
+                    }));
+                }
+            }
+        }
+        println!("{}", serde_json::to_string_pretty(&entries)?);
+        return Ok(());
+    }
 
     // -- Aggregates --------------------------------------------------------
     let mut tag_mesh_counts: BTreeMap<u32, BTreeMap<String, usize>> = BTreeMap::new();

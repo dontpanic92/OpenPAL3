@@ -881,3 +881,290 @@ save/load without duplication. Q01 `item101` still settles its complete chest
 rewards, resumes an opening save at cursor 0 with identical inventory, and
 rejects repeats after settled save/load. Temporary slots 96--97 and owned test
 processes are removed; existing slots 1--5 remain untouched.
+
+## World mechanisms: first verified slice
+
+`pal4_gob_inspect --root <PAL4-root> --mechanisms` exports machine and floating
+GOB metadata as JSON without enabling any gameplay behavior. The original
+corpus contains 588 entries across 362 discovered scene/block pairs. It includes
+linked activators, moving-platform callbacks, camera tasks and compound task
+lists; these are not interchangeable with PAL3 mechanisms.
+
+M17/4's `rotate1`, `rotate2` and `rotate3` now automatically rotate their
+authored models, at -10, +10 and -10 degrees/second respectively. The narrow
+runtime accepts only unlimited, repeating, auto-touch, non-stored machines with
+a single task 18, positive expected duration, wait mode 1, zero wait time, no
+effect/sound and no item conditions or research callback. Pitch/roll must be zero;
+this avoids pretending local-axis rotation implements arbitrary native Euler
+updates. Compound tasks remain unsupported rather than partially executing.
+
+Read-only native evidence from the local unpacked PAL4 executable:
+
+- `0x005a182b` stores auto-touch at machine offset `0x284`.
+  `0x005a1990` clears task groups and auto-starts enabled auto-touch machines.
+- `0x005a0848` reads `PAL4_GOMTask_even_rotate_speedY`; `0x00594340` applies
+  `speedY * delta_seconds` through relative rotation (object vtable slot 8).
+- `0x00665990` adds the relative Euler values and wraps at 360 degrees.
+  The selected original props have only authored yaw, so rotation preserves
+  their placement instead of orbiting the world origin.
+- `0x0059f000` ticks the task groups and restarts repeat-enabled machines
+  without restoring their authored transform. The supported endless, silent
+  rotation therefore needs no independent persistent task cursor.
+
+Rotation uses the existing director simulation gate, not wall-clock time:
+agent pause and player menus stop it; normal script execution does not.
+Disabled objects stop advancing. `giGOBReset` restores the existing full
+authored-transform snapshot, and subsequent ticks rotate from that snapshot.
+No save format or existing script-driven reconstruction is changed.
+
+Validation: 59 PAL4 tests pass with original assets, including all three M17/4
+metadata records, signed speed, equivalent one-second/split-frame updates,
+authored yaw/translation preservation, disabled-object pause, reset, invalid
+delta rejection and stored-machine exclusion. Affected all-target checks and
+the release binary build pass. Linked doors/switches, moving platforms/riding,
+collision changes, hazards and compound task settlement remain open; this
+milestone does not claim full world-mechanism or live-rendering parity.
+
+### Script-triggered movement
+
+`giGOMTouch(name)` now starts supported native machine task programs rather
+than discarding the call. This slice accepts exactly `(16, 0)`: establish
+the authored task start position/Euler rotation, then translate linearly to
+the absolute target over `PAL4_GOMTask_expt_time`. Both tasks require wait
+mode 1 and zero wait time; the machine must be manual, non-repeating,
+non-floating, without inventory/leader conditions, disappearance or collision
+requirements. Effects must be empty; supported movement sounds are described
+below. Other compound programs and floating/riding objects remain gated as whole
+programs.
+
+The silent examples are M07/6 `dy` (five seconds, Y 240.4442 to
+349.4442) and M07/7 `ladder` (three seconds, Y 213.5731 to 96.5731).
+Original M07 `func7004` calls `giGOMTouch("dy")`; `func1023` calls
+`giGOMTouch("ladder")`. These calls start motion without blocking the script;
+the original functions manage their own waits/camera choreography.
+
+Read-only native evidence:
+
+- `0x005d3ea0` implements `giGOMTouch`: resolve the named object and invoke
+  its activation vtable slot `0x50`. Machine activation at `0x005a1400`
+  rejects exhausted/running objects and decrements positive research counts.
+- `0x005a0443` constructs task 16. `0x005981c0` applies absolute position
+  and rotation, and its start values also become the machine reset snapshot.
+- `0x00595120` records task 0's start position. `0x00595300` clamps elapsed
+  time at the authored duration, interpolates each coordinate at
+  `elapsed/duration`, and sets absolute position. `0x00661bf0` with mode 0
+  is linear interpolation, not easing or speed-based movement.
+
+Movement preserves authored scale and Euler placement; subsequent frames
+change only translation, preserving concurrent script rotation/scale edits.
+Repeated touches while running do not restart it. Disabled objects and
+simulation pause stop the clock. Reset cancels the active movement before
+restoring the task's start matrix, so a later tick cannot undo the reset.
+
+Stored motion progress lives in the save's `object_motions` map, keyed by
+lowercased scene/data-block/object, separately from pickup/chest claims.
+Elapsed time and remaining research count are restored; an interrupted
+move continues from its saved point, and a completed move restores its
+target pose. Non-stored motion remains scene-local. This does not serialize
+or resume arbitrary AngelScript cutscenes.
+
+The initial silent slice passed 62 PAL4 tests with original assets, including linear
+interpolation, active/finished reactivation rules, disabled/invalid-delta
+handling, later script rotation, stored progress round-trip, both original
+M07 programs, reset cancellation and sounded/floating-program exclusion.
+Affected all-target checks, release build and formatting pass.
+Live M07/6 `NO006_key` interaction executes the original `func7004` and
+`giGOMTouch` (verified in VM trace), moves `dy`, and freezes under agent pause.
+A save at elapsed 0.6 restores Y 253.5242; another second reaches Y 275.3242.
+It finishes exactly at Y 349.4442, which survives a settled save/load.
+
+### Movement sounds and task ownership
+
+The same complete `(16, 0)` program now accepts a nonempty movement sound
+only when `PAL4_GOMTask_move_sound_time` is `-1`. This covers the surveyed
+M07 `wc001` and M08 `WJ069` doors. Finite sound counts, effects, collision,
+conditions, repeat/auto-touch and floating/riding programs remain excluded.
+
+Read-only native evidence:
+
+- Task start `0x0059525f` passes the authored sound count to `0x0062fcf0`.
+  The sound-manager update at `0x00630e94` handles `-1` separately, restarting
+  finished playback without decrementing the count. Finite counts instead
+  decrement at `0x006310fb`.
+- Task destruction at `0x00595010` explicitly stops its sound handle.
+  Completed task groups call `0x005ec190`, which destroys their tasks;
+  the sound does not outlive a completed movement.
+- `0x00599653` stores the fixed `clip` property at object offset `0x1a8`.
+  This flag is passed to sound startup and is zero for supported motions.
+- The task pause/resume callbacks at `0x005956b0`/`0x005956d0` operate on
+  effect handle `0x88`, not sound handle `0x8c`. Simulation pause therefore
+  freezes translation without suspending the looping audio clock.
+
+Each motion owns its mixed SFX source, independently of script sound IDs.
+It starts once on activation, stops on completion/reset/component unload or
+destruction, and participates in `giStopSoundAll`. Disabled objects pause
+their owned source alongside the existing motion freeze; re-enabling resumes
+it. Stored unfinished motion starts one fresh loop when restored, without
+serializing audio handles or playback offsets. Completed restored motion is
+silent. Saving mid-cutscene still does not persist arbitrary script
+continuation; a saved script player lock can remain set.
+
+Validation: all 63 PAL4 tests pass with original assets. Regressions cover
+sound ownership, pause/resume, repeated-touch suppression, finish/reset/drop
+cleanup, component unloading, M07/M08 metadata and finite activation counts.
+Affected all-target checks, release build and formatting pass.
+
+Live M07/6 `NO006_key` executes original `func7004`, with both `giGOMTouch`
+calls verified in VM trace. `NO006` starts its `wc001` source once. Saving at
+elapsed 0.0997111 restores Y 98.1254 and one replacement loop; stepping one
+second reaches Y 119.9254. Replacing the scene stops the owned loop, and
+restoring the interrupted save starts exactly one new loop. Completion
+stops it at Y 204.95169; settled save/load retains that pose without replay.
+The owned test process and slots 96/97 were removed; existing slots 1-5 were
+untouched. M07/1's door trigger correctly refused the uninitialized route
+fixture's prerequisite, so no live Hua Rong puzzle parity is claimed.
+
+### Native linked door-key interactions
+
+All 14 surveyed M07 door keys now accept their complete `(2, 3, 17)` program
+through physical F interaction and `/v1/object/interact`, even though their
+fixed `research_function` is empty. The program starts its non-waiting
+script, plays the handle action once and holds its end pose, then touches
+the linked door after the authored predecessor-relative delay. Task 17's
+optional wait keeps the key program running until its target finishes or
+is disabled; it never restarts the target every frame.
+
+Read-only native evidence:
+
+- Script-task startup at `0x00597faa` checks the authored wait field; zero
+  sets the task's finished byte after launching the script, without waiting
+  for script completion. The selected keys all call original M07 `func7008`,
+  which plays `we199` once.
+- Action-task update `0x005927a8` observes animation completion, decrements
+  its action count, and holds the final pose when the count reaches zero.
+  The selected keys use action `B`, count 1.
+- Task readiness at `0x005ebed4` waits for predecessor state 4 and compares
+  elapsed time minus predecessor finish time with the authored wait.
+  This dependency-relative comparison is strict (`>`), not `>=`.
+  The selected keys delay task 17 by 0.3 seconds after the handle animation.
+- `0x00598adf` activates the named target through vtable slot `0x50`,
+  passing the source object's position. Offset `0x50` in the task latches
+  that activation. `0x00598af7` implements the optional completion wait;
+  the target's `0x005a1650` getter tests both machine task groups.
+
+The selector requires manual, non-repeating, non-stored, single-use machines,
+empty research callbacks, no inventory/leader/marker/collision/disappearance
+requirements, wait mode 1, zero expected durations, a non-waiting script,
+one-shot action and a finite nonnegative link delay. Before consuming the
+key, startup verifies the scene script function, playable animation and a
+fully supported movement target. Missing or unsupported links cannot
+partially execute a key program.
+
+Hidden/disabled/exhausted keys are ineligible. Physical input applies the
+existing nearest-object distance and height checks; named interaction
+bypasses distance but preserves height eligibility. Delay/cursor progression
+uses the simulation gate; armatures retain the existing engine animation
+clock. Reset cancels a pending link without recharging the consumed key or
+rewinding an already-activated door. Scene replacement discards pending
+non-stored key programs. Native store flags still govern door persistence:
+the M07/2 `door02` and `door03` motions are non-stored and reset on reload.
+
+This does not implement stored switch cursors, inventory-conditioned
+activators, task 15 controllers, arbitrary compound/parallel script tasks,
+platforms/riding, or script-driven `giGOMTouch` activation of keys. Direct
+`giGOMTouch` and the supported task 17 links currently activate movement
+programs; key scripts enter through the idle player/agent interaction path.
+
+Validation: 66 PAL4 tests pass with original assets, including all 14 key
+records, linked movement targets and animation assets, physical eligibility,
+strict delay/animation ordering, optional target wait and reset cancellation.
+Affected all-target checks and release build pass. Live M07/2 `door02_key`
+executes `func7008` (verified in VM trace), starts its linked door once,
+rejects repeated activation, and finishes at Y 194.6369. Non-waiting
+`door03_key` likewise finishes at Y 187.637. Replacing the scene before a
+pending link fires prevents activation with simulation running. A synthetic
+physical F tap near `door02_key` also runs the original script and activates
+the linked door. The owned game process and temporary slots 96/97 were
+removed; existing saves were untouched.
+
+### Native scripted object translation
+
+`giGOBMovment(name, duration, x, y, z, wait)` now schedules a scene-local,
+absolute linear translation instead of snapping the object. The old
+argument labels were wrong: the first float is **seconds**, not X; the
+last float is **Z**, not yaw. Rotation and scale are unchanged.
+
+Read-only native evidence from the local original executable:
+
+- `0x005e6fd5` reads the second, third and fourth floats as a target vector.
+  `0x005e7028` checks the first float against zero; `0x005e70d6` stores
+  that float as the task duration at offset `0x3c`.
+- `0x005e70a0` stores the object at task offset `0x20` and captures its
+  current position into task offsets `0x30..0x38`.
+- Update `0x005e7120` accumulates elapsed seconds, clamps at duration,
+  and uses `0x00661bf0` with mode 0 independently for X/Y/Z. It writes
+  only the absolute position through the object vtable, not rotation.
+  Nonpositive duration or a disabled object completes without snapping.
+- `0x007dbc50` stores the trailing boolean as a wait flag. Task startup
+  `0x007dbd00` suspends the owning script only when that flag is set;
+  `0x007dbd20` marks completion.
+- Task manager `0x007dd110` replaces an earlier task with the same
+  operation ID and object name, finishing the old task before deletion.
+  Translation's operation ID is 5.
+
+The runtime retains non-waiting translations independently of their script
+call. Waiting calls yield on their own completion token; replacement,
+disable and unload release that waiter. Simulation pause freezes progress,
+fixed stepping advances it deterministically, and fast-forward accelerates
+it with the existing script-motion multiplier. Nonfinite authored duration
+or coordinates are rejected defensively. These are transient script tasks,
+not stored GOM programs; arbitrary VM continuations are still not saved.
+
+Validation: 68 PAL4 tests pass with original assets, including linear
+position-only translation, invalid timing, disable completion, replacement
+and unload lifetime checks. Affected all-target checks and release build
+pass. Live original M07 `func7004` raises `dy`/`NO006`, then the original
+`ev_M07_6_3` route runs `func7005` and enters M07/7 through `func1023`.
+Its non-waiting three-second ladder translation starts at
+`[-1294.7418,96.573105,1749.4895]`, reaches
+`[-1287.2418,159.57312,1749.4895]` after 1.5 simulated seconds, and finishes
+at `[-1279.7418,222.5731,1749.4895]`. Pausing retains the midpoint exactly.
+M17 `closeDoor` also executes its original non-waiting `giGOBMovment` with
+correct XYZ and stack cleanup (24 bytes). The broader M17 `func2002`
+waiting-call route stopped at its preceding `giPlayerEndAction`; its
+later movement was not validated live. This is not a claim of complete
+M17 puzzle or animation-lifecycle parity.
+
+### Remaining compound-task evidence
+
+The full 588-record census distinguishes empty floating programs (147)
+and single-script floating programs (127) from ordinary machine tasks.
+Neither category proves platform traversal is implemented: native
+floating touch, rider ownership and collision/navigation still need their
+own implementation and route checks.
+
+Two additional native behaviors have been recovered but remain gated:
+
+- Task 15 (`0x00592d60`) unregisters its target through `0x0051c4f0`.
+  A nonzero control value then calls target vtable slot `0x9c` and
+  registers it again through `0x0051c430`. For machines that slot is
+  `0x005a1990`: it changes active state, destroys both task groups,
+  clears running flags and auto-starts eligible machines. The manager
+  also removes/adds rendering and collision participation. A plain
+  `set_enabled(true)` would omit this reset/restart behavior.
+- Task 6 is a **rollback program**, not a disappearance or instant reset.
+  Dispatcher `0x0059fb5a` creates the task whose start is `0x00597190`.
+  Its readiness (`0x00597200`) requires other tasks to finish. Startup
+  calls the predecessor's rollback vtable slot `0x10`; movement rollback
+  `0x005953d0` creates another task 0 with the original movement's
+  captured start as its target and the same duration. It recursively
+  rolls back earlier tasks into the secondary group. Thus `(16,0,6)`
+  must complete its return leg before repeat/settlement, not merely
+  play the outbound translation.
+
+The corpus has 19 `(16,0,6)` entries, including floating transitions and
+automatic M13/M17 machines with authored start/rollback delays. Wider
+task 10 curves, task 11-14 controllers, task 19 timers, task 20/21 quake
+lifecycle, inventory conditions and parallel task 2 scripts remain
+completion prerequisites. No unsupported compound or platform program
+has been partially enabled.

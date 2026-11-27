@@ -885,6 +885,12 @@ impl IDirectorImpl for OpenPAL4Director {
         };
         self.tick_moving_entities(motion_dt);
         self.tick_rotating_entities(motion_dt);
+        self.vm
+            .borrow()
+            .vm_context
+            .scene
+            .borrow()
+            .advance_world_mechanisms(effective_dt);
 
         self.vm.borrow_mut().vm_context_mut().update(effective_dt);
 
@@ -1511,6 +1517,39 @@ impl OpenPAL4Director {
             return AgentResponse::err(AgentError::conflict(
                 "wait for the chest to finish opening",
             ));
+        }
+        let switch = {
+            let vm = self.vm.borrow();
+            vm.vm_context
+                .scene
+                .borrow()
+                .get_object(&params.name)
+                .filter(|entity| {
+                    object_component(entity).is_some_and(|component| {
+                        component.inner::<Pal4ObjectComponent>().switch.is_some()
+                    })
+                })
+        };
+        if let Some(entity) = switch {
+            let Some(module) = self.vm.borrow().vm_context.scene.borrow().module.clone() else {
+                return AgentResponse::err(AgentError::conflict(
+                    "no scene script module is loaded",
+                ));
+            };
+            let Some(function) = self
+                .vm
+                .borrow_mut()
+                .vm_context_mut()
+                .start_object_switch(&entity)
+            else {
+                return AgentResponse::err(AgentError::conflict(
+                    "switch is unavailable or its linked program is unsupported",
+                ));
+            };
+            self.vm
+                .borrow_mut()
+                .set_function_by_name2(module, &function);
+            return AgentResponse::Ok;
         }
         let native_object = {
             let vm = self.vm.borrow();

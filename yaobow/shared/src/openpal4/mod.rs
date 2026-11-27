@@ -19,6 +19,7 @@ pub mod director;
 pub mod game_context;
 pub mod gameplay;
 pub mod launch;
+mod mechanisms;
 mod menu_preview;
 pub mod menu_state;
 pub mod modes;

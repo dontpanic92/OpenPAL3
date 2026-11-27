@@ -268,6 +268,8 @@ impl Pal4VmContext {
         };
         self.session.borrow_mut().advance_reward_notice(notice_dt);
         self.tick_object_reward();
+        self.tick_object_motions(notice_dt);
+        self.tick_object_switches(notice_dt);
         if let Some(source) = self.bgm_source.as_mut() {
             source.update();
         }
@@ -371,6 +373,9 @@ impl Pal4VmContext {
             Some(super::scene::SceneInteraction::Reward(entity)) => {
                 self.start_object_reward(entity);
                 None
+            }
+            Some(super::scene::SceneInteraction::Switch(entity)) => {
+                self.start_object_switch(&entity)
             }
             None => self.poll_time_script(delta_sec),
         }
@@ -1152,6 +1157,7 @@ impl Pal4VmContext {
     /// resolves to the same track.
     pub fn note_block_loaded(&mut self, scene_name: &str) {
         self.restore_object_rewards();
+        self.restore_object_motions();
         self.script_music_active = false;
         self.bgm_baseline_track = None;
         self.pending_music_scene = Some(scene_name.to_string());
@@ -1229,6 +1235,7 @@ impl Pal4VmContext {
     }
 
     pub fn stop_all_sounds(&mut self) {
+        self.stop_object_motion_sounds();
         for (_, mut source) in self.sound_sources.drain() {
             source.stop();
         }
@@ -1436,7 +1443,7 @@ impl Pal4VmContext {
         self.sound_id
     }
 
-    fn play_sound_internal(
+    pub(crate) fn play_sound_internal(
         &mut self,
         name: &str,
         codec: radiance::audio::Codec,

@@ -1055,7 +1055,7 @@ impl Pal4VmContext {
         true
     }
 
-    fn reward_key(&self, entity: &ComRc<IEntity>) -> String {
+    pub(crate) fn reward_key(&self, entity: &ComRc<IEntity>) -> String {
         let handle = self.session_handle();
         let session = handle.borrow();
         let state = session.state();

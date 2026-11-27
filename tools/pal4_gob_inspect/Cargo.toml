@@ -10,3 +10,4 @@ common = { path = "../../yaobow/common" }
 fileformats = { path = "../../yaobow/fileformats" }
 mini-fs = { workspace = true }
 packfs = { path = "../../yaobow/packfs" }
+serde_json = "1"

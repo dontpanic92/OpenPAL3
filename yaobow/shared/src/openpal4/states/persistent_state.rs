@@ -135,6 +135,8 @@ pub struct Pal4PersistentState {
     #[serde(default)]
     object_rewards: HashMap<String, super::super::rewards::RewardProgress>,
     #[serde(default)]
+    object_motions: HashMap<String, super::super::mechanisms::MotionProgress>,
+    #[serde(default)]
     recent_properties: Vec<i32>,
     #[serde(default)]
     recent_equipment: Vec<RecentEquipment>,
@@ -185,6 +187,7 @@ impl Pal4PersistentState {
             players,
             inventory: HashMap::new(),
             object_rewards: HashMap::new(),
+            object_motions: HashMap::new(),
             recent_properties: Vec::new(),
             recent_equipment: Vec::new(),
             next_equipment_instance: 0,
@@ -381,6 +384,21 @@ impl Pal4PersistentState {
         key: &str,
     ) -> Option<&super::super::rewards::RewardProgress> {
         self.object_rewards.get(key)
+    }
+
+    pub(crate) fn object_motion(
+        &self,
+        key: &str,
+    ) -> Option<&super::super::mechanisms::MotionProgress> {
+        self.object_motions.get(key)
+    }
+
+    pub(crate) fn set_object_motion(
+        &mut self,
+        key: String,
+        progress: super::super::mechanisms::MotionProgress,
+    ) {
+        self.object_motions.insert(key, progress);
     }
 
     pub(crate) fn set_object_reward(

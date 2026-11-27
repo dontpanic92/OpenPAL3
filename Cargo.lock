@@ -3383,6 +3383,7 @@ dependencies = [
  "fileformats",
  "mini-fs",
  "packfs",
+ "serde_json",
 ]
 
 [[package]]

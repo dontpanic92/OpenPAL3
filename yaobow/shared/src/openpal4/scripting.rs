@@ -1449,7 +1449,11 @@ fn player_out_team(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionSta
 }
 
 fn gom_touch(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
-    as_params!(vm, _file_str: i32);
+    as_params!(vm, file_str: i32);
+    let name = get_str(vm, file_str as usize).unwrap_or_default();
+    if !vm.vm_context.touch_object_motion(&name) {
+        log::debug!("giGOMTouch: '{}' unavailable or unsupported", name);
+    }
     Pal4FunctionState::Completed
 }
 
@@ -2146,6 +2150,10 @@ fn gob_reset(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
     let name = get_str(vm, name_str as usize).unwrap_or_default();
     if !vm.vm_context.scene.borrow_mut().reset_object(&name) {
         log::warn!("giGOBReset: unknown object '{}'", name);
+    }
+    let entity = vm.vm_context.scene.borrow().get_object(&name);
+    if let Some(entity) = entity {
+        vm.vm_context.persist_object_motion(&entity);
     }
     Pal4FunctionState::Completed
 }
@@ -3163,25 +3171,27 @@ fn show_select_dialog(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4Function
     begin_dialog(vm, &text, DialogKind::Selection, [0.5, 0.5])
 }
 fn gob_movment(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
-    // V1: snap (position, yaw). The original engine likely glides
-    // over multiple frames; the dominant cutscene pattern brackets
-    // `giGOBMovment` with a `giWait`, so an instant snap reads
-    // visually as "the prop moved during the wait" — wrong in
-    // motion, correct in steady state. A tweened version is a
-    // follow-up. The trailing `_movment` int is a movement-style
-    // id (snap / walk / run) that v1 ignores.
-    as_params!(vm, name_str: i32, x: f32, y: f32, z: f32, rot: f32, _movment: i32);
+    as_params!(vm, name_str: i32, duration: f32, x: f32, y: f32, z: f32, wait: i32);
 
     let name = get_str(vm, name_str as usize).unwrap_or_default();
-    if !vm
+    let Some(completed) = vm
         .vm_context
-        .scene
-        .borrow_mut()
-        .set_object_position_and_yaw(&name, x, y, z, rot)
-    {
-        log::warn!("giGOBMovment: unknown object '{}'", name);
+        .move_script_object(&name, duration, Vec3::new(x, y, z))
+    else {
+        log::debug!("giGOBMovment: inactive/missing object or invalid motion '{name}'");
+        return Pal4FunctionState::Completed;
+    };
+    if wait == 0 {
+        Pal4FunctionState::Completed
+    } else {
+        Pal4FunctionState::Yield(Box::new(move |_, _| {
+            if completed.get() {
+                ContinuationState::Completed
+            } else {
+                ContinuationState::Loop
+            }
+        }))
     }
-    Pal4FunctionState::Completed
 }
 
 fn show_tutorial(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {

@@ -46,6 +46,10 @@ pub struct Pal4ObjectComponent {
     /// lock — see the historical note in `Pal4Scene`.
     initial_transform: Mat44,
     pub(crate) rewards: Option<std::cell::RefCell<super::rewards::ObjectRewards>>,
+    pub(crate) continuous_rotation: Option<f32>,
+    pub(crate) motion: Option<std::cell::RefCell<super::mechanisms::ObjectMotion>>,
+    pub(crate) switch: Option<std::cell::RefCell<super::mechanisms::ObjectSwitch>>,
+    pub(crate) script_motion: std::cell::RefCell<Option<super::mechanisms::ScriptObjectMotion>>,
 }
 
 ComObject_Pal4ObjectComponent!(super::Pal4ObjectComponent);
@@ -57,11 +61,21 @@ impl Pal4ObjectComponent {
         initial_transform: Mat44,
     ) -> ComRc<IPal4ObjectComponent> {
         let rewards = super::rewards::ObjectRewards::from_entry(&entry, object_type);
+        let continuous_rotation = super::scene::continuous_rotation_speed(&entry, object_type);
+        let motion = super::mechanisms::ObjectMotion::from_entry(&entry, object_type);
+        let switch = super::mechanisms::ObjectSwitch::from_entry(&entry, object_type);
+        let initial_transform = motion.as_ref().map_or(initial_transform, |motion| {
+            motion.borrow().initial_transform
+        });
         ComRc::from_object(Self {
             entry,
             object_type,
             initial_transform,
             rewards,
+            continuous_rotation,
+            motion,
+            switch,
+            script_motion: std::cell::RefCell::new(None),
         })
     }
 
@@ -103,5 +117,10 @@ impl IPal4ObjectComponentImpl for Pal4ObjectComponent {}
 impl radiance::comdef::IComponentImpl for Pal4ObjectComponent {
     fn on_loading(&self) -> crosscom::Void {}
     fn on_updating(&self, _delta_sec: f32) -> crosscom::Void {}
-    fn on_unloading(&self) {}
+    fn on_unloading(&self) {
+        self.script_motion.borrow_mut().take();
+        if let Some(motion) = self.motion.as_ref() {
+            motion.borrow_mut().stop_sound();
+        }
+    }
 }

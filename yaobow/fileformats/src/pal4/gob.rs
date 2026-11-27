@@ -198,6 +198,10 @@ impl GobGomTaskProperty {
     pub const EXPT_TIME: &'static str = "PAL4_GOMTask_expt_time";
     pub const ACTION_NAME: &'static str = "PAL4_GOMTask_action_name";
     pub const ACTION_TIME: &'static str = "PAL4_GOMTask_action_time";
+    pub const SCRIPT_FUNC: &'static str = "PAL4_GOMTask_script_func";
+    pub const SCRIPT_WAIT: &'static str = "PAL4_GOMTask_script_wait";
+    pub const TOUCH_OTHER_NAME: &'static str = "PAL4_GOMTask_touch_other_name";
+    pub const TOUCH_OTHER_WAIT: &'static str = "PAL4_GOMTask_touch_other_wait";
     pub const GETITEM_ID: &'static str = "PAL4_GOMTask_getitem_id";
     pub const GETITEM_NUM: &'static str = "PAL4_GOMTask_getitem_num";
     pub const CAMERA_QUAKE_AMPLITUDE: &'static str = "PAL4_GOMTask_camera_quake_amplitude";
@@ -214,10 +218,24 @@ impl GobGomTaskProperty {
     pub const ACTIVE_OBJECT_NAME: &'static str = "PAL4_GOMTask_active_object_name";
     pub const TIME_WAIT_MINVAL: &'static str = "PAL4_GOMTask_time_wait_minval";
     pub const TIME_WAIT_MAXVAL: &'static str = "PAL4_GOMTask_time_wait_maxval";
+    pub const EVEN_ROTATE_SPEED_Y: &'static str = "PAL4_GOMTask_even_rotate_speedY";
+    pub const EVEN_ROTATE_EFFECT_NAME: &'static str = "PAL4_GOMTask_even_rotate_effect_name";
+    pub const EVEN_ROTATE_SOUND_NAME: &'static str = "PAL4_GOMTask_even_rotate_sound_name";
+    pub const START_POS_X: &'static str = "PAL4_GOMTask_start_posX";
+    pub const START_POS_Y: &'static str = "PAL4_GOMTask_start_posY";
+    pub const START_POS_Z: &'static str = "PAL4_GOMTask_start_posZ";
+    pub const START_ROT_X: &'static str = "PAL4_GOMTask_start_rotX";
+    pub const START_ROT_Y: &'static str = "PAL4_GOMTask_start_rotY";
+    pub const START_ROT_Z: &'static str = "PAL4_GOMTask_start_rotZ";
+    pub const MOVE_TARGET_X: &'static str = "PAL4_GOMTask_move_target_X";
+    pub const MOVE_TARGET_Y: &'static str = "PAL4_GOMTask_move_target_Y";
+    pub const MOVE_TARGET_Z: &'static str = "PAL4_GOMTask_move_target_Z";
+    pub const MOVE_EFFECT_NAME: &'static str = "PAL4_GOMTask_move_effect_name";
+    pub const MOVE_SOUND_NAME: &'static str = "PAL4_GOMTask_move_sound_name";
+    pub const MOVE_SOUND_TIME: &'static str = "PAL4_GOMTask_move_sound_time";
 }
 
-/// Numerical opcode stored as `PAL4_GOMTask_type`. The only observed
-/// values are 1, 3, 7, 8, 13, 14, 15, 19, 20, 21 — kept as an opaque
+/// Numerical opcode stored as `PAL4_GOMTask_type`, kept as an opaque
 /// `i32` newtype so unknown ids round-trip cleanly.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct GomTaskType(pub i32);
