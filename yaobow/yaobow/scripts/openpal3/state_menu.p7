@@ -50,7 +50,7 @@ pub struct MenuState(
     exit_confirmation: bool,
     released_at: int = 0,
     click_cycle: int = 0, was_down: bool = false, second_click: bool = false,
-    target_hint: int = -1,
+    target_mask: int = 0,
     arrow_y: int = 6, arrow_back: bool = false, arrow_time: int = -1,
     magic_category: int = 0, magic_index: int = 0, sword_element: int = 0, book_category: int = 0,
 ) {
@@ -93,7 +93,7 @@ pub struct MenuState(
 
     fn cancel_item(self: &Self) {
         self.using_item = 0; self.native_targeting = false;
-        self.target_hint = -1;
+        self.target_mask = 0;
     }
 
     fn use_on(self: &Self, game: &openpal3.IPal3MenuState, role: int) {
@@ -105,7 +105,7 @@ pub struct MenuState(
             self.role = role;
             if !self.native_targeting || !has_item_target(game, self.using_item) {
                 self.cancel_item();
-            } else { self.target_hint = game.item_target_hint(self.using_item); }
+            } else { self.target_mask = game.item_target_mask(self.using_item, -1, false); }
         }
     }
 
@@ -179,9 +179,7 @@ pub struct MenuState(
                         if self.tab == 1 && self.using_item != 0 {
                             if self.native_targeting {
                                 self.role = role;
-                                self.target_hint = if game.can_use_item(role, self.using_item) {
-                                    role
-                                } else { game.item_target_hint(self.using_item) };
+                                self.target_mask = game.item_target_mask(self.using_item, role, false);
                             }
                             else { self.use_on(game, role); }
                         } else {
@@ -287,10 +285,11 @@ pub struct MenuState(
         }
         if close { self.audio.finish(gameplay); }
         if self.tab == 1 && gameplay.available() {
+            let role_bits: array<int> = [1, 2, 4, 8, 16];
             for i in Range(0, 4) {
                 let role = gameplay.member_role(self.party_page + i);
                 if role >= 0 {
-                    if self.native_targeting && (gameplay.item_use_scope(self.using_item) == 2 || self.target_hint == role) {
+                    if self.native_targeting && self.target_mask / role_bits[role] % 2 != 0 {
                         c.blit(COMMON + "NeedArrow.tga", 716.0,
                             157.0 + (i as float) * 122.0 + (self.arrow_y as float), 25.0, 27.0);
                     }
@@ -575,7 +574,7 @@ pub struct MenuState(
                 self.select_item(id); self.held = -1;
                 if has_item_target(game, id) {
                     self.using_item = id; self.native_targeting = true; self.feedback = "";
-                    self.target_hint = game.item_target_hint(id);
+                    self.target_mask = game.item_target_mask(id, -1, true);
                     game.play_item_menu_sound(true);
                 } else {
                     self.feedback = "此物品当前无法使用";

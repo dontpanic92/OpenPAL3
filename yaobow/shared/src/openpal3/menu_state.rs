@@ -472,51 +472,81 @@ impl IPal3MenuStateImpl for Pal3MenuState {
     }
 
     fn item_target_hint(&self, id: i32) -> i32 {
-        // Supported resource/poison subset; full native 0x49c660 scoring remains unverified.
-        let Some(item) = self.data.as_ref().and_then(|data| data.item(id as u32)) else {
+        let Some(data) = self.data.as_ref() else {
+            return -1;
+        };
+        let Some(item) = data.item(id as u32) else {
             return -1;
         };
         let state = self.state.borrow();
-        let mut best = (-1, -1i32);
-        for role in state.party().members() {
-            if !self.can_use_item(if item.use_scope == 2 { -1 } else { role }, id) {
-                continue;
+        let target = state.stats().item_target(state.party(), item, data);
+        target
+            .filter(|&role| {
+                state.party().contains(role)
+                    && self.can_use_item(if item.use_scope == 2 { -1 } else { role }, id)
+                    && state.stats().item_applies(role, item, data)
+            })
+            .unwrap_or(-1)
+    }
+
+    fn item_target_mask(&self, id: i32, role: i32, activating: bool) -> i32 {
+        let Some(data) = self.data.as_ref() else {
+            return 0;
+        };
+        let Some(item) = data.item(id as u32) else {
+            return 0;
+        };
+        let scope = self.item_use_scope(id);
+        let state = self.state.borrow();
+        if scope == 0 || !state.inventory().contains(id as u32) {
+            return 0;
+        }
+        let applies = |role| {
+            if matches!(id, 6401 | 6407 | 6427) {
+                self.can_use_item(-1, id)
+            } else {
+                state.stats().item_applies(role, item, data)
             }
-            let current = state.stats().character(role).unwrap().current();
-            let maximum = state
-                .stats()
-                .attributes(role, self.data.as_ref().unwrap())
-                .unwrap();
-            let mut score = 0i32;
-            for (i, deficit) in [
-                maximum.hp - current.hp,
-                maximum.qi - current.qi,
-                maximum.mp - current.mp,
-            ]
-            .into_iter()
-            .enumerate()
-            {
-                if item.amounts[i] > 0 {
-                    score = score.wrapping_add(deficit);
-                }
+        };
+        let bit = |role| {
+            if state.party().contains(role) {
+                1 << role
+            } else {
+                0
             }
-            for (i, &poison) in state
-                .stats()
-                .character(role)
-                .unwrap()
-                .poisons()
-                .iter()
-                .enumerate()
-            {
-                if item.conditions[i] != 0 {
-                    score = score.wrapping_add(poison as i32);
-                }
+        };
+        // Native tool activation (0x4a1112) bypasses recommendation scoring,
+        // including its no-potential gate for permanent/level-up items.
+        if activating && item.category == 3 {
+            return state.party().members().find(|&r| applies(r)).map_or(0, bit);
+        }
+        if state.party().contains(role) {
+            if item.category == 3 {
+                return if applies(role) { bit(role) } else { 0 };
             }
-            if score > best.1 {
-                best = (role, score);
+            if scope == 2 {
+                return state
+                    .party()
+                    .members()
+                    .filter(|&r| applies(r))
+                    .fold(0, |mask, r| mask | bit(r));
+            }
+            if applies(role) {
+                return bit(role);
             }
         }
-        best.0
+        let Some(target) = state.stats().item_target(state.party(), item, data) else {
+            return 0;
+        };
+        if !applies(target) {
+            return 0;
+        }
+        if scope == 2 {
+            // 0x49c9b0 tests the recommended role, not each displayed role.
+            state.party().members().fold(0, |mask, r| mask | bit(r))
+        } else {
+            bit(target)
+        }
     }
 
     fn music_volume(&self) -> f32 {
@@ -757,6 +787,81 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     static TEST_PATH_ID: AtomicUsize = AtomicUsize::new(0);
+
+    #[test]
+    fn native_inventory_arrows_distinguish_tools_recommendations_and_portrait_selection() {
+        use fileformats::pal3::gdb::ItemDefinition;
+        let medicine = ItemDefinition {
+            id: 6201,
+            category: 1,
+            use_scope: 1,
+            use_context: 2,
+            amounts: [100, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            ..Default::default()
+        };
+        let data = Rc::new(test_data_with_items(&[
+            medicine.clone(),
+            ItemDefinition {
+                id: 6209,
+                use_scope: 2,
+                ..medicine.clone()
+            },
+            ItemDefinition {
+                id: 6414,
+                category: 3,
+                use_kind: 12,
+                ..medicine.clone()
+            },
+            ItemDefinition {
+                id: 6426,
+                category: 3,
+                use_kind: 15,
+                amounts: [0; 12],
+                ..medicine.clone()
+            },
+            ItemDefinition {
+                id: 6410,
+                category: 3,
+                use_kind: 8,
+                ..medicine
+            },
+        ]));
+        let state = Rc::new(RefCell::new(PersistentState::new("test".into())));
+        {
+            let mut state = state.borrow_mut();
+            state.party_mut().set_in_team(1, true);
+            state.stats_mut().fill_all_resources(&data);
+            state.stats_mut().set_resource(0, Resource::Hp, 70, &data);
+            state.stats_mut().set_resource(1, Resource::Hp, 1, &data);
+            for id in [6201, 6209, 6414, 6426, 6410] {
+                state.grant_world_item(id, &data);
+            }
+        }
+        let ui = Pal3MenuState::create(state.clone(), Some(data.clone()));
+        assert_eq!(ui.item_target_hint(6201), 1);
+        assert_eq!(ui.item_target_mask(6201, -1, true), 2);
+        assert_eq!(ui.item_target_mask(6414, -1, true), 1);
+        assert_eq!(ui.item_target_mask(6414, -1, false), 2);
+        assert_eq!(ui.item_target_mask(6201, 0, false), 1);
+        assert_eq!(ui.item_target_mask(6209, -1, true), 3);
+        state.borrow_mut().stats_mut().fill_all_resources(&data);
+        state
+            .borrow_mut()
+            .stats_mut()
+            .set_resource(0, Resource::Hp, 70, &data);
+        assert_eq!(ui.item_target_mask(6209, -1, true), 3);
+        assert_eq!(ui.item_target_mask(6209, 1, false), 1);
+        assert_eq!(ui.item_target_mask(6201, 1, false), 1);
+        assert_eq!(ui.item_target_mask(6414, 1, false), 0);
+        state.borrow_mut().party_mut().set_in_team(0, false);
+        assert_eq!(ui.item_target_mask(6426, -1, true), 2);
+        assert_eq!(ui.item_target_mask(6426, -1, false), 0);
+        assert_eq!(ui.item_target_mask(6410, -1, true), 0);
+        assert_eq!(ui.item_target_mask(99999, -1, true), 0);
+        state.borrow_mut().remove_item(6426, &data);
+        assert_eq!(ui.item_target_mask(6426, -1, true), 0);
+        assert_eq!(state.borrow().inventory().quantity(6410), 1);
+    }
 
     #[test]
     fn native_skill_catalog_filters_roles_schools_and_remains_read_only() {

@@ -305,6 +305,65 @@ impl StatsState {
         score > 0
     }
 
+    pub(crate) fn item_target(
+        &self,
+        party: &PartyState,
+        item: &ItemDefinition,
+        data: &StatsData,
+    ) -> Option<i32> {
+        let mut scores = [0i32; 5];
+        let mut positive_potential = false;
+        for role in party.members() {
+            let character = &self.characters[role as usize];
+            let maximum = character.attributes(data, &self.magic_sword).values();
+            let mut current = maximum;
+            current[..3].copy_from_slice(&[
+                character.current.hp,
+                character.current.qi,
+                character.current.mp,
+            ]);
+            let mut potential = 0i32;
+            let score = &mut scores[role as usize];
+            for i in 0..12 {
+                if item.amounts[i] > 0 {
+                    *score = score.wrapping_add(maximum[i].wrapping_sub(current[i]));
+                    potential = potential.wrapping_add(item.amounts[i] as i32);
+                }
+                // Native 0x49c660 repeats poison contributions inside the
+                // attribute loop; eligibility 0x49ca70 counts them only once.
+                for element in [2, 3, 0, 1, 4] {
+                    if item.conditions[element] != 0 {
+                        *score = score.wrapping_add(character.poisons[element] as i32);
+                        potential = potential.wrapping_add(item.conditions[element] as i32);
+                    }
+                }
+                positive_potential |= potential > 0;
+            }
+        }
+        if !positive_potential {
+            return None;
+        }
+        let first = party
+            .members()
+            .find(|&role| scores[role as usize] > 0)
+            .unwrap_or(0);
+        let mut target = first;
+        let mut best = scores[first as usize].max(0);
+        for role in party.members() {
+            if scores[role as usize] >= best {
+                target = role;
+                best = scores[role as usize];
+            }
+        }
+        Some(if scores[target as usize] == 0 {
+            0
+        } else if scores[target as usize] == scores[first as usize] {
+            first
+        } else {
+            target
+        })
+    }
+
     pub(crate) fn apply_item(&mut self, role: i32, item: &ItemDefinition, data: &StatsData) {
         if item.use_kind == 15 {
             let character = &mut self.characters[role as usize];
@@ -529,6 +588,68 @@ fn native_round(value: f64) -> i32 {
 mod tests {
     use super::*;
     use crate::openpal3::loaders::stats::test_data;
+
+    #[test]
+    fn native_inventory_recommendation_weights_poison_twelve_times_without_scaling_deficits() {
+        let data = test_data();
+        let mut stats = StatsState::default();
+        let mut party = PartyState::default();
+        party.set_in_team(1, true);
+        for character in &mut stats.characters {
+            character.base = Attributes::from_values([100; 12]);
+            character.current = character.base.resources();
+            character.equipment = [None; 6];
+        }
+        stats.characters[0].current.hp = 80;
+        stats.characters[1].poisons[0] = 2;
+        let mut item = ItemDefinition {
+            amounts: [100, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            ..Default::default()
+        };
+        item.conditions[0] = 2;
+        assert_eq!(stats.item_target(&party, &item, &data), Some(1));
+        item.amounts[0] = i16::MAX;
+        item.modes[0] = 1;
+        assert_eq!(stats.item_target(&party, &item, &data), Some(1));
+        item.conditions[0] = 0;
+        assert_eq!(stats.item_target(&party, &item, &data), Some(0));
+        item.amounts[0] = -100;
+        assert_eq!(stats.item_target(&party, &item, &data), None);
+        item.conditions[0] = -2;
+        assert!(stats.item_applies(1, &item, &data));
+        assert_eq!(stats.item_target(&party, &item, &data), None);
+    }
+
+    #[test]
+    fn native_inventory_recommendation_preserves_potential_ties_and_absent_role_zero_fallback() {
+        let data = test_data();
+        let mut stats = StatsState::default();
+        let mut party = PartyState::default();
+        party.set_in_team(0, false);
+        party.set_in_team(3, true);
+        party.set_in_team(1, true);
+        for character in &mut stats.characters {
+            character.base = Attributes::from_values([100; 12]);
+            character.current = character.base.resources();
+            character.equipment = [None; 6];
+        }
+        let mut item = ItemDefinition::default();
+        item.modes[3] = 3;
+        assert!(stats.item_applies(1, &item, &data));
+        assert_eq!(stats.item_target(&party, &item, &data), None);
+        item.amounts[3] = 2;
+        assert_eq!(stats.item_target(&party, &item, &data), Some(0));
+        item.amounts[0] = 100;
+        stats.characters[1].current.hp = 50;
+        stats.characters[3].current.hp = 50;
+        assert_eq!(stats.item_target(&party, &item, &data), Some(1));
+        stats.characters[3].current.hp = 49;
+        assert_eq!(stats.item_target(&party, &item, &data), Some(3));
+        party.set_in_team(3, false);
+        assert_eq!(stats.item_target(&party, &item, &data), Some(1));
+        party.set_in_team(1, false);
+        assert_eq!(stats.item_target(&party, &item, &data), None);
+    }
 
     #[test]
     fn hazard_damage_matches_native_final_truncation_party_filter_and_nonfatal_clamp() {

@@ -264,6 +264,8 @@ interface IPal3MenuState: IUnknown {
     bool use_item(int role, int id);
     // Native deficit/condition recommendation; -1 when no target is eligible.
     int item_target_hint(int id);
+    // Five role bits. Role -1 recomputes; activating uses the native tool-arm path.
+    int item_target_mask(int id, int role, bool activating);
     void play_item_menu_sound(bool accepted);
     void paint_item_effects(IUiHost ui, IPal3UiAtlas atlas, int role, float x, float y, float scale);
     float music_volume();

@@ -1402,6 +1402,62 @@ fn native_inventory_second_click_targets_reuses_and_cancels_without_consuming_in
         1,
         "one party application consumes one copy"
     );
+    let arrows = || {
+        recorder
+            .calls
+            .borrow()
+            .iter()
+            .filter_map(|call| match call {
+                UiCall::ImageRect {
+                    texture_com_id, y0, ..
+                } if *texture_com_id == sprite_id("ui/GameMainUI/Communal/NeedArrow.tga") => {
+                    Some(*y0)
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(arrows().len(), 2);
+    state
+        .borrow_mut()
+        .stats_mut()
+        .set_resource(1, Resource::Hp, 9999, &data);
+    click(740., 210.);
+    assert_eq!(
+        arrows().len(),
+        1,
+        "portrait selection shows only applicable party targets"
+    );
+    assert!(
+        arrows()[0] < 250.,
+        "only the injured first member has an arrow"
+    );
+    assert_eq!(state.borrow().inventory().quantity(44), 1);
+    recorder.mouse_clicked_buttons.borrow_mut()[1] = true;
+    frame(0., 0., false, false, false);
+    recorder.mouse_clicked_buttons.borrow_mut()[1] = false;
+    second_click(300., 208.);
+    assert_eq!(
+        arrows().len(),
+        2,
+        "re-arming follows native party recommendation, not per-role eligibility"
+    );
+    recorder.mouse_clicked_buttons.borrow_mut()[1] = true;
+    frame(0., 0., false, false, false);
+    recorder.mouse_clicked_buttons.borrow_mut()[1] = false;
+    {
+        let mut state = state.borrow_mut();
+        state.party_mut().set_in_team(0, false);
+        state.party_mut().set_in_team(1, false);
+        state.party_mut().set_in_team(4, true);
+        state.stats_mut().set_resource(4, Resource::Hp, 1, &data);
+    }
+    second_click(300., 208.);
+    assert_eq!(
+        arrows().len(),
+        1,
+        "role-four recommendation survives absent lower role IDs"
+    );
 }
 
 #[test]
