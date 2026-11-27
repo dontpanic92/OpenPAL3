@@ -46,6 +46,7 @@ use shared::openpal3::comdef::{
     IPal3StatusRenderer, IPal3UiAtlas,
 };
 use shared::openpal3::directors::AdventureDirector;
+use shared::openpal3::movie_gallery::{MOVIES, MovieUnlocks, Pal3MovieGallery, record_movie};
 use shared::openpal3::save_slots::{Pal3SaveSlots, SAVE_SLOT_COUNT};
 use shared::openpal3::states::persistent_state::PersistentState;
 use shared::openpal3::ui_atlas::{AtlasManifest, Pal3UiAtlas};
@@ -549,6 +550,9 @@ impl IPal3ServiceImpl for Pal3Service {
     }
 
     fn create_adventure_director(&self, asset_path: &str) -> ComRc<IDirector> {
+        if self.last_game.get() == GameType::PAL3 {
+            record_movie("Pal3op");
+        }
         let asset_mgr = self.asset_manager_for(asset_path);
         let dialog_renderer = self.build_dialog_renderer(asset_mgr.clone());
         let status_renderer = self.build_status_renderer(asset_mgr.clone());
@@ -690,6 +694,42 @@ impl IPal3ServiceImpl for Pal3Service {
 
     fn exit_app(&self) {
         self.app.request_exit();
+    }
+
+    fn movie_gallery(
+        &self,
+        asset_path: &str,
+    ) -> Option<ComRc<shared::openpal3::comdef::IPal3MovieGallery>> {
+        (self.last_game.get() == GameType::PAL3)
+            .then(|| Pal3MovieGallery::snapshot(self.asset_manager_for(asset_path).vfs()))
+    }
+
+    fn replay_movie(&self, asset_path: &str, index: i32) -> Option<ComRc<IVideoHandle>> {
+        if self.last_game.get() != GameType::PAL3
+            || !MovieUnlocks::load(&MovieUnlocks::path())
+                .ok()?
+                .unlocked(index)
+        {
+            return None;
+        }
+        let movie = MOVIES.get(usize::try_from(index).ok()?)?;
+        let cache = self.texture_cache.borrow().clone()?;
+        let asset_mgr = self.asset_manager_for(asset_path);
+        let reader = asset_mgr
+            .try_load_movie_data(movie)
+            .map_err(|error| {
+                log::warn!("Cannot replay PAL3 movie {movie}: {error}");
+            })
+            .ok()?;
+        let engine_rc = self.app.engine();
+        let engine = engine_rc.borrow();
+        let factory = engine.rendering_component_factory();
+        let audio = engine.audio_engine();
+        drop(engine);
+        let mut player = factory.create_video_player();
+        let (width, height) =
+            player.play(factory.clone(), audio, reader, VideoCodec::Bik, false)?;
+        Some(VideoHandle::create(cache, player, width, height))
     }
 
     fn play_intro_movie(&self, asset_path: &str) -> Option<ComRc<IVideoHandle>> {

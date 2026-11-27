@@ -138,6 +138,9 @@ impl GlobalState {
     }
 
     pub fn play_movie(&mut self, name: &str) -> Option<(u32, u32)> {
+        if self.asset_mgr.game() == crate::GameType::PAL3 {
+            crate::openpal3::movie_gallery::record_movie(name);
+        }
         let reader = self.asset_mgr.load_movie_data(name);
         let factory = self.asset_mgr.component_factory();
         self.video_player.play(

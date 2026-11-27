@@ -10,6 +10,7 @@ pub mod loaders;
 mod menu_effects;
 pub(crate) mod menu_preview;
 pub mod menu_state;
+pub mod movie_gallery;
 pub mod save_slots;
 pub mod scene;
 pub mod states;

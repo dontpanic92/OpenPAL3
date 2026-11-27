@@ -1,0 +1,123 @@
+import radiance;
+import scripting_services;
+import shared.openpal3;
+import radiance_scripting.ui as gui;
+import yaobow.openpal3.save_load;
+
+let ROOT: string = "ui/menu/qcym/";
+
+pub fn thumbnail(index: int) -> string {
+    let group = "ABCDEFJ".char_at(index / 8)!;
+    let number = "01234567".char_at(index % 8)!;
+    return ROOT + "qcym_" + group + number + ".tga";
+}
+
+pub struct Gallery(
+    pub snapshot: ?&openpal3.IPal3MovieGallery = null,
+    pub movie: ?&scripting_services.IVideoHandle = null,
+    pub selected: int = -1,
+    pub feedback: string = "",
+    held: int = -1,
+    prev_down: bool = true,
+    blocked: bool = false,
+    action: int = -2,
+) {
+    pub fn begin(self: &Self, snapshot: &openpal3.IPal3MovieGallery) {
+        self.snapshot = snapshot;
+        self.selected = -1;
+        self.feedback = "";
+        self.held = -1;
+        self.prev_down = true;
+        self.blocked = false;
+    }
+
+    // Returns a movie index, -1 for Back, or -2 for no action.
+    // Player construction belongs to the director update, outside the UI frame.
+    pub fn paint(self: &Self, ui: &radiance.IUiHost, atlas: &openpal3.IPal3UiAtlas,
+        escape: bool) -> int {
+        ui.set_press_latch(-1);
+        let down = ui.mouse_down(0);
+        let press = down && !self.prev_down;
+        let release = !down && self.prev_down;
+        self.prev_down = down;
+        let viewport = gui.Rect(0.0, 0.0, ui.display_size_x() as float, ui.display_size_y() as float);
+        ui.fill_rect(0.0, 0.0, viewport.w, viewport.h, 0.0, 0.0, 0.0, 1.0);
+        let native = gui.Size(800.0, 600.0);
+        let rect = viewport.fit(native);
+        let scale = viewport.fit_scale(native);
+        if scale <= 0.0 { return -2; }
+
+        if self.movie != null {
+            let movie = self.movie!;
+            if escape || movie.state() == 0 {
+                movie.stop();
+                self.movie = null;
+                self.held = -1;
+                self.blocked = true;
+                return -2;
+            }
+            // Original 0x457070 centres the movie at its decoded size.
+            let x = rect.x + (800.0 - (movie.width() as float)) * 0.5 * scale;
+            let y = rect.y + (600.0 - (movie.height() as float)) * 0.5 * scale;
+            ui.clip_rect(rect.x, rect.y, rect.right(), rect.bottom(), () => {
+                ui.image_rect(movie.texture_com_id(), x, y,
+                    x + (movie.width() as float) * scale, y + (movie.height() as float) * scale,
+                    0.0, 0.0, 1.0, 1.0);
+            });
+            return -2;
+        }
+        if self.blocked && !down { self.blocked = false; }
+        if escape { return -1; }
+        if self.snapshot == null { return -2; }
+        let snapshot = self.snapshot!;
+        let mx = (ui.mouse_pos_x() - rect.x) / scale;
+        let my = (ui.mouse_pos_y() - rect.y) / scale;
+        let c = &save_load.Canvas(ui, atlas, rect.x, rect.y, scale);
+        self.action = -2;
+        ui.clip_rect(rect.x, rect.y, rect.right(), rect.bottom(), () => {
+            let mut hover = -1;
+            c.blit(ROOT + "background.tga", 0.0, 0.0, 800.0, 600.0);
+            for i in Range(0, 52) {
+                if !snapshot.unlocked(i) { continue; }
+                let x = 44.0 + ((i % 8) as float) * 89.0;
+                let y = 60.0 + ((i / 8) as float) * 68.0;
+                c.blit(thumbnail(i), x, y, 86.0, 63.0);
+                let over = mx >= x && mx < x + 86.0 && my >= y && my < y + 63.0;
+                if over { hover = i; }
+                if press && over && !self.blocked { self.held = i; }
+                if release && over && self.held == i && !self.blocked {
+                    self.selected = i;
+                    self.feedback = "";
+                    self.action = i;
+                }
+            }
+            let back = mx >= 745.0 && mx < 801.0 && my >= 537.0 && my < 599.0;
+            if press && back && !self.blocked { self.held = 52; }
+            if release && back && self.held == 52 && !self.blocked { self.action = -1; }
+            let state = if back { if down { "2" } else { "1" } } else { "0" };
+            c.blit("ui/menu/sub_exit" + state + ".tga", 745.0, 537.0, 56.0, 64.0);
+            if !down { self.held = -1; }
+            let title = if self.feedback != "" { self.feedback }
+                else { if hover >= 0 { snapshot.title(hover) } else { "" } };
+            ui.clip_rect(c.x + 408.0 * scale, c.y + 476.0 * scale,
+                c.x + 744.0 * scale, c.y + 526.0 * scale, () => {
+                let mut line = "";
+                let mut width = 0;
+                let mut row = 0.0;
+                for i in Range(0, title.len_chars()) {
+                    let ch = title.char_at(i)!;
+                    let advance = if ch.len_bytes() == 1 { 1 } else { 2 };
+                    if ch == "\n" || width + advance > 42 {
+                        ui.text_at_size(c.x + 408.0 * scale, c.y + (476.0 + row) * scale,
+                            16.0 * scale, 0.0, 0.0, 0.0, 1.0, line);
+                        line = ""; width = 0; row = row + 16.0;
+                    }
+                    if ch != "\n" { line = line + ch; width = width + advance; }
+                }
+                ui.text_at_size(c.x + 408.0 * scale, c.y + (476.0 + row) * scale,
+                    16.0 * scale, 0.0, 0.0, 0.0, 1.0, line);
+            });
+        });
+        return self.action;
+    }
+}

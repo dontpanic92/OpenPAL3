@@ -1,7 +1,6 @@
 // PAL3 cover and standalone load screen. Cover coordinates are reconstructed
 // from the original executable's 0x44c120 constructor; PAL3A keeps its existing
-// layout. New Game, Load, Credits, and Exit are functional; the other cover
-// pages remain unavailable.
+// layout. New Game, Load, Dream, Credits, and Exit are functional.
 
 import radiance;
 import scripting_services;
@@ -11,6 +10,7 @@ import shared.openpal3;
 // the `ui: IUiHost` render parameter.
 import radiance_scripting.ui as gui;
 import yaobow.openpal3.save_load;
+import yaobow.openpal3.dream;
 
 // Intent codes drained once per `update`.
 // What the user asked for on this frame, drained once per `update`.
@@ -22,10 +22,12 @@ pub enum Intent(
     NewGame,
     Exit,
     Load,
+    ReplayMovie,
 );
 
 let MODE_MAIN: int        = 0;
 let MODE_LOAD: int        = 1;
+let MODE_DREAM: int       = 2;
 
 let NO_SLOT: int          = -1;
 
@@ -39,7 +41,8 @@ let NO_SLOT: int          = -1;
 //   * jiudehuiyi   (top-right)     — Load Game ("旧的回忆" / old memories)
 //   * likaiyouxi   (bottom-right)  — Exit
 //   * zhizuoqun (bottom-left)     — scrolling credits (PAL3 only)
-//   * qianchenyimeng (left scroll), babitongyou (right scroll) — inert
+//   * qianchenyimeng (left scroll) — unlocked movie gallery (PAL3 only)
+//   * babitongyou (right scroll) — unavailable native minigames
 // Button positions, indexed by **sprite name** rather than by role —
 // that mapping (which button is "New Game" etc.) lives only in
 // `dispatch_click`. Sprite dimensions noted for reference.
@@ -248,6 +251,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal3StartMenuDirector(
     pub taiji: &TaijiMotion = &TaijiMotion(),
     pub credits: &CreditsRoll = &CreditsRoll(),
     pub credits_dismissing: bool = false,
+    pub gallery: &dream.Gallery = &dream.Gallery(),
 ) {
     pub fn activate(self: &Self) -> int {
         // When an intro movie is queued we postpone BGM start until
@@ -275,6 +279,10 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal3StartMenuDirector(
     }
 
     pub fn deactivate(self: &Self) -> int {
+        if self.gallery.movie != null {
+            self.gallery.movie!.stop();
+            self.gallery.movie = null;
+        }
         if self.bgm != null {
             self.bgm!.stop();
         }
@@ -355,6 +363,17 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal3StartMenuDirector(
 
                 self.taiji_t = 0.0;
             }
+        }
+
+        if self.mode == MODE_DREAM && self.atlas != null {
+            let action = self.gallery.paint(ui, self.atlas!, self.host.input().key_pressed(KEY_ESCAPE));
+            if action == -1 {
+                self.go_main();
+                self.credits_dismissing = true;
+                if self.bgm != null { self.bgm!.resume(); }
+            }
+            if action >= 0 { self.intent = Intent.ReplayMovie; }
+            return 0;
         }
 
         if self.mode == MODE_LOAD && self.atlas != null {
@@ -465,6 +484,16 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal3StartMenuDirector(
             self.mode = MODE_LOAD;
             return;
         }
+        if wid == WID_QIANCHENYIMENG && self.atlas != null {
+            let atlas = self.atlas!;
+            if !atlas.has_sprite(BTN_QIANCHENYIMENG_BASE + "0.tga")
+                || atlas.sprite("ui/menu/qcym/background.tga") == null { return; }
+            let snapshot = self.host.pal3().movie_gallery(self.asset_path);
+            if snapshot == null { return; }
+            self.gallery.begin(snapshot!);
+            self.mode = MODE_DREAM;
+            if self.bgm != null { self.bgm!.pause(); }
+        }
     }
 
     pub fn fire_load_slot(self: &Self, slot: int) {
@@ -517,6 +546,12 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal3StartMenuDirector(
                 // closing branch above when the cover finishes closing.
                 self.closing = true;
                 self.taiji.step = 2.8;
+            },
+            Intent.ReplayMovie => {
+                if self.mode == MODE_DREAM && self.gallery.movie == null {
+                    self.gallery.movie = self.host.pal3().replay_movie(self.asset_path, self.gallery.selected);
+                    if self.gallery.movie == null { self.gallery.feedback = "无法播放此动画"; }
+                }
             },
             Intent.None => {},
         }

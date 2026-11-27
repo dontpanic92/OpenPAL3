@@ -10,6 +10,7 @@ interface IAudioSource: IUnknown {
     void stop();
     void update();
     int state();
+    void resume();
 }
 [uuid(c27b7e01-4b90-4392-b66f-3a96f48f2e99)]
 class AudioSource: IAudioSource {}

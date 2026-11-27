@@ -58,6 +58,9 @@ impl IAudioSourceImpl for AudioSource {
     fn pause(&self) {
         self.inner.borrow_mut().pause();
     }
+    fn resume(&self) {
+        self.inner.borrow_mut().resume();
+    }
     fn stop(&self) {
         self.inner.borrow_mut().stop();
     }

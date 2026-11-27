@@ -55,7 +55,44 @@ mod comdef {
     pub use yaobow_lib::comdef::yaobow_services;
 }
 
-struct TestHost;
+struct TestHost(
+    Option<ComRc<shared::openpal3::comdef::IPal3Service>>,
+    std::rc::Rc<std::cell::Cell<bool>>,
+);
+struct TestInput(std::rc::Rc<std::cell::Cell<bool>>);
+radiance_scripting::ComObject_InputService!(crate::TestInput);
+impl radiance_scripting::comdef::services::IInputServiceImpl for TestInput {
+    fn key_pressed(&self, key: i32) -> bool {
+        key == 38 && self.0.get()
+    }
+    fn key_down(&self, _: i32) -> bool {
+        false
+    }
+    fn mouse_x(&self) -> f32 {
+        0.
+    }
+    fn mouse_y(&self) -> f32 {
+        0.
+    }
+    fn axis(&self, _: i32) -> f32 {
+        0.
+    }
+    fn mouse_button_down(&self, _: i32) -> bool {
+        false
+    }
+    fn mouse_button_pressed(&self, _: i32) -> bool {
+        false
+    }
+    fn mouse_delta_x(&self) -> f32 {
+        0.
+    }
+    fn mouse_delta_y(&self) -> f32 {
+        0.
+    }
+    fn mouse_wheel(&self) -> f32 {
+        0.
+    }
+}
 yaobow_lib::ComObject_YaobowHostContext!(crate::TestHost);
 impl radiance_scripting::comdef::services::IHostContextImpl for TestHost {
     fn scene_manager(&self) -> ComRc<radiance::comdef::ISceneManager> {
@@ -71,7 +108,7 @@ impl radiance_scripting::comdef::services::IHostContextImpl for TestHost {
         unimplemented!()
     }
     fn input(&self) -> ComRc<radiance_scripting::comdef::services::IInputService> {
-        unimplemented!()
+        ComRc::from_object(TestInput(self.1.clone()))
     }
     fn games(&self) -> ComRc<radiance_scripting::comdef::services::IGameRegistry> {
         unimplemented!()
@@ -88,7 +125,7 @@ impl radiance_scripting::comdef::services::IHostContextImpl for TestHost {
 }
 impl yaobow_lib::comdef::yaobow_services::IYaobowHostContextImpl for TestHost {
     fn pal3(&self) -> ComRc<shared::openpal3::comdef::IPal3Service> {
-        unimplemented!()
+        self.0.as_ref().unwrap().clone()
     }
     fn pal4(&self) -> ComRc<shared::openpal4::comdef::IPal4Service> {
         unimplemented!()
@@ -117,8 +154,12 @@ impl IPal3UiAtlasImpl for CreditsAtlas {
         }
     }
     fn sprite(&self, name: &str) -> Option<ComRc<radiance_scripting::comdef::services::ISprite>> {
-        (name == "ui/menu/log0.tga" || (name == "ui/uilib/zzq.tga" && self.credits))
-            .then(|| ComRc::from_object(Thumbnail))
+        (name == "ui/menu/log0.tga"
+            || (name == "ui/uilib/zzq.tga" && self.credits)
+            || (self.native
+                && self.credits
+                && (name.starts_with("ui/menu/qcym/") || name.starts_with("ui/menu/sub_exit"))))
+        .then(|| ComRc::from_object(Thumbnail))
     }
     fn native_width(&self) -> i32 {
         800
@@ -332,7 +373,7 @@ fn native_credits_route_scroll_fade_and_dismiss_without_click_through() {
     "#).unwrap();
     let host_id = host.intern(ComRc::<
         yaobow_lib::comdef::yaobow_services::IYaobowHostContext,
-    >::from_object(TestHost));
+    >::from_object(TestHost(None, Default::default())));
     let host_box = host
         .foreign_box("yaobow.comdef.yaobow_services.IYaobowHostContext", host_id)
         .unwrap();
@@ -434,6 +475,338 @@ fn native_credits_route_scroll_fade_and_dismiss_without_click_through() {
     click(&d, 3);
     assert_eq!(value("new_game", &d), Data::Int(1));
     for root in roots.into_inner() {
+        host.unroot(root);
+    }
+}
+
+struct TestMovies;
+shared::ComObject_Pal3MovieGallery!(crate::TestMovies);
+impl shared::openpal3::comdef::IPal3MovieGalleryImpl for TestMovies {
+    fn unlocked(&self, index: i32) -> bool {
+        [0, 31, 32, 51].contains(&index)
+    }
+    fn title(&self, index: i32) -> &str {
+        match index {
+            0 => "opening",
+            51 => "credits",
+            _ => "another movie",
+        }
+    }
+}
+
+#[derive(Default)]
+struct MovieCalls {
+    requests: std::cell::RefCell<Vec<i32>>,
+    state: std::cell::Cell<i32>,
+    missing: std::cell::Cell<bool>,
+    audio: std::cell::RefCell<Vec<&'static str>>,
+}
+struct TestMovie(std::rc::Rc<MovieCalls>);
+shared::ComObject_VideoHandle!(crate::TestMovie);
+impl radiance_scripting::comdef::services::IVideoHandleImpl for TestMovie {
+    fn state(&self) -> i32 {
+        self.0.state.get()
+    }
+    fn stop(&self) {
+        self.0.state.set(0);
+    }
+    fn width(&self) -> i32 {
+        640
+    }
+    fn height(&self) -> i32 {
+        480
+    }
+    fn texture_com_id(&self) -> i32 {
+        -9876
+    }
+    fn toggle(&self) {
+        unimplemented!()
+    }
+    fn duration_ms(&self) -> i32 {
+        1000
+    }
+    fn position_ms(&self) -> i32 {
+        0
+    }
+    fn seek_ms(&self, _: i32) {
+        unimplemented!()
+    }
+    fn restart(&self) {
+        unimplemented!()
+    }
+    fn set_looping(&self, _: bool) {
+        unimplemented!()
+    }
+    fn looping(&self) -> bool {
+        false
+    }
+}
+struct TestBgm(std::rc::Rc<MovieCalls>);
+radiance_scripting::ComObject_AudioSource!(crate::TestBgm);
+impl radiance_scripting::comdef::services::IAudioSourceImpl for TestBgm {
+    fn play(&self, _: bool) {
+        self.0.audio.borrow_mut().push("play");
+    }
+    fn pause(&self) {
+        self.0.audio.borrow_mut().push("pause");
+    }
+    fn resume(&self) {
+        self.0.audio.borrow_mut().push("resume");
+    }
+    fn stop(&self) {
+        self.0.audio.borrow_mut().push("stop");
+    }
+    fn update(&self) {}
+    fn state(&self) -> i32 {
+        1
+    }
+}
+struct TestPal3Service(std::rc::Rc<MovieCalls>);
+yaobow_lib::ComObject_Pal3Service!(crate::TestPal3Service);
+impl shared::openpal3::comdef::IPal3ServiceImpl for TestPal3Service {
+    fn movie_gallery(&self, _: &str) -> Option<ComRc<shared::openpal3::comdef::IPal3MovieGallery>> {
+        Some(ComRc::from_object(TestMovies))
+    }
+    fn replay_movie(
+        &self,
+        _: &str,
+        index: i32,
+    ) -> Option<ComRc<radiance_scripting::comdef::services::IVideoHandle>> {
+        self.0.requests.borrow_mut().push(index);
+        if self.0.missing.get() {
+            return None;
+        }
+        self.0.state.set(1);
+        Some(ComRc::from_object(TestMovie(self.0.clone())))
+    }
+    fn create_director(&self, _: &str, _: i32) -> ComRc<radiance::comdef::IDirector> {
+        unimplemented!()
+    }
+    fn create_adventure_director(&self, _: &str) -> ComRc<radiance::comdef::IDirector> {
+        unimplemented!()
+    }
+    fn load_adventure_director(
+        &self,
+        _: &str,
+        _: i32,
+    ) -> Option<ComRc<radiance::comdef::IDirector>> {
+        unimplemented!()
+    }
+    fn save_slot_exists(&self, _: i32) -> bool {
+        unimplemented!()
+    }
+    fn save_slot_count(&self) -> i32 {
+        36
+    }
+    fn save_slots(&self) -> ComRc<IPal3SaveSlots> {
+        ComRc::from_object(TestSlots)
+    }
+    fn load_menu_bgm(
+        &self,
+        _: &str,
+    ) -> Option<ComRc<radiance_scripting::comdef::services::IAudioSource>> {
+        unimplemented!()
+    }
+    fn exit_app(&self) {
+        unimplemented!()
+    }
+    fn play_intro_movie(
+        &self,
+        _: &str,
+    ) -> Option<ComRc<radiance_scripting::comdef::services::IVideoHandle>> {
+        None
+    }
+    fn create_sprite_service(
+        &self,
+        _: &str,
+    ) -> Option<ComRc<radiance_scripting::comdef::services::ISpriteService>> {
+        None
+    }
+    fn create_ui_atlas(&self, _: &str) -> Option<ComRc<IPal3UiAtlas>> {
+        None
+    }
+}
+
+#[test]
+fn dream_routes_unlocked_movies_defers_player_creation_and_restores_cover_audio() {
+    let host = ScriptHost::new();
+    host.set_script_assets(install_script_assets());
+    host.load_source(r#"
+        import radiance;
+        import yaobow.yaobow_services;
+        import scripting_services;
+        import shared.openpal3;
+        import radiance_scripting.ui as gui;
+        import yaobow.openpal3.start_menu;
+        import yaobow.openpal3.save_load;
+        import yaobow.openpal3.dream;
+        pub fn make(host: &yaobow_services.IYaobowHostContext, atlas: &openpal3.IPal3UiAtlas,
+            bgm: &scripting_services.IAudioSource) -> &start_menu.Pal3StartMenuDirector {
+            let xs: array<float> = [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0];
+            let names: array<string> = ["","","","","","","","","","","","","","","","","",""];
+            &start_menu.Pal3StartMenuDirector(host, "", atlas, bgm,
+                start_menu.Intent.None, 0, -1, 0.0, 0.4, false,
+                box(xs), box(xs), box(xs), box(names), null, false,
+                gui.make_ctx(), save_load.make_browser(), false)
+        }
+        pub fn open(d: &start_menu.Pal3StartMenuDirector) { d.dispatch_click(1); }
+        pub fn mode(d: &start_menu.Pal3StartMenuDirector) -> int { d.mode }
+        pub fn frame(d: &start_menu.Pal3StartMenuDirector, ui: &radiance.IUiHost) { d.render(ui, 0.0); }
+        pub fn update(d: &start_menu.Pal3StartMenuDirector) { d.update(0.0); }
+        pub fn feedback(d: &start_menu.Pal3StartMenuDirector) -> bool { d.gallery.feedback != "" }
+        pub fn movie(d: &start_menu.Pal3StartMenuDirector) -> bool { d.gallery.movie != null }
+        pub fn thumb(index: int) -> string { dream.thumbnail(index) }
+    "#).unwrap();
+    let calls = std::rc::Rc::new(MovieCalls::default());
+    let escape = std::rc::Rc::new(std::cell::Cell::new(false));
+    let host_id = host.intern(ComRc::<
+        yaobow_lib::comdef::yaobow_services::IYaobowHostContext,
+    >::from_object(TestHost(
+        Some(ComRc::from_object(TestPal3Service(calls.clone()))),
+        escape.clone(),
+    )));
+    let host_box = host
+        .foreign_box("yaobow.comdef.yaobow_services.IYaobowHostContext", host_id)
+        .unwrap();
+    let bgm_id = host.intern(
+        ComRc::<radiance_scripting::comdef::services::IAudioSource>::from_object(TestBgm(
+            calls.clone(),
+        )),
+    );
+    let bgm = host
+        .foreign_box("radiance_scripting.comdef.services.IAudioSource", bgm_id)
+        .unwrap();
+    let (recorder, ui) = RecordingUiHost::create();
+    recorder.set_display_size(1600, 600);
+    let ui_id = host.intern(ui);
+    let ui_box = host.foreign_box("radiance.comdef.IUiHost", ui_id).unwrap();
+    let mut roots = vec![
+        host.root(host_box.clone()),
+        host.root(bgm.clone()),
+        host.root(ui_box.clone()),
+    ];
+    let mut make = |native, available| {
+        let atlas_id = host.intern(ComRc::<IPal3UiAtlas>::from_object(CreditsAtlas {
+            native,
+            credits: available,
+        }));
+        let atlas = host
+            .foreign_box("shared.openpal3.comdef.IPal3UiAtlas", atlas_id)
+            .unwrap();
+        let d = host
+            .call_returning_data("make", vec![host_box.clone(), atlas, bgm.clone()])
+            .unwrap();
+        roots.push(host.root(d.clone()));
+        d
+    };
+    for (native, available) in [(false, true), (true, false)] {
+        let d = make(native, available);
+        host.call_void("open", vec![d.clone()]).unwrap();
+        assert_eq!(
+            host.call_returning_data("mode", vec![d]).unwrap(),
+            Data::Int(0)
+        );
+    }
+    let d = make(true, true);
+    let value = |name| host.call_returning_data(name, vec![d.clone()]).unwrap();
+    let frame = || {
+        host.call_void("frame", vec![d.clone(), ui_box.clone()])
+            .unwrap()
+    };
+    let update = || host.call_void("update", vec![d.clone()]).unwrap();
+    host.call_void("open", vec![d.clone()]).unwrap();
+    assert_eq!(value("mode"), Data::Int(2));
+    assert_eq!(*calls.audio.borrow(), ["pause"]);
+    *recorder.mouse_pos.borrow_mut() = (445., 61.);
+    frame();
+    assert!(
+        recorder
+            .calls
+            .borrow()
+            .iter()
+            .any(|c| matches!(c, UiCall::TextAt { s, .. } if s == "opening"))
+    );
+    for (index, x, y) in [
+        (0, 44., 60.),
+        (31, 667., 264.),
+        (32, 44., 332.),
+        (51, 311., 468.),
+    ] {
+        assert!(
+            recorder.calls.borrow().iter().any(|c| matches!(c,
+            UiCall::ImageRect { x0,y0,x1,y1,.. } if (*x0,*y0,*x1,*y1) == (400.+x,y,486.+x,y+63.))),
+            "native grid {index}"
+        );
+    }
+    let click = |index: i32| {
+        *recorder.mouse_pos.borrow_mut() = (
+            445. + (index % 8) as f32 * 89.,
+            61. + (index / 8) as f32 * 68.,
+        );
+        recorder.set_mouse_down(true);
+        frame();
+        recorder.set_mouse_down(false);
+        frame();
+    };
+    click(1);
+    update();
+    assert!(
+        calls.requests.borrow().is_empty(),
+        "locked entries stay hidden and inert"
+    );
+    click(0);
+    assert!(
+        calls.requests.borrow().is_empty(),
+        "do not create/upload a player inside a UI frame"
+    );
+    update();
+    assert_eq!(*calls.requests.borrow(), [0]);
+    recorder.calls.borrow_mut().clear();
+    frame();
+    assert!(recorder.calls.borrow().iter().any(|c| matches!(c,
+        UiCall::ImageRect { texture_com_id, x0,y0,x1,y1,.. } if *texture_com_id == -9876 && (*x0,*y0,*x1,*y1) == (480.,60.,1120.,540.))));
+    escape.set(true);
+    frame();
+    escape.set(false);
+    assert_eq!(value("movie"), Data::Int(0));
+    assert_eq!(
+        value("mode"),
+        Data::Int(2),
+        "Escape ends replay, not the gallery"
+    );
+    frame();
+    calls.missing.set(true);
+    click(51);
+    update();
+    frame();
+    assert_eq!(value("feedback"), Data::Int(1));
+    assert_eq!(value("movie"), Data::Int(0));
+    calls.missing.set(false);
+    click(32);
+    update();
+    calls.state.set(0);
+    frame();
+    frame();
+    assert_eq!(
+        value("movie"),
+        Data::Int(0),
+        "natural completion returns to thumbnails"
+    );
+    for (index, expected) in [(0, "A0"), (31, "D7"), (32, "E0"), (48, "J0"), (51, "J3")] {
+        assert_eq!(
+            host.call_returning_data("thumb", vec![Data::Int(index)])
+                .unwrap(),
+            Data::string(format!("ui/menu/qcym/qcym_{expected}.tga"))
+        );
+    }
+    *recorder.mouse_pos.borrow_mut() = (1150., 550.);
+    recorder.set_mouse_down(true);
+    frame();
+    recorder.set_mouse_down(false);
+    frame();
+    assert_eq!(value("mode"), Data::Int(0));
+    assert_eq!(*calls.audio.borrow(), ["pause", "resume"]);
+    for root in roots {
         host.unroot(root);
     }
 }

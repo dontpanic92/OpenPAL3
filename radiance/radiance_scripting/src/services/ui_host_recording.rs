@@ -261,6 +261,7 @@ pub struct RecordingUiHost {
     /// Seeded result of `mouse_down(_)` (defaults to `false`). Toggle
     /// across paint passes to simulate a press (down) then release (up).
     pub mouse_is_down: RefCell<bool>,
+    pub mouse_pos: RefCell<(f32, f32)>,
     pub mouse_wheel_delta: Cell<f32>,
     pub mouse_clicked_buttons: RefCell<[bool; 5]>,
     pub time_milliseconds: Cell<i32>,
@@ -691,10 +692,10 @@ impl IUiHostImpl for HostFacade {
         self.inner.mouse_wheel_delta.get()
     }
     fn mouse_pos_x(&self) -> f32 {
-        0.0
+        self.inner.mouse_pos.borrow().0
     }
     fn mouse_pos_y(&self) -> f32 {
-        0.0
+        self.inner.mouse_pos.borrow().1
     }
     fn content_region_avail_x(&self) -> i32 {
         0

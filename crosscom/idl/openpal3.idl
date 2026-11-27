@@ -114,7 +114,21 @@ interface IPal3Service: IUnknown {
     // start menu composes itself by name through this. Null when the
     // manifest is missing or the texture cache isn't installed.
     IPal3UiAtlas? create_ui_atlas(&str asset_path);
+
+    IPal3MovieGallery? movie_gallery(&str asset_path);
+    // Replay only an unlocked catalog entry; null on missing/invalid media.
+    IVideoHandle? replay_movie(&str asset_path, int index);
 }
+
+// Cross-save collection snapshot; absent for the unresearched PAL3A gallery.
+[uuid(61f04c91-6ea4-4db4-b0e6-39b940a2ea72)]
+interface IPal3MovieGallery: IUnknown {
+    bool unlocked(int index);
+    &str title(int index);
+}
+
+[uuid(f48140f1-b3cf-48aa-9d4b-cd0640c29cd1)]
+class Pal3MovieGallery: IPal3MovieGallery {}
 
 // PAL3 UI-atlas adapter — bridges the PAL3-specific `UI_opt.tli` atlas
 // manifest to the generic `ISprite` layer. Sprite names are the logical

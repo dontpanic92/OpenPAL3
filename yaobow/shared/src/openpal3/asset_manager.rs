@@ -499,19 +499,23 @@ impl AssetManager {
     }
 
     pub fn load_movie_data(&self, movie_name: &str) -> Box<dyn SeekRead> {
+        self.try_load_movie_data(movie_name).unwrap()
+    }
+
+    pub fn try_load_movie_data(&self, movie_name: &str) -> io::Result<Box<dyn SeekRead>> {
         let movie = self.movie_path.join(movie_name).with_extension("bik");
         let end_movie = self.movie_end_path.join(movie_name).with_extension("bik");
         let effect_movie = self
             .movie_effect_path
             .join(movie_name)
             .with_extension("bik");
-        let file = self.vfs.open(movie).unwrap_or_else(|_| {
-            self.vfs
-                .open(end_movie)
-                .unwrap_or_else(|_| self.vfs.open(effect_movie).unwrap())
-        });
+        let file = self
+            .vfs
+            .open(movie)
+            .or_else(|_| self.vfs.open(end_movie))
+            .or_else(|_| self.vfs.open(effect_movie))?;
 
-        Box::new(BufReader::new(file))
+        Ok(Box::new(BufReader::new(file)))
     }
 
     pub fn load_snd_data(&self, snd_name: &str) -> io::Result<Vec<u8>> {
