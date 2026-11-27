@@ -80,6 +80,7 @@ pub struct VulkanRenderingEngine {
     component_factory: Rc<VulkanComponentFactory>,
     descriptor_manager: Option<Rc<DescriptorManager>>,
     dub_manager: Option<Arc<DynamicUniformBufferManager>>,
+    draw_frames: Vec<super::draw_frame::DrawFrame>,
     adhoc_command_runner: Rc<AdhocCommandRunner>,
 
     /// Directional shadow map, allocated once and shared with the swapchain.
@@ -189,36 +190,6 @@ impl RenderingEngine for VulkanRenderingEngine {
         };
         crate::perf::gauge("vulkan.render.visible_entities", entities.len() as u64);
 
-        // Update the dynamic UBO with each visible render object's world
-        // transform. Iterates the backend-typed view on RenderingComponent,
-        // so no per-RO downcast is needed.
-        let updated_vros = std::cell::Cell::new(0u64);
-        crate::perf::time("vulkan.render.ubo_update_total_ns", || {
-            self.dub_manager().update_do(|updater| {
-                for entity in &entities {
-                    if let Some(rc) = entity.get_rendering_component() {
-                        let is_billboard = entity
-                            .get_component(crate::comdef::IBillboardComponent::uuid())
-                            .is_some();
-                        let world = entity.world_transform();
-                        let shadow_model = if is_billboard {
-                            crate::components::billboard::billboard_shadow_matrix(
-                                world.matrix(),
-                                &entity.transform().borrow().matrix(),
-                            )
-                        } else {
-                            world.matrix().clone()
-                        };
-                        for vro in rc.vulkan_render_objects() {
-                            updater(vro.dub_index(), world.matrix());
-                            updater(vro.shadow_dub_index(), &shadow_model);
-                            updated_vros.set(updated_vros.get() + 1);
-                        }
-                    }
-                }
-            });
-        });
-        crate::perf::gauge("vulkan.render.updated_vros", updated_vros.get());
         crate::perf::gauge(
             "vulkan.dub.allocated_slots",
             self.dub_manager().allocated_slots() as u64,
@@ -309,37 +280,13 @@ impl RenderingEngine for VulkanRenderingEngine {
             return;
         }
 
+        let target_fence = target.vk_in_flight_fence();
+        if let Err(e) = self.device.wait_for_fences(&[target_fence], true, u64::MAX) {
+            log::warn!("offscreen fence wait failed: {:?}", e);
+            return;
+        }
         let entities = scene.visible_entities();
-
-        // Update the dynamic UBO with entity transforms — same bucket as
-        // the main pass uses. Both passes read this within the same frame
-        // (content is written before either records). Cross-frame reuse of
-        // the offscreen command buffer / UBOs is guarded by the target's
-        // own in-flight fence (waited on below before re-recording), so the
-        // engine no longer needs an end-of-frame `wait_idle` to stay safe.
-        let dub_manager = self.dub_manager.as_ref().unwrap().clone();
-        dub_manager.update_do(|updater| {
-            for entity in &entities {
-                if let Some(rc) = entity.get_rendering_component() {
-                    let is_billboard = entity
-                        .get_component(crate::comdef::IBillboardComponent::uuid())
-                        .is_some();
-                    let world = entity.world_transform();
-                    let shadow_model = if is_billboard {
-                        crate::components::billboard::billboard_shadow_matrix(
-                            world.matrix(),
-                            &entity.transform().borrow().matrix(),
-                        )
-                    } else {
-                        world.matrix().clone()
-                    };
-                    for vro in rc.vulkan_render_objects() {
-                        updater(vro.dub_index(), world.matrix());
-                        updater(vro.shadow_dub_index(), &shadow_model);
-                    }
-                }
-            }
-        });
+        target.draw_frame_mut().prepare(&entities);
 
         // Build opaque / cutout / transparent buckets (mirrors `render_objects`).
         let (camera_view, camera_proj) = {
@@ -383,17 +330,6 @@ impl RenderingEngine for VulkanRenderingEngine {
         let target_extent = target.vk_extent();
         let target_descriptor = target.per_frame_descriptor_set();
         let target_semaphore = target.vk_render_finished_semaphore();
-        let target_fence = target.vk_in_flight_fence();
-
-        // Block until the previous offscreen submit using this target's
-        // single command buffer has completed before resetting/re-recording
-        // it. Without this, a heavy scene (e.g. a large BSP) lets the GPU
-        // fall behind and the host overwrites an in-flight command buffer,
-        // which loses the device (ERROR_DEVICE_LOST).
-        if let Err(e) = self.device.wait_for_fences(&[target_fence], true, u64::MAX) {
-            log::warn!("offscreen fence wait failed: {:?}", e);
-            return;
-        }
 
         let swapchain = self.swapchain.as_mut().unwrap();
         if let Err(e) = swapchain.record_to_external_framebuffer(
@@ -406,7 +342,7 @@ impl RenderingEngine for VulkanRenderingEngine {
             &self.scratch_opaque,
             &self.scratch_cutout,
             &self.scratch_transparent_ordered,
-            &dub_manager,
+            target.draw_frame(),
         ) {
             // Fence is still signaled (we never reset it), so the next
             // frame's `wait_for_fences` won't deadlock.
@@ -683,10 +619,7 @@ impl VulkanRenderingEngine {
             .limits
             .min_uniform_buffer_offset_alignment;
         let dub_manager = Arc::new(DynamicUniformBufferManager::new(
-            &allocator,
-            descriptor_manager.dub_descriptor_manager(),
             min_uniform_buffer_alignment,
-            &adhoc_command_runner,
         ));
 
         let shadow_map = Rc::new(
@@ -803,6 +736,11 @@ impl VulkanRenderingEngine {
             }
         };
 
+        let draw_frames = (0..MAX_FRAMES_IN_FLIGHT)
+            .map(|_| {
+                super::draw_frame::DrawFrame::new(&allocator, &descriptor_manager, &dub_manager)
+            })
+            .collect();
         let vulkan = Self {
             entry,
             instance,
@@ -818,6 +756,7 @@ impl VulkanRenderingEngine {
             debug_callback,
             descriptor_manager: Some(descriptor_manager),
             dub_manager: Some(dub_manager),
+            draw_frames,
             adhoc_command_runner,
             shadow_map,
             component_factory,
@@ -976,13 +915,15 @@ impl VulkanRenderingEngine {
             };
         }
 
-        let dub_manager = self.dub_manager().clone();
-
         // Block until this frame's slot is free on the GPU. The fence
         // is created signaled, so frame 0 returns immediately.
         let frame = self.current_frame;
         self.device
             .wait_for_fences(&[self.in_flight_fences[frame]], true, u64::MAX)?;
+        let updated_vros = crate::perf::time("vulkan.render.ubo_update_total_ns", || {
+            self.draw_frames[frame].prepare(&entities)
+        });
+        crate::perf::gauge("vulkan.render.updated_vros", updated_vros);
 
         let (image_index, _) = match swapchain!().acquire_next_image(
             u64::max_value(),
@@ -1079,7 +1020,7 @@ impl VulkanRenderingEngine {
                 &self.scratch_cutout,
                 &self.scratch_transparent_ordered,
                 &self.scratch_shadow_casters,
-                &dub_manager,
+                &self.draw_frames[frame],
                 viewport,
                 ui_frame,
                 shadows_enabled,

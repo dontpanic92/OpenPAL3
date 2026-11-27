@@ -1,12 +1,13 @@
 use super::creation_helpers;
 use super::descriptor_managers::DescriptorManager;
+use super::draw_frame::DrawFrame;
 use super::image::Image;
 use super::image_view::ImageView;
 use super::pipeline_manager::PipelineManager;
 use super::render_object::VulkanRenderObject;
 use super::render_pass::RenderPass;
 use super::shadow_map::ShadowMap;
-use super::uniform_buffers::{DynamicUniformBufferManager, PerFrameUniformBuffer};
+use super::uniform_buffers::PerFrameUniformBuffer;
 use super::{adhoc_command_runner::AdhocCommandRunner, device::Device};
 use super::{
     buffer::{Buffer, BufferType},
@@ -517,7 +518,7 @@ impl SwapChain {
         cutout_objects: &[Rc<VulkanRenderObject>],
         transparent_objects: &[Rc<VulkanRenderObject>],
         shadow_casters: &[Vec<Rc<VulkanRenderObject>>],
-        dub_manager: &DynamicUniformBufferManager,
+        dub_manager: &DrawFrame,
         viewport: Viewport,
         ui_frame: ImguiFrame,
         shadows_enabled: bool,
@@ -650,7 +651,7 @@ impl SwapChain {
         opaque_objects: &[Rc<VulkanRenderObject>],
         cutout_objects: &[Rc<VulkanRenderObject>],
         transparent_objects: &[Rc<VulkanRenderObject>],
-        dub_manager: &DynamicUniformBufferManager,
+        dub_manager: &DrawFrame,
         _viewport: Viewport,
         ui_frame: ImguiFrame,
         clear_values: &[vk::ClearValue],
@@ -848,7 +849,7 @@ impl SwapChain {
         opaque_objects: &[Rc<VulkanRenderObject>],
         cutout_objects: &[Rc<VulkanRenderObject>],
         transparent_objects: &[Rc<VulkanRenderObject>],
-        dub_manager: &DynamicUniformBufferManager,
+        dub_manager: &DrawFrame,
     ) -> Result<(), vk::Result> {
         let begin_info = vk::CommandBufferBeginInfo::default()
             .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
@@ -927,7 +928,7 @@ impl SwapChain {
         command_buffer: vk::CommandBuffer,
         per_frame_descriptor_set: vk::DescriptorSet,
         shadow_casters: &[Vec<Rc<VulkanRenderObject>>],
-        dub_manager: &DynamicUniformBufferManager,
+        dub_manager: &DrawFrame,
     ) {
         // Clone the shared handles so the immutable borrows don't collide with
         // `&mut self` device calls below.
@@ -1005,9 +1006,8 @@ impl SwapChain {
                     );
                 }
 
-                let vertex_buffer = object.vertex_buffer();
                 let index_buffer = object.index_buffer();
-                let vb = vertex_buffer.vk_buffer();
+                let vb = dub_manager.vertex_buffer(object);
                 let ib = index_buffer.vk_buffer();
                 if vb != last_vertex_buffer {
                     self.device
@@ -1038,7 +1038,7 @@ impl SwapChain {
                         2,
                         &[
                             object.vk_descriptor_set(),
-                            object.material().material_params_descriptor_set(),
+                            dub_manager.material_descriptor_set(object.material()),
                         ],
                         &[],
                     );
@@ -1102,7 +1102,7 @@ impl SwapChain {
         &mut self,
         command_buffer: vk::CommandBuffer,
         objects: &[Rc<VulkanRenderObject>],
-        dub_manager: &DynamicUniformBufferManager,
+        dub_manager: &DrawFrame,
     ) {
         let mut material_index: std::collections::HashMap<MaterialKey, usize> =
             std::collections::HashMap::new();
@@ -1127,7 +1127,7 @@ impl SwapChain {
         &mut self,
         command_buffer: vk::CommandBuffer,
         objects: &[Rc<VulkanRenderObject>],
-        dub_manager: &DynamicUniformBufferManager,
+        dub_manager: &DrawFrame,
     ) {
         // Preserve caller-supplied order; only consolidate consecutive
         // objects that share a MaterialKey. Required for back-to-front
@@ -1175,7 +1175,7 @@ impl SwapChain {
         command_buffer: vk::CommandBuffer,
         materials: &[*const super::material::VulkanMaterial],
         groups: &[Vec<Rc<VulkanRenderObject>>],
-        dub_manager: &DynamicUniformBufferManager,
+        dub_manager: &DrawFrame,
     ) {
         let mut last_material_ptr: *const super::material::VulkanMaterial = std::ptr::null();
         let mut last_vertex_buffer: vk::Buffer = vk::Buffer::null();
@@ -1202,9 +1202,8 @@ impl SwapChain {
             last_material_ptr = std::ptr::null();
 
             for object in object_group {
-                let vertex_buffer = object.vertex_buffer();
                 let index_buffer = object.index_buffer();
-                let vb = vertex_buffer.vk_buffer();
+                let vb = dub_manager.vertex_buffer(object);
                 let ib = index_buffer.vk_buffer();
                 if vb != last_vertex_buffer {
                     self.device
@@ -1235,7 +1234,7 @@ impl SwapChain {
                         vk::PipelineBindPoint::GRAPHICS,
                         pipeline_layout,
                         3,
-                        &[object_material.material_params_descriptor_set()],
+                        &[dub_manager.material_descriptor_set(object_material)],
                         &[],
                     );
                     last_material_ptr = object_material_ptr;

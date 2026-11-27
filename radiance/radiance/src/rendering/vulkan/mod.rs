@@ -5,6 +5,7 @@ mod descriptor_managers;
 mod descriptor_pool;
 mod descriptor_set_layout;
 mod device;
+mod draw_frame;
 mod error;
 mod factory;
 mod helpers;

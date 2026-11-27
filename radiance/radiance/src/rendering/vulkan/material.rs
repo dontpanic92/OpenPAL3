@@ -1,14 +1,11 @@
-use super::buffer::{Buffer, BufferType};
 use super::descriptor_managers::DescriptorManager;
 use super::sampler::Sampler;
 use super::shader_cache::VulkanShaderCache;
 use super::texture::VulkanTextureStore;
-use super::uniform_buffers::MaterialParamsGpu;
 use super::{device::Device, shader::VulkanShader, texture::VulkanTexture};
 use crate::rendering::vulkan::adhoc_command_runner::AdhocCommandRunner;
 use crate::rendering::{MaterialDef, MaterialKey, MaterialParams};
-use ash::vk;
-use std::cell::{Cell, RefCell};
+use std::cell::Cell;
 use std::rc::Rc;
 
 pub struct VulkanMaterial {
@@ -24,9 +21,7 @@ pub struct VulkanMaterial {
     /// water).
     params: Cell<MaterialParams>,
 
-    descriptor_manager: Rc<DescriptorManager>,
-    params_buffer: RefCell<Buffer>,
-    params_descriptor_set: vk::DescriptorSet,
+    revision: Cell<u64>,
 }
 
 impl std::fmt::Debug for VulkanMaterial {
@@ -78,15 +73,6 @@ impl VulkanMaterial {
             })
             .collect();
 
-        let gpu_params = MaterialParamsGpu::from_params(def.params());
-        let mut params_buffer =
-            Buffer::new_dynamic_buffer_with_data(allocator, BufferType::Uniform, &[gpu_params])
-                .expect("failed to allocate material params UBO");
-        params_buffer.guard_shared_writes(command_runner);
-        let params_descriptor_set = descriptor_manager
-            .allocate_material_params_descriptor_set(&params_buffer)
-            .expect("failed to allocate material params descriptor set");
-
         Self {
             debug_name: def.debug_name().to_string(),
             key: def.key(),
@@ -95,9 +81,7 @@ impl VulkanMaterial {
             texture_names,
             samplers,
             params: Cell::new(*def.params()),
-            descriptor_manager: descriptor_manager.clone(),
-            params_buffer: RefCell::new(params_buffer),
-            params_descriptor_set,
+            revision: Cell::new(0),
         }
     }
 
@@ -133,11 +117,11 @@ impl VulkanMaterial {
         self.params.get()
     }
 
-    pub fn material_params_descriptor_set(&self) -> vk::DescriptorSet {
-        self.params_descriptor_set
+    pub fn revision(&self) -> u64 {
+        self.revision.get()
     }
 
-    /// Re-upload `MaterialParamsGpu` with a new UV affine
+    /// Stage a new UV affine for the next frame-owned material snapshot.
     /// (`scale = xy`, `offset = zw`). Used by the runtime
     /// `UvAnimComponent` to drive PAL4 water animation each tick.
     ///
@@ -150,15 +134,6 @@ impl VulkanMaterial {
         p.uv_scale = scale;
         p.uv_offset = offset;
         self.params.set(p);
-        let gpu = MaterialParamsGpu::from_params(&p);
-        self.params_buffer.borrow_mut().copy_memory_from(&[gpu]);
-    }
-}
-
-impl Drop for VulkanMaterial {
-    fn drop(&mut self) {
-        self.params_buffer.borrow().wait_for_gpu();
-        self.descriptor_manager
-            .free_material_params_descriptor_set(self.params_descriptor_set);
+        self.revision.set(self.revision.get().wrapping_add(1));
     }
 }

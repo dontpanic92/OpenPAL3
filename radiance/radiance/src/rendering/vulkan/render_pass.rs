@@ -185,7 +185,36 @@ impl RenderPass {
 
         let attachments = [color_attachment, depth_attachment];
         let subpasses = [subpass_description];
-        let dependencies = [subpass_dependency];
+        let dependencies = if color_final_layout == vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL {
+            // The next preview can start while the previous main pass still
+            // samples this image. Order reuse on the GPU, not with queue idle.
+            vec![
+                vk::SubpassDependency::default()
+                    .src_subpass(vk::SUBPASS_EXTERNAL)
+                    .dst_subpass(0)
+                    .src_stage_mask(
+                        vk::PipelineStageFlags::FRAGMENT_SHADER
+                            | vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
+                    )
+                    .src_access_mask(
+                        vk::AccessFlags::SHADER_READ | vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
+                    )
+                    .dst_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
+                    .dst_access_mask(
+                        vk::AccessFlags::COLOR_ATTACHMENT_READ
+                            | vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
+                    ),
+                vk::SubpassDependency::default()
+                    .src_subpass(0)
+                    .dst_subpass(vk::SUBPASS_EXTERNAL)
+                    .src_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
+                    .src_access_mask(vk::AccessFlags::COLOR_ATTACHMENT_WRITE)
+                    .dst_stage_mask(vk::PipelineStageFlags::FRAGMENT_SHADER)
+                    .dst_access_mask(vk::AccessFlags::SHADER_READ),
+            ]
+        } else {
+            vec![subpass_dependency]
+        };
         let render_pass_create_info = vk::RenderPassCreateInfo::default()
             .attachments(&attachments)
             .subpasses(&subpasses)

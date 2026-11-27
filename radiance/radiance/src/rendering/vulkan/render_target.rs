@@ -25,6 +25,7 @@ use super::adhoc_command_runner::AdhocCommandRunner;
 use super::buffer::{Buffer, BufferType};
 use super::descriptor_managers::DescriptorManager;
 use super::device::Device;
+use super::draw_frame::DrawFrame;
 use super::image::Image;
 use super::image_view::ImageView;
 use super::imgui::ImguiRenderer;
@@ -82,6 +83,7 @@ pub struct VulkanRenderTarget {
     imgui_texture_id: TextureId,
 
     uniform_buffer: Buffer,
+    draw_frame: DrawFrame,
     per_frame_descriptor_set: vk::DescriptorSet,
 
     command_buffer: vk::CommandBuffer,
@@ -149,6 +151,7 @@ impl VulkanRenderTarget {
             w,
             h,
         )?;
+        let draw_frame = DrawFrame::new(&allocator, &descriptor_manager, &dub_manager);
 
         Ok(Self {
             device,
@@ -167,6 +170,7 @@ impl VulkanRenderTarget {
             attachments: Some(attachments),
             imgui_texture_id,
             uniform_buffer,
+            draw_frame,
             per_frame_descriptor_set,
             command_buffer,
             render_finished_semaphore,
@@ -207,6 +211,14 @@ impl VulkanRenderTarget {
 
     pub fn uniform_buffer_mut(&mut self) -> &mut Buffer {
         &mut self.uniform_buffer
+    }
+
+    pub(super) fn draw_frame(&self) -> &DrawFrame {
+        &self.draw_frame
+    }
+
+    pub(super) fn draw_frame_mut(&mut self) -> &mut DrawFrame {
+        &mut self.draw_frame
     }
 
     pub fn vk_extent(&self) -> vk::Extent2D {

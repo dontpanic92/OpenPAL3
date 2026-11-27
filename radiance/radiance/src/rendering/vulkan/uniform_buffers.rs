@@ -1,9 +1,6 @@
-use super::buffer::{Buffer, BufferType};
 use super::shadow_map::CASCADE_COUNT;
 use crate::math::Mat44;
-use crate::rendering::vulkan::descriptor_managers::DynamicUniformBufferDescriptorManager;
-use ash::vk;
-use std::{cell::RefCell, rc::Rc, sync::Mutex};
+use std::sync::Mutex;
 
 #[derive(Clone)]
 #[repr(C)]
@@ -18,16 +15,13 @@ impl PerInstanceUniformBuffer {
 }
 
 pub struct DynamicUniformBufferManager {
-    descriptor_set: vk::DescriptorSet,
     alignment: u64,
-    buffer: RefCell<Buffer>,
     usage: Mutex<Vec<bool>>,
 }
 
 impl DynamicUniformBufferManager {
-    /// Per-instance UBO pool size. Each [`VulkanRenderObject`] takes
-    /// one slot and releases it on drop, so the cap is roughly
-    /// `max_render_objects_live_at_any_one_moment`.
+    /// Global model-slot ID capacity. Each render object reserves normal
+    /// and shadow IDs. Submission slots allocate their GPU storage on demand.
     ///
     /// PAL4 scenes are big (~1500 render objects each), and during
     /// the brief window where a new scene is built before the old
@@ -39,28 +33,18 @@ impl DynamicUniformBufferManager {
     /// Q02 → M03 → Q03 panicked on the Q03 BSP load).
     ///
     /// 65536 gives us headroom for the full PAL4 playthrough and
-    /// still costs only ~16 MB of GPU memory (each slot is
-    /// `min_uniform_buffer_offset_alignment` ≈ 256 bytes). The
+    /// costs only a usage bitmask until frame-owned GPU buffers grow
+    /// to the highest live ID (usually far below this limit). The
     /// underlying leak (something is holding the old `Pal4Scene`'s
     /// entities longer than expected) is unfixed; this is a
     /// pragmatic cap bump, not a real fix.
     const POOL_SIZE: u32 = 65536;
 
-    pub fn new(
-        allocator: &Rc<vk_mem::Allocator>,
-        descriptor_manager: &DynamicUniformBufferDescriptorManager,
-        min_alignment: u64,
-        command_runner: &Rc<super::adhoc_command_runner::AdhocCommandRunner>,
-    ) -> Self {
-        let (alignment, mut buffer) =
-            Self::allocate_dynamic_buffer(allocator, min_alignment, Self::POOL_SIZE);
-        buffer.guard_shared_writes(command_runner);
-        let descriptor_set = descriptor_manager.allocate_descriptor_sets(&buffer);
-
+    pub fn new(min_alignment: u64) -> Self {
+        let alignment = (std::mem::size_of::<PerInstanceUniformBuffer>() as u64 + min_alignment)
+            & !(min_alignment - 1);
         Self {
-            descriptor_set,
             alignment,
-            buffer: RefCell::new(buffer),
             usage: Mutex::new(vec![false; Self::POOL_SIZE as usize]),
         }
     }
@@ -77,27 +61,8 @@ impl DynamicUniformBufferManager {
         panic!("No uniform buffer available");
     }
 
-    pub fn descriptor_set(&self) -> vk::DescriptorSet {
-        self.descriptor_set
-    }
-
-    pub fn update_do<F: Fn(&dyn Fn(usize, &Mat44))>(&self, action: F) {
-        self.buffer.borrow_mut().map_memory_do(|dst| {
-            let updater = |id: usize, model: &Mat44| {
-                let uniform_buffer: &mut PerInstanceUniformBuffer = unsafe {
-                    &mut *(dst.offset(self.get_offset(id) as isize) as *mut _
-                        as *mut PerInstanceUniformBuffer)
-                };
-
-                uniform_buffer.model = model.clone();
-            };
-
-            action(&updater);
-        });
-    }
-
-    pub fn get_offset(&self, id: usize) -> u64 {
-        self.alignment * id as u64
+    pub fn alignment(&self) -> u64 {
+        self.alignment
     }
 
     pub fn deallocate_buffer(&self, id: usize) {
@@ -112,24 +77,6 @@ impl DynamicUniformBufferManager {
     pub fn allocated_slots(&self) -> usize {
         let usage = self.usage.lock().unwrap();
         usage.iter().filter(|&&u| u).count()
-    }
-
-    fn allocate_dynamic_buffer(
-        allocator: &Rc<vk_mem::Allocator>,
-        min_alignment: u64,
-        buffer_count: u32,
-    ) -> (u64, Buffer) {
-        let alignment = (std::mem::size_of::<PerInstanceUniformBuffer>() as u64 + min_alignment)
-            & !(min_alignment - 1);
-        let buffer = Buffer::new_dynamic_buffer(
-            allocator,
-            BufferType::Uniform,
-            alignment as usize,
-            buffer_count as usize,
-        )
-        .unwrap();
-
-        (alignment, buffer)
     }
 }
 

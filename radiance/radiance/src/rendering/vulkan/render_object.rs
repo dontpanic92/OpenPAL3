@@ -13,12 +13,12 @@ use std::sync::Arc;
 pub struct VulkanRenderObject {
     vertices: RefCell<VertexBuffer>,
     _indices: Vec<u32>,
-    _host_dynamic: bool,
-    _dirty: bool,
+    host_dynamic: bool,
+    vertex_revision: Cell<u64>,
 
     dub_manager: Arc<DynamicUniformBufferManager>,
     descriptor_manager: Rc<DescriptorManager>,
-    vertex_buffer: RefCell<Buffer>,
+    vertex_buffer: Option<Buffer>,
     index_buffer: Buffer,
     material: Rc<VulkanMaterial>,
     per_object_descriptor_set: vk::DescriptorSet,
@@ -41,10 +41,8 @@ pub struct VulkanRenderObject {
 impl RenderObject for VulkanRenderObject {
     fn update_vertices(&self, updater: &dyn Fn(RefMut<VertexBuffer>)) {
         updater(self.vertices.borrow_mut());
-        let _ = self
-            .vertex_buffer
-            .borrow_mut()
-            .copy_memory_from(self.vertices.borrow().data());
+        self.vertex_revision
+            .set(self.vertex_revision.get().wrapping_add(1));
         let (aabb, centroid) = Self::compute_bounds(&self.vertices.borrow());
         self.local_aabb.set(aabb);
         self.local_centroid.set(centroid);
@@ -82,17 +80,16 @@ impl VulkanRenderObject {
         dub_manager: &Arc<DynamicUniformBufferManager>,
         descriptor_manager: &Rc<DescriptorManager>,
     ) -> Result<Self, Box<dyn Error>> {
-        let mut vertex_buffer = if host_dynamic {
-            Buffer::new_dynamic_buffer_with_data(allocator, BufferType::Vertex, vertices.data())?
+        let vertex_buffer = if host_dynamic {
+            None
         } else {
-            Buffer::new_device_buffer_with_data(
+            Some(Buffer::new_device_buffer_with_data(
                 allocator,
                 BufferType::Vertex,
                 vertices.data(),
                 command_runner,
-            )?
+            )?)
         };
-        vertex_buffer.guard_shared_writes(command_runner);
 
         let index_buffer = Buffer::new_device_buffer_with_data(
             allocator,
@@ -112,10 +109,10 @@ impl VulkanRenderObject {
             vertices: RefCell::new(vertices),
             _indices: indices,
             material,
-            _host_dynamic: host_dynamic,
-            _dirty: false,
+            host_dynamic,
+            vertex_revision: Cell::new(0),
             dub_manager: dub_manager.clone(),
-            vertex_buffer: RefCell::new(vertex_buffer),
+            vertex_buffer,
             index_buffer,
             per_object_descriptor_set,
             dub_index,
@@ -141,8 +138,24 @@ impl VulkanRenderObject {
         (aabb, centroid)
     }
 
-    pub fn vertex_buffer(&self) -> Ref<'_, Buffer> {
-        self.vertex_buffer.borrow()
+    pub fn vertex_buffer(&self) -> Option<&Buffer> {
+        self.vertex_buffer.as_ref()
+    }
+
+    pub fn vertices(&self) -> Ref<'_, VertexBuffer> {
+        self.vertices.borrow()
+    }
+
+    pub fn has_dynamic_vertices(&self) -> bool {
+        self.host_dynamic || self.vertex_revision.get() != 0
+    }
+
+    pub fn vertex_revision(&self) -> u64 {
+        self.vertex_revision.get()
+    }
+
+    pub fn material_rc(&self) -> &Rc<VulkanMaterial> {
+        &self.material
     }
 
     pub fn index_buffer(&self) -> &Buffer {
@@ -168,7 +181,6 @@ impl VulkanRenderObject {
 
 impl Drop for VulkanRenderObject {
     fn drop(&mut self) {
-        self.vertex_buffer.borrow().wait_for_gpu();
         self.descriptor_manager
             .free_per_object_descriptor_set(self.per_object_descriptor_set);
         self.dub_manager.deallocate_buffer(self.dub_index);
