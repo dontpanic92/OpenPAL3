@@ -268,8 +268,13 @@ impl Pal4VmContext {
         };
         self.session.borrow_mut().advance_reward_notice(notice_dt);
         self.tick_object_reward();
-        self.tick_object_motions(notice_dt);
-        self.tick_object_switches(notice_dt);
+        if self.session.borrow().menu_tab().is_none() {
+            let leader = self.session.borrow().state().leader();
+            self.scene.borrow().prepare_platform_rider(leader);
+            self.tick_object_motions(notice_dt);
+            self.tick_object_switches(notice_dt);
+            self.scene.borrow().carry_platform_rider();
+        }
         if let Some(source) = self.bgm_source.as_mut() {
             source.update();
         }

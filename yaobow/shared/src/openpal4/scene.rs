@@ -101,6 +101,7 @@ pub struct Pal4Scene {
     /// record's `script_function`. Talking to an NPC (proximity + "F")
     /// dispatches through the same path as a GOB examine handler.
     pub(crate) npc_functions: HashMap<String, String>,
+    pub(crate) platform_rider: RefCell<Option<super::platforms::PlatformRide>>,
 }
 
 pub(crate) enum SceneInteraction {
@@ -201,6 +202,7 @@ impl Pal4Scene {
             game_context: None,
             actor_controller: None,
             npc_functions: HashMap::new(),
+            platform_rider: RefCell::new(None),
         }
     }
 
@@ -942,6 +944,19 @@ impl Pal4SceneLoader {
                             .query_interface::<IComponent>()
                             .unwrap(),
                     );
+                    let component = object_component(&entity).unwrap();
+                    let component = component.inner::<Pal4ObjectComponent>();
+                    if super::platforms::supported_platform(
+                        &entry,
+                        object_type,
+                        component.motion.is_some(),
+                    ) && scene
+                        .collision_world()
+                        .inner::<CollisionWorldComponent>()
+                        .attach_dynamic_collider(&entity)
+                    {
+                        component.platform.set(true);
+                    }
 
                     scene.add_entity(entity);
                 }
@@ -1053,6 +1068,7 @@ impl Pal4SceneLoader {
             game_context: Some(game_context),
             actor_controller: self.actor_controller.take(),
             npc_functions: std::mem::take(&mut self.npc_functions),
+            platform_rider: RefCell::new(None),
         })
     }
 }
@@ -1383,6 +1399,7 @@ impl Pal4Scene {
             return false;
         };
         entity.transform().borrow_mut().set_matrix(saved);
+        self.clear_platform_rider_for(&entity);
         if let Some(component) = object_component(&entity) {
             if let Some(motion) = component.inner::<Pal4ObjectComponent>().motion.as_ref() {
                 motion.borrow_mut().cancel();

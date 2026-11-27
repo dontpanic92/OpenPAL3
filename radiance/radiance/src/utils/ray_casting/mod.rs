@@ -20,6 +20,10 @@ impl RayCaster {
         self.colliders.push(mesh::Mesh::new(vertices, indices));
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.colliders.is_empty()
+    }
+
     pub fn cast_aaray(&self, ray_origin: &Vec3, ray_direction: AARayDirection) -> Option<f32> {
         let mut min_distance = f32::MAX;
         let mut hit = false;

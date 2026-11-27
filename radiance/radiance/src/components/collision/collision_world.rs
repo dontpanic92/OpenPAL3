@@ -34,7 +34,7 @@ use crate::comdef::{
 use crate::components::collision::{
     TriggerShape, TriggerVolumeComponent, bake_entity_collider, entity_world_xz_aabb,
 };
-use crate::math::{Transform, Vec3};
+use crate::math::{Mat44, Transform, Vec3};
 use crate::scene::CoreEntity;
 use crate::utils::ray_casting::{AARayDirection, RayCaster};
 
@@ -42,6 +42,7 @@ pub struct CollisionWorldComponent {
     /// Aggregated world-space collider geometry (floor / wall / ...),
     /// shared (`Rc`) so [`WorldRayCaster`] can read it live.
     caster: Rc<RefCell<RayCaster>>,
+    dynamic_colliders: Rc<RefCell<Vec<DynamicCollider>>>,
     segment_triggers: RefCell<Vec<ComRc<ITriggerVolumeComponent>>>,
     proximity_triggers: RefCell<Vec<ComRc<ITriggerVolumeComponent>>>,
     /// Payload id of the first segment trigger crossed by the most
@@ -55,6 +56,7 @@ impl CollisionWorldComponent {
     pub fn create() -> ComRc<crate::comdef::ICollisionWorldComponent> {
         ComRc::from_object(Self {
             caster: Rc::new(RefCell::new(RayCaster::new())),
+            dynamic_colliders: Rc::new(RefCell::new(Vec::new())),
             segment_triggers: RefCell::new(Vec::new()),
             proximity_triggers: RefCell::new(Vec::new()),
             fired_segment: Cell::new(None),
@@ -67,6 +69,42 @@ impl CollisionWorldComponent {
     pub fn attach_collider(&self, entity: &ComRc<IEntity>) {
         entity.update_world_transform(&Transform::new());
         bake_entity_collider(&mut self.caster.borrow_mut(), entity);
+    }
+
+    /// Register a rigid mesh subtree whose root transform may change.
+    /// Unlike static floor geometry, disabled dynamic entities do not collide.
+    pub fn attach_dynamic_collider(&self, entity: &ComRc<IEntity>) -> bool {
+        entity.update_world_transform(&Transform::new());
+        let mut caster = RayCaster::new();
+        bake_entity_collider(&mut caster, entity);
+        if caster.is_empty() {
+            return false;
+        }
+        let mut colliders = self.dynamic_colliders.borrow_mut();
+        if colliders
+            .iter()
+            .any(|collider| collider.entity.ptr_value() == entity.ptr_value())
+        {
+            return true;
+        }
+        colliders.push(DynamicCollider {
+            entity: entity.clone(),
+            pose: Cell::new(*entity.world_transform().matrix()),
+            caster: RefCell::new(caster),
+        });
+        true
+    }
+
+    pub fn dynamic_floor_hit(&self, origin: &Vec3) -> Option<(ComRc<IEntity>, f32)> {
+        self.dynamic_colliders
+            .borrow()
+            .iter()
+            .filter_map(|collider| {
+                collider
+                    .cast_ray(origin, &Vec3::new(0., -1., 0.))
+                    .map(|depth| (collider.entity.clone(), depth))
+            })
+            .min_by(|a, b| a.1.total_cmp(&b.1))
     }
 
     /// Register a world-space segment-crossing event region from its
@@ -116,17 +154,40 @@ impl CollisionWorldComponent {
     /// Scriptable `IRayCaster` over the aggregated collider, read live
     /// (colliders attached after this call are still visible).
     pub fn floor_ray_caster(&self) -> ComRc<IRayCaster> {
-        WorldRayCaster::create(self.caster.clone())
+        ComRc::from_object(WorldRayCaster {
+            caster: self.caster.clone(),
+            dynamic_colliders: self.dynamic_colliders.clone(),
+        })
     }
 
     /// Generic ray cast against the aggregated collider.
     pub fn cast_ray(&self, origin: &Vec3, direction: &Vec3) -> Option<f32> {
-        self.caster.borrow().cast_ray(origin, direction)
+        self.caster
+            .borrow()
+            .cast_ray(origin, direction)
+            .into_iter()
+            .chain(
+                self.dynamic_colliders
+                    .borrow()
+                    .iter()
+                    .filter_map(|collider| collider.cast_ray(origin, direction)),
+            )
+            .min_by(f32::total_cmp)
     }
 
     /// Downward (`-Y`) floor cast against the aggregated collider.
     pub fn cast_aa_ny(&self, origin: &Vec3) -> Option<f32> {
-        self.caster.borrow().cast_aaray(origin, AARayDirection::NY)
+        self.caster
+            .borrow()
+            .cast_aaray(origin, AARayDirection::NY)
+            .into_iter()
+            .chain(
+                self.dynamic_colliders
+                    .borrow()
+                    .iter()
+                    .filter_map(|collider| collider.cast_ray(origin, &Vec3::new(0., -1., 0.))),
+            )
+            .min_by(f32::total_cmp)
     }
 
     /// Evaluate every segment trigger against the movement segment
@@ -182,21 +243,57 @@ impl IComponentImpl for CollisionWorldComponent {
 /// aggregated caster.
 pub struct WorldRayCaster {
     caster: Rc<RefCell<RayCaster>>,
+    dynamic_colliders: Rc<RefCell<Vec<DynamicCollider>>>,
+}
+
+struct DynamicCollider {
+    entity: ComRc<IEntity>,
+    pose: Cell<Mat44>,
+    caster: RefCell<RayCaster>,
+}
+
+impl DynamicCollider {
+    fn cast_ray(&self, origin: &Vec3, direction: &Vec3) -> Option<f32> {
+        if !self.entity.enabled() {
+            return None;
+        }
+        self.entity.update_world_transform(&Transform::new());
+        let pose = *self.entity.world_transform().matrix();
+        if pose.floats() != self.pose.get().floats() {
+            let mut caster = RayCaster::new();
+            bake_entity_collider(&mut caster, &self.entity);
+            *self.caster.borrow_mut() = caster;
+            self.pose.set(pose);
+        }
+        self.caster.borrow().cast_ray(origin, direction)
+    }
 }
 
 ComObject_WorldRayCaster!(super::WorldRayCaster);
 
 impl WorldRayCaster {
     pub fn create(caster: Rc<RefCell<RayCaster>>) -> ComRc<IRayCaster> {
-        ComRc::from_object(Self { caster })
+        ComRc::from_object(Self {
+            caster,
+            dynamic_colliders: Rc::new(RefCell::new(Vec::new())),
+        })
     }
 }
 
 impl IRayCasterImpl for WorldRayCaster {
     fn cast_aa_ny(&self, ox: f32, oy: f32, oz: f32) -> Option<f32> {
+        let origin = Vec3::new(ox, oy, oz);
         self.caster
             .borrow()
-            .cast_aaray(&Vec3::new(ox, oy, oz), AARayDirection::NY)
+            .cast_aaray(&origin, AARayDirection::NY)
+            .into_iter()
+            .chain(
+                self.dynamic_colliders
+                    .borrow()
+                    .iter()
+                    .filter_map(|collider| collider.cast_ray(&origin, &Vec3::new(0., -1., 0.))),
+            )
+            .min_by(f32::total_cmp)
     }
 }
 
@@ -204,7 +301,84 @@ impl IRayCasterImpl for WorldRayCaster {
 mod tests {
     use super::*;
     use crate::components::collision::CollisionWorldComponent;
+    use crate::rendering::{
+        ComponentFactory, MaterialDef, RenderObjectHandle, RenderTarget, RenderingComponent,
+        Texture, TextureDef, VertexBuffer, VideoPlayer,
+    };
     use crate::scene::CoreEntity;
+    use imgui::TextureId;
+
+    struct UnrenderedFactory;
+
+    impl ComponentFactory for UnrenderedFactory {
+        fn create_texture(&self, _: &TextureDef) -> Box<dyn Texture> {
+            unreachable!()
+        }
+        fn create_imgui_texture(
+            &self,
+            _: &[u8],
+            _: u32,
+            _: u32,
+            _: u32,
+            _: Option<TextureId>,
+        ) -> (Box<dyn Texture>, TextureId) {
+            unreachable!()
+        }
+        fn remove_imgui_texture(&self, _: Option<TextureId>) {
+            unreachable!()
+        }
+        fn create_render_object(
+            &self,
+            _: VertexBuffer,
+            _: Vec<u32>,
+            _: &MaterialDef,
+            _: bool,
+        ) -> RenderObjectHandle {
+            unreachable!()
+        }
+        fn create_rendering_component(&self, _: Vec<RenderObjectHandle>) -> RenderingComponent {
+            unreachable!()
+        }
+        fn create_video_player(&self) -> Box<VideoPlayer> {
+            unreachable!()
+        }
+        fn create_render_target(&self, _: u32, _: u32) -> Box<dyn RenderTarget> {
+            unreachable!()
+        }
+    }
+
+    #[test]
+    fn dynamic_floor_queries_track_translation_rotation_scale_and_enabled_state() {
+        let world = CollisionWorldComponent::create();
+        let world = world.inner::<CollisionWorldComponent>();
+        let script = world.floor_ray_caster();
+        let cube = crate::debug::create_box_entity(Rc::new(UnrenderedFactory));
+        assert!(world.attach_dynamic_collider(&cube));
+        assert_eq!(script.cast_aa_ny(0., 10., 0.), Some(7.));
+        cube.transform()
+            .borrow_mut()
+            .set_position(&Vec3::new(100., 10., 0.));
+        assert_eq!(script.cast_aa_ny(0., 10., 0.), None);
+        assert_eq!(script.cast_aa_ny(100., 20., 0.), Some(7.));
+        cube.transform()
+            .borrow_mut()
+            .scale_local(&Vec3::new(2., 2., 2.));
+        assert_eq!(script.cast_aa_ny(100., 20., 0.), Some(4.));
+        assert_eq!(script.cast_aa_ny(107., 20., 0.), None);
+        cube.transform()
+            .borrow_mut()
+            .rotate_axis_angle_local(&Vec3::UP, std::f32::consts::FRAC_PI_4);
+        assert!((script.cast_aa_ny(107., 20., 0.).unwrap() - 4.).abs() < 0.0001);
+        let (entity, depth) = world.dynamic_floor_hit(&Vec3::new(100., 20., 0.)).unwrap();
+        assert_eq!(entity.ptr_value(), cube.ptr_value());
+        assert!((depth - 4.).abs() < 0.0001);
+        cube.set_enabled(false);
+        assert_eq!(script.cast_aa_ny(100., 20., 0.), None);
+        assert!(world.dynamic_floor_hit(&Vec3::new(100., 20., 0.)).is_none());
+        cube.set_enabled(true);
+        assert!(script.cast_aa_ny(100., 20., 0.).is_some());
+        assert!(!world.attach_dynamic_collider(&CoreEntity::create("empty".into(), true)));
+    }
 
     /// The world returns the nearest proximity trigger within its radius
     /// and reports its opaque payload, and returns `None` once the probe

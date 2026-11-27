@@ -24,6 +24,7 @@ pub struct GobFile {
 /// | Tag | Role                                              |
 /// |----:|----------------------------------------------------|
 /// |  0  | Generic / scenario item (may carry "examine" cb)  |
+/// |  2  | Floating mesh / moving platform                  |
 /// |  3  | Sound emitter (dummy `MC` mesh)                   |
 /// |  5  | State-machine driven prop (switch/lever)          |
 /// |  6  | Animated prop (door, banner, fire, …)             |
@@ -33,6 +34,7 @@ pub struct GobFile {
 pub struct GobObjectType;
 impl GobObjectType {
     pub const GENERIC: u32 = 0;
+    pub const FLOAT: u32 = 2;
     pub const SOUND: u32 = 3;
     pub const MACHINE: u32 = 5;
     pub const ACTION: u32 = 6;
@@ -50,6 +52,7 @@ impl GobObjectType {
     pub fn name(value: u32) -> Option<&'static str> {
         match value {
             Self::GENERIC => Some("generic"),
+            Self::FLOAT => Some("floating"),
             Self::SOUND => Some("sound"),
             Self::MACHINE => Some("machine"),
             Self::ACTION => Some("action"),
@@ -135,11 +138,18 @@ impl GobFixedProperty {
 /// Block-marker names that delimit each parameter sub-system in region 2.
 pub struct GobParameterBlock;
 impl GobParameterBlock {
+    pub const FLOAT: &'static str = "PAL4_GAMEOBJECT_float";
     pub const EFFECT: &'static str = "PAL4_GameObject-effect";
     pub const ACTION: &'static str = "PAL4_GameObject-action";
     pub const GET_ITEM: &'static str = "PAL4_GameObject-getItem";
     pub const MACHINE: &'static str = "PAL4_GameObject-machine";
     pub const SOUND: &'static str = "PAL4-GameObject-sound";
+}
+
+pub struct GobFloatProperty;
+impl GobFloatProperty {
+    pub const AUTO_TOUCH: &'static str = "PAL4_GAMEOBJECT_float_auto_touch";
+    pub const TOUCH_TYPE: &'static str = "PAL4_GAMEOBJECT_float_touch_type";
 }
 
 /// Effect (tag 8) parameter names.

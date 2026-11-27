@@ -50,6 +50,7 @@ pub struct Pal4ObjectComponent {
     pub(crate) motion: Option<std::cell::RefCell<super::mechanisms::ObjectMotion>>,
     pub(crate) switch: Option<std::cell::RefCell<super::mechanisms::ObjectSwitch>>,
     pub(crate) script_motion: std::cell::RefCell<Option<super::mechanisms::ScriptObjectMotion>>,
+    pub(crate) platform: std::cell::Cell<bool>,
 }
 
 ComObject_Pal4ObjectComponent!(super::Pal4ObjectComponent);
@@ -76,6 +77,7 @@ impl Pal4ObjectComponent {
             motion,
             switch,
             script_motion: std::cell::RefCell::new(None),
+            platform: std::cell::Cell::new(false),
         })
     }
 

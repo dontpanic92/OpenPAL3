@@ -934,8 +934,8 @@ the absolute target over `PAL4_GOMTask_expt_time`. Both tasks require wait
 mode 1 and zero wait time; the machine must be manual, non-repeating,
 non-floating, without inventory/leader conditions, disappearance or collision
 requirements. Effects must be empty; supported movement sounds are described
-below. Other compound programs and floating/riding objects remain gated as whole
-programs.
+below. Later verified rollback and floating subsets are described below;
+other compound programs remain gated as whole programs.
 
 The silent examples are M07/6 `dy` (five seconds, Y 240.4442 to
 349.4442) and M07/7 `ladder` (three seconds, Y 213.5731 to 96.5731).
@@ -1135,15 +1135,160 @@ waiting-call route stopped at its preceding `giPlayerEndAction`; its
 later movement was not validated live. This is not a claim of complete
 M17 puzzle or animation-lifecycle parity.
 
-### Remaining compound-task evidence
+### Silent non-floating rollback programs
 
-The full 588-record census distinguishes empty floating programs (147)
+Complete `(16,0,6)` programs now cover M13/1 `SO003`, M17/5
+`move1` through `move8`, and Q04/Q04C `MO003`. These ten original
+records are silent, effect-free, non-stored and non-floating with clip
+disabled. Inventory/leader conditions, disappearance, sounded rollback
+programs and Q04/Q04CY's stored/clipped variant remain rejected as whole
+programs. The separate floating subset below uses the same task-group lifecycle.
+
+The primary group runs the delayed start-pose task, outbound movement
+and delayed rollback barrier. Its secondary group runs the return
+translation for the same duration, reapplies the configured start
+position/rotation with the original start-task delay, then settles its
+cleanup barrier. Movement startup `0x00595120` captures the actual position
+for each leg; the return targets the outbound leg's captured start, not an
+assumed load-time position. Task 16 startup `0x005981c0` changes position
+and rotation only, preserving current scale.
+
+Group append `0x005ec010` links each generated task to its predecessor.
+Readiness retains strict predecessor-relative `>` delays. Starting a task
+does not advance its movement in that tick, and `0x005ec0b0` recognizes a
+completed group on a later tick. Machine update `0x0059f000` keeps the
+mechanism running through both groups and only then permits repetition,
+honoring the remaining activation count. Eligible automatic programs
+start on scene installation; reset cancels pending groups/repetition.
+Disabled objects and paused simulation do not advance the program.
+
+Validation includes all ten original records, captured-start regression
+cases, strict delay/frame boundaries, return interpolation, disable/reset,
+automatic repetition and finite counts. All 72 PAL4 tests pass with original
+assets, along with affected all-target checks, release build and formatting.
+Live M13/1 `SO003` moves from
+Y `169.0797` through outbound midpoint `167.8297` to `166.5797`, then
+returns through `167.8297` to `169.0797`. Pausing holds the midpoint
+exactly. A second cycle starts only after the return-pose and cleanup
+tasks settle. Floating traversal is covered separately below; task-15
+controllers remain unsupported.
+
+### Linear floating platforms and actual mesh contact
+
+The first supported moving-platform subset consists of five complete,
+silent, effect-free, non-stored `(16,0,6)` programs: M15/2 `trans05`,
+`trans06`, `trans13`, and M17/2 `trans01`, `trans02`. Their original
+start/rollback delays are preserved, as are both movement legs and
+settlement boundaries. They require automatic floating activation and
+touch type 1; the native constructor forces unlimited activation count
+for this type, including M17's authored count of 1. This does not imply
+automatic repetition or manual player interaction.
+
+Eligible empty-task surfaces, including M08/2 `floor02`, also participate
+in collision and rider selection. M08/2 `floor01` remains excluded because
+its waited script task has no complete implementation. Stored/clipped,
+disappearing, hidden, tilted, condition-dependent, sounded, curved and
+controller-based programs remain gated. A complete program must also have
+actual rigid mesh geometry before any authored floating motion is enabled.
+
+Clean-room native evidence from the original local executable:
+
+- Floating vtable `0x00849d00`, constructor-property reader `0x0059ce10`
+  and activation setter `0x0059ceb0` establish floating metadata,
+  unlimited touch-type-1 count and automatic activation. Geometry
+  registration is `0x0059cd20` / `0x005fe430`.
+- Moving-navigation selection `0x004290d0` intersects platform geometry,
+  chooses the highest eligible surface and owns one rider, rather than
+  carrying every nearby actor. Boarding tolerance getter `0x0059c390`
+  returns 15 world units. Boarding/leaving callbacks are `0x0059cf10`
+  and `0x0059cf80`; touch-type-0 task activation is not enabled here.
+- Floating update `0x0059c430` captures the prior pose, advances machine
+  tasks and transports the current party leader by translation plus yaw
+  around the platform pivot. Yaw-only changes do not carry the rider.
+  Its final service calls refresh `palColorMiniMapManager` and
+  `palFloorAttributeProcessor`; they are not camera-follow calls.
+
+The engine now shares live dynamic mesh colliders with existing script floor
+queries, including script ray casters created before GOB loading. Root-pose
+changes rebuild the cached world-space triangles; disabled dynamic entities
+do not collide. Static floor/wall behavior stays unchanged. Rider selection
+requires actual downward mesh contact within the native height tolerance,
+rejects a platform below a nearer static floor, and carries only the selected
+leader. Reset clears ownership. Gameplay menus freeze authored world motions
+and linked switches rather than allowing platforms to move during menu-only
+updates. Camera ownership remains with the existing party/cutscene controller.
+
+Validation: 75 PAL4 tests with original assets and both engine collision-world
+tests pass, including whole-program exclusion, leader-only/yaw transport,
+late script-caster registration, transformed mesh queries and restarting a
+returned platform despite its authored single-use count. Affected all-target
+checks, release build and formatting pass. Live final-build M17/2 `trans01`
+carries the leader from Z `-435.09232` through `-66.96835` and back to
+`-435.09232`; pause and an open gameplay menu hold both poses exactly.
+Off-mesh actors and actors above/below the height tolerance are not carried.
+The original p7 controller can walk on the moving mesh and continue riding.
+`trans02` carries the leader from Y `286.368`, Z `-1494.8983` to
+Y `227.16798`, Z `-1704.6395`, matching the platform delta in all axes.
+Live camera-follow telemetry was not validated: PAL4 currently leaves the
+agent camera fields at their default zero values.
+
+### Manual linear puzzle platforms
+
+Five additional complete silent, non-stored `(16,0)` programs are enabled:
+M15/1 `JPuzzleE_2`, `JPuzzleE_3`, and M15/2 `JPuzzleG_4`, `JPuzzleG_8`,
+`JPuzzleI_4`. These touch-type-1 platforms are activated by original
+`giGOMTouch` calls, not by walking onto them. No new direct player/agent
+interaction handler is added. Boarding-triggered taskful platforms in the
+original corpus instead use task 2 scripts or controller compounds; none is
+a plain `(16,0)` program, and those unsupported families remain gated.
+
+The two-task floating path uses the same native strict delay and separate
+start/update/completion frame rules as rollback groups, without inventing a
+third cleanup/rollback task. Task 16 applies authored position/rotation only,
+preserving current scale (`0x005981c0`). Task 0 captures the actual position
+when movement starts (`0x00595120`), rather than always interpolating from the
+load-time anchor. Activation remains busy until group settlement; reset
+cancels the complete group. Existing ordinary-machine motion behavior is
+unchanged. Stored, sounded, tilted or clipped puzzle variants remain rejected.
+
+Further tracing of native rider selection `0x004290d0` shows that a missed
+intersection or a rejected new candidate does not clear the previously
+selected platform. Stationary supported riders now retain ownership across
+missed/height-ineligible queries. Actual actor motion or teleport requires
+fresh mesh contact, as do leader changes, disable and reset; a nearer static
+floor still prevents a new platform selection. GOB anchors are not guaranteed
+boarding points: initial G4 transport is validated at an actual mesh contact
+offset `(40,8,-40)`, not by assuming the anchor lies on the surface.
+
+Validation: all 77 PAL4 tests with original assets pass, together with affected
+all-target checks, release build and formatting. New tests cover strict
+two-task delays, captured movement start, scale preservation, busy settlement,
+disable/reset and stationary rider retention versus actor/leader changes.
+The original-asset acceptance test lists exactly the five manual plus five
+return programs and continues rejecting other taskful platform families.
+
+Live clean-build original callbacks `ctrlE_2` / `func7005`, `ctrlG_2` /
+`func7007`, and `ctrlI_2` / `func7009` activate all five new programs.
+E2 moves from Y `717.8903` through `700.1631` to `587.8903`; E3 moves
+through Y `679.0853`, Z `-234.37239` to Y `589.8353`, Z `-51.757263`.
+G4 reaches X `-5718.7383`, Z `-2091.29`, G8 reaches X `-5581.0386`,
+Z `-2138.7874`, and I4 reaches X `-981.2167`, Y `4487.258`,
+Z `1474.0789`. Selected riders match platform deltas at the observed
+midpoints; G4/G8/I4 retain their actual surface offsets through the endpoints.
+Pause holds both poses exactly. Teleporting an E-platform rider away stops
+transport immediately without stopping the platform. Temporary slot96 and
+the owned validation game are removed/stopped after testing.
+
+### Compound-task evidence and remaining scope
+
+The full 588-record census distinguishes empty floating programs (146)
 and single-script floating programs (127) from ordinary machine tasks.
-Neither category proves platform traversal is implemented: native
-floating touch, rider ownership and collision/navigation still need their
-own implementation and route checks.
+Only eligible empty surfaces, the five linear return platforms and the five
+manual linear platforms above are enabled. Boarding-triggered taskful platforms, stored/sounded
+puzzle platforms, curves, controller lifecycles, native minimap/floor-attribute
+refresh, hazards and wider original-route checks remain incomplete.
 
-Two additional native behaviors have been recovered but remain gated:
+The native evidence distinguishes controllers from rollback scheduling:
 
 - Task 15 (`0x00592d60`) unregisters its target through `0x0051c4f0`.
   A nonzero control value then calls target vtable slot `0x9c` and
@@ -1160,7 +1305,8 @@ Two additional native behaviors have been recovered but remain gated:
   captured start as its target and the same duration. It recursively
   rolls back earlier tasks into the secondary group. Thus `(16,0,6)`
   must complete its return leg before repeat/settlement, not merely
-  play the outbound translation.
+  play the outbound translation. The silent non-floating subset above
+  now implements this lifecycle; other task-6 families remain gated.
 
 The corpus has 19 `(16,0,6)` entries, including floating transitions and
 automatic M13/M17 machines with authored start/rollback delays. Wider

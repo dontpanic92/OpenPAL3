@@ -79,6 +79,108 @@ pub(crate) struct MotionProgress {
     elapsed: Option<f32>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum TaskPhase {
+    Waiting,
+    Running,
+    Finished,
+}
+
+#[derive(Clone, Copy)]
+struct MotionTaskClock {
+    phase: TaskPhase,
+    clock: f32,
+    elapsed: f32,
+    finished_at: f32,
+}
+
+#[derive(Clone, Copy)]
+enum MotionTaskEvent {
+    Started(usize),
+    Moved(f32),
+}
+
+struct MotionTaskGroup<const N: usize = 3> {
+    tasks: [MotionTaskClock; N],
+    waits: [f32; N],
+    movement: usize,
+}
+
+impl<const N: usize> MotionTaskGroup<N> {
+    fn new(waits: [f32; N], movement: usize) -> Self {
+        Self {
+            tasks: [MotionTaskClock {
+                phase: TaskPhase::Waiting,
+                clock: 0.,
+                elapsed: 0.,
+                finished_at: 0.,
+            }; N],
+            waits,
+            movement,
+        }
+    }
+
+    fn advance(&mut self, delta_sec: f32, duration: f32) -> ([Option<MotionTaskEvent>; N], bool) {
+        let mut events = [None; N];
+        let mut finished = true;
+        for (index, event) in events.iter_mut().enumerate() {
+            if self.tasks[index].phase == TaskPhase::Finished {
+                continue;
+            }
+            finished = false;
+            let predecessor = index.checked_sub(1).map(|i| self.tasks[i]);
+            let task = &mut self.tasks[index];
+            task.clock += delta_sec;
+            match task.phase {
+                TaskPhase::Waiting => {
+                    let ready = predecessor.is_none_or(|previous| {
+                        previous.phase == TaskPhase::Finished
+                            && task.clock - previous.finished_at > self.waits[index]
+                    });
+                    if ready && (predecessor.is_some() || task.clock > self.waits[index]) {
+                        task.phase = TaskPhase::Running;
+                        *event = Some(MotionTaskEvent::Started(index));
+                    }
+                }
+                TaskPhase::Running => {
+                    if index == self.movement {
+                        task.elapsed = (task.elapsed + delta_sec).min(duration);
+                        *event = Some(MotionTaskEvent::Moved(task.elapsed));
+                    }
+                    if index != self.movement || task.elapsed == duration {
+                        task.finished_at = task.clock;
+                        task.phase = TaskPhase::Finished;
+                    }
+                }
+                TaskPhase::Finished => unreachable!(),
+            }
+        }
+        // Native groups recognize completion on the tick after all tasks finish.
+        (events, finished)
+    }
+}
+
+enum RollbackPhase {
+    Idle,
+    Outbound(MotionTaskGroup),
+    Returning(MotionTaskGroup),
+}
+
+struct RollbackProgram {
+    waits: [f32; 3],
+    phase: RollbackPhase,
+    repeat: bool,
+    automatic_pending: bool,
+    outbound_start: Option<Vec3>,
+    return_start: Option<Vec3>,
+}
+
+struct LinearProgram {
+    waits: [f32; 2],
+    group: Option<MotionTaskGroup<2>>,
+    start: Option<Vec3>,
+}
+
 pub(crate) struct ObjectMotion {
     pub initial_transform: Mat44,
     target: Vec3,
@@ -86,11 +188,15 @@ pub(crate) struct ObjectMotion {
     stored: bool,
     sound: Option<String>,
     sound_source: Option<Box<dyn AudioMemorySource>>,
+    rollback: Option<RollbackProgram>,
+    linear: Option<LinearProgram>,
     pub progress: MotionProgress,
 }
 
 impl ObjectMotion {
     pub fn from_entry(entry: &GobEntry, kind: u32) -> Option<RefCell<Self>> {
+        use fileformats::pal4::gob::GobFloatProperty;
+        let floating = kind == GobObjectType::FLOAT;
         let integer = |name, default| {
             entry
                 .get_property(name)
@@ -98,14 +204,14 @@ impl ObjectMotion {
                 .and_then(GobProperty::value_i32)
                 .unwrap_or(default)
         };
-        if kind != GobObjectType::MACHINE
+        if (!floating && kind != GobObjectType::MACHINE)
             || !entry.research_function.to_string().ok()?.is_empty()
-            || entry
-                .parameters
-                .iter()
-                .any(|p| p.name().starts_with("PAL4_GAMEOBJECT_float"))
-            || integer(Machine::AUTO_TOUCH, 0) != 0
-            || integer(Machine::REPEAT, 0) != 0
+            || (!floating
+                && entry
+                    .parameters
+                    .iter()
+                    .any(|p| p.name().starts_with("PAL4_GAMEOBJECT_float")))
+            || (floating && !super::platforms::supported_metadata(entry))
             || integer(Fixed::CLIP, 0) != 0
             || integer(Fixed::AUTO_DISAPPEAR, 0) != 0
             || integer(Fixed::VALIDFOR, -1) != -1
@@ -130,27 +236,53 @@ impl ObjectMotion {
                 }
             }
         }
-        let [start, movement] = tasks.as_slice() else {
-            return None;
+        let (start, movement, rollback_task) = match tasks.as_slice() {
+            [start, movement] => (*start, *movement, None),
+            [start, movement, rollback] => (*start, *movement, Some(*rollback)),
+            _ => return None,
         };
-        for task in [start, movement] {
-            if task
-                .get_property(Task::WAIT_MODE)
-                .and_then(GobProperty::value_i32)
-                != Some(1)
-                || task
-                    .get_property(Task::WAIT_TIME)
-                    .and_then(GobProperty::value_f32)
-                    != Some(0.)
-            {
-                return None;
-            }
+        if floating
+            && (integer(GobFloatProperty::TOUCH_TYPE, 1) != 1
+                || (rollback_task.is_some() && integer(GobFloatProperty::AUTO_TOUCH, 0) != 1))
+        {
+            return None;
+        }
+        let automatic = integer(
+            if floating {
+                GobFloatProperty::AUTO_TOUCH
+            } else {
+                Machine::AUTO_TOUCH
+            },
+            0,
+        );
+        let repeat = integer(Machine::REPEAT, 0);
+        if !matches!(automatic, 0 | 1)
+            || !matches!(repeat, 0 | 1)
+            || (rollback_task.is_none() && (automatic != 0 || repeat != 0))
+        {
+            return None;
         }
         let scalar = |task: &fileformats::pal4::gob::GobObject, name| {
             task.get_property(name)
                 .and_then(GobProperty::value_f32)
                 .filter(|value| value.is_finite())
         };
+        for task in tasks {
+            if task
+                .get_property(Task::WAIT_MODE)
+                .and_then(GobProperty::value_i32)
+                != Some(1)
+                || !scalar(task, Task::WAIT_TIME).is_some_and(|time| {
+                    if rollback_task.is_some() || floating {
+                        time >= 0.
+                    } else {
+                        time == 0.
+                    }
+                })
+            {
+                return None;
+            }
+        }
         if start
             .get_property(Task::TYPE)
             .and_then(GobProperty::value_i32)
@@ -170,6 +302,9 @@ impl ObjectMotion {
         let sound = movement
             .get_property(Task::MOVE_SOUND_NAME)?
             .value_string()?;
+        if floating && !sound.is_empty() {
+            return None;
+        }
         if !sound.is_empty()
             && movement
                 .get_property(Task::MOVE_SOUND_TIME)
@@ -178,6 +313,44 @@ impl ObjectMotion {
         {
             return None;
         }
+        let rollback = if let Some(task) = rollback_task {
+            if task
+                .get_property(Task::TYPE)
+                .and_then(GobProperty::value_i32)
+                != Some(6)
+                || scalar(task, Task::EXPT_TIME) != Some(0.)
+                || !sound.is_empty()
+                || integer(Fixed::STORE, 0) != 0
+            {
+                return None;
+            }
+            Some(RollbackProgram {
+                waits: [
+                    scalar(start, Task::WAIT_TIME)?,
+                    scalar(movement, Task::WAIT_TIME)?,
+                    scalar(task, Task::WAIT_TIME)?,
+                ],
+                phase: RollbackPhase::Idle,
+                repeat: repeat != 0,
+                automatic_pending: automatic != 0 && entry.active != 0,
+                outbound_start: None,
+                return_start: None,
+            })
+        } else {
+            None
+        };
+        let linear = if floating && rollback_task.is_none() {
+            Some(LinearProgram {
+                waits: [
+                    scalar(start, Task::WAIT_TIME)?,
+                    scalar(movement, Task::WAIT_TIME)?,
+                ],
+                group: None,
+                start: None,
+            })
+        } else {
+            None
+        };
         let duration = scalar(movement, Task::EXPT_TIME).filter(|time| *time > 0.)?;
         let position = Vec3::new(
             scalar(start, Task::START_POS_X)?,
@@ -214,20 +387,21 @@ impl ObjectMotion {
             stored: integer(Fixed::STORE, 0) != 0,
             sound: (!sound.is_empty()).then(|| sound.to_owned()),
             sound_source: None,
+            rollback,
+            linear,
             progress: MotionProgress {
-                remaining: integer(Fixed::RESEARCH_NUM, -1),
+                remaining: if floating {
+                    -1
+                } else {
+                    integer(Fixed::RESEARCH_NUM, -1)
+                },
                 elapsed: None,
             },
         }))
     }
 
     fn start(&mut self, entity: &ComRc<IEntity>) -> bool {
-        if self.progress.remaining == 0
-            || self
-                .progress
-                .elapsed
-                .is_some_and(|time| time < self.duration)
-        {
+        if self.progress.remaining == 0 || self.running() {
             return false;
         }
         if self.progress.remaining > 0 {
@@ -235,7 +409,17 @@ impl ObjectMotion {
         }
         self.progress.elapsed = Some(0.);
         self.stop_sound();
-        self.apply_pose(entity);
+        if let Some(rollback) = self.rollback.as_mut() {
+            rollback.automatic_pending = false;
+            rollback.outbound_start = None;
+            rollback.return_start = None;
+            rollback.phase = RollbackPhase::Outbound(MotionTaskGroup::new(rollback.waits, 1));
+        } else if let Some(linear) = self.linear.as_mut() {
+            linear.group = Some(MotionTaskGroup::new(linear.waits, 1));
+            linear.start = None;
+        } else {
+            self.apply_pose(entity);
+        }
         true
     }
 
@@ -258,6 +442,14 @@ impl ObjectMotion {
         if !entity.enabled() {
             return;
         }
+        if self.rollback.is_some() {
+            self.advance_rollback(entity, delta_sec);
+            return;
+        }
+        if self.linear.is_some() {
+            self.advance_linear(entity, delta_sec);
+            return;
+        }
         if let Some(elapsed) = self.progress.elapsed.as_mut() {
             if *elapsed < self.duration {
                 *elapsed = (*elapsed + delta_sec).min(self.duration);
@@ -267,6 +459,128 @@ impl ObjectMotion {
                 }
             }
         }
+    }
+
+    fn advance_linear(&mut self, entity: &ComRc<IEntity>, delta_sec: f32) {
+        let linear = self.linear.as_mut().unwrap();
+        let Some(group) = linear.group.as_mut() else {
+            return;
+        };
+        let (events, finished) = group.advance(delta_sec, self.duration);
+        if finished {
+            linear.group = None;
+        }
+        for event in events.into_iter().flatten() {
+            match event {
+                MotionTaskEvent::Started(0) => self.apply_authored_pose(entity),
+                MotionTaskEvent::Started(1) => {
+                    self.linear.as_mut().unwrap().start =
+                        Some(entity.transform().borrow().position());
+                }
+                MotionTaskEvent::Moved(elapsed) => {
+                    self.progress.elapsed = Some(elapsed);
+                    let start = self.linear.as_ref().unwrap().start.unwrap();
+                    entity.transform().borrow_mut().set_position(&Vec3::lerp(
+                        &start,
+                        &self.target,
+                        elapsed / self.duration,
+                    ));
+                }
+                _ => {}
+            }
+        }
+    }
+
+    fn advance_rollback(&mut self, entity: &ComRc<IEntity>, delta_sec: f32) {
+        if self.rollback.as_ref().unwrap().automatic_pending {
+            self.rollback.as_mut().unwrap().automatic_pending = false;
+            self.start(entity);
+            return;
+        }
+        let rollback = self.rollback.as_mut().unwrap();
+        let returning = matches!(rollback.phase, RollbackPhase::Returning(_));
+        let (events, finished) = match &mut rollback.phase {
+            RollbackPhase::Idle => return,
+            RollbackPhase::Outbound(group) | RollbackPhase::Returning(group) => {
+                group.advance(delta_sec, self.duration)
+            }
+        };
+        if finished {
+            if returning {
+                rollback.phase = RollbackPhase::Idle;
+                rollback.automatic_pending = rollback.repeat;
+            } else {
+                // Task 6 recursively queues move-back, start-pose and cleanup tasks.
+                rollback.phase = RollbackPhase::Returning(MotionTaskGroup::new(
+                    [rollback.waits[1], rollback.waits[0], 0.],
+                    0,
+                ));
+            }
+        }
+        for event in events.into_iter().flatten() {
+            match event {
+                MotionTaskEvent::Started(index) if index == usize::from(returning) => {
+                    self.progress.elapsed = Some(0.);
+                    self.apply_authored_pose(entity);
+                }
+                MotionTaskEvent::Moved(elapsed) => {
+                    self.progress.elapsed = Some(if returning {
+                        self.duration - elapsed
+                    } else {
+                        elapsed
+                    });
+                    let rollback = self.rollback.as_ref().unwrap();
+                    let start = if returning {
+                        rollback.return_start.unwrap()
+                    } else {
+                        rollback.outbound_start.unwrap()
+                    };
+                    let target = if returning {
+                        rollback.outbound_start.unwrap()
+                    } else {
+                        self.target
+                    };
+                    entity.transform().borrow_mut().set_position(&Vec3::lerp(
+                        &start,
+                        &target,
+                        elapsed / self.duration,
+                    ));
+                }
+                MotionTaskEvent::Started(index) if index == usize::from(!returning) => {
+                    let rollback = self.rollback.as_mut().unwrap();
+                    let start = entity.transform().borrow().position();
+                    if returning {
+                        rollback.return_start = Some(start);
+                    } else {
+                        rollback.outbound_start = Some(start);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    fn apply_authored_pose(&self, entity: &ComRc<IEntity>) {
+        let transform = entity.transform();
+        let mut transform = transform.borrow_mut();
+        let mut pose = self.initial_transform;
+        // Task 16 sets position/rotation, not the object's current scale.
+        for column in 0..3 {
+            let length = |matrix: &Mat44| {
+                (0..3)
+                    .map(|row| matrix[row][column].powi(2))
+                    .sum::<f32>()
+                    .sqrt()
+            };
+            let initial_scale = length(&pose);
+            if initial_scale > 0. {
+                let ratio = length(transform.matrix()) / initial_scale;
+                for row in 0..3 {
+                    pose[row][column] *= ratio;
+                }
+            }
+        }
+        transform.set_matrix(pose);
     }
 
     fn apply_pose(&self, entity: &ComRc<IEntity>) {
@@ -292,10 +606,24 @@ impl ObjectMotion {
 
     pub(crate) fn cancel(&mut self) {
         self.progress.elapsed = None;
+        if let Some(rollback) = self.rollback.as_mut() {
+            rollback.phase = RollbackPhase::Idle;
+            rollback.automatic_pending = false;
+        }
+        if let Some(linear) = self.linear.as_mut() {
+            linear.group = None;
+            linear.start = None;
+        }
         self.stop_sound();
     }
 
     fn running(&self) -> bool {
+        if let Some(rollback) = &self.rollback {
+            return !matches!(rollback.phase, RollbackPhase::Idle);
+        }
+        if let Some(linear) = &self.linear {
+            return linear.group.is_some();
+        }
         self.progress
             .elapsed
             .is_some_and(|time| time < self.duration)
@@ -615,6 +943,9 @@ impl Pal4VmContext {
             return false;
         };
         let component = component.inner::<Pal4ObjectComponent>();
+        if component.object_type() == GobObjectType::FLOAT && !component.platform.get() {
+            return false;
+        }
         let Some(motion) = component.motion.as_ref() else {
             return false;
         };
@@ -690,14 +1021,14 @@ impl Pal4VmContext {
             let Some(component) = object_component(&entity) else {
                 continue;
             };
-            if let Some(motion) = component.inner::<Pal4ObjectComponent>().motion.as_ref() {
-                motion.borrow_mut().advance(&entity, delta_sec);
-                self.persist_object_motion(&entity);
+            let component = component.inner::<Pal4ObjectComponent>();
+            if component.object_type() != GobObjectType::FLOAT || component.platform.get() {
+                if let Some(motion) = component.motion.as_ref() {
+                    motion.borrow_mut().advance(&entity, delta_sec);
+                    self.persist_object_motion(&entity);
+                }
             }
-            let mut script_motion = component
-                .inner::<Pal4ObjectComponent>()
-                .script_motion
-                .borrow_mut();
+            let mut script_motion = component.script_motion.borrow_mut();
             if let Some(motion) = script_motion.as_mut() {
                 motion.advance(&entity, delta_sec);
                 if motion.completed.get() {
@@ -713,9 +1044,24 @@ impl Pal4VmContext {
             let Some(component) = object_component(&entity) else {
                 continue;
             };
-            let Some(motion) = component.inner::<Pal4ObjectComponent>().motion.as_ref() else {
+            let component = component.inner::<Pal4ObjectComponent>();
+            if component.object_type() == GobObjectType::FLOAT && !component.platform.get() {
+                continue;
+            }
+            let Some(motion) = component.motion.as_ref() else {
                 continue;
             };
+            {
+                let mut motion = motion.borrow_mut();
+                if entity.enabled()
+                    && motion
+                        .rollback
+                        .as_ref()
+                        .is_some_and(|r| r.automatic_pending)
+                {
+                    motion.start(&entity);
+                }
+            }
             let restored = self
                 .session_handle()
                 .borrow()
@@ -1065,10 +1411,340 @@ mod tests {
             stored: true,
             sound: None,
             sound_source: None,
+            rollback: None,
+            linear: None,
             progress: MotionProgress {
                 remaining: 1,
                 elapsed: None,
             },
+        }
+    }
+
+    #[test]
+    fn compound_task_clock_uses_strict_delays_and_separate_start_update_finish_ticks() {
+        let mut group = MotionTaskGroup::new([0.5, 0., 0.5], 1);
+        assert!(!group.advance(0.5, 1.).1);
+        assert_eq!(group.tasks[0].phase, TaskPhase::Waiting);
+        group.advance(0.125, 1.);
+        assert_eq!(group.tasks[0].phase, TaskPhase::Running);
+        group.advance(0.125, 1.);
+        assert_eq!(group.tasks[0].phase, TaskPhase::Finished);
+        assert_eq!(group.tasks[1].phase, TaskPhase::Waiting);
+        group.advance(0.125, 1.);
+        assert_eq!(group.tasks[1].phase, TaskPhase::Running);
+        assert_eq!(group.tasks[1].elapsed, 0.);
+        group.advance(0.5, 1.);
+        assert_eq!(group.tasks[1].elapsed, 0.5);
+        group.advance(0.5, 1.);
+        assert_eq!(group.tasks[1].phase, TaskPhase::Finished);
+        group.advance(0.5, 1.);
+        assert_eq!(group.tasks[2].phase, TaskPhase::Waiting);
+        group.advance(0.125, 1.);
+        assert_eq!(group.tasks[2].phase, TaskPhase::Running);
+        assert!(!group.advance(0.125, 1.).1);
+        assert!(group.advance(0.125, 1.).1);
+    }
+
+    #[test]
+    fn linear_platform_waits_captures_actual_start_and_preserves_scale_and_lifetime() {
+        let entity = CoreEntity::create("platform".into(), true);
+        entity
+            .transform()
+            .borrow_mut()
+            .scale_local(&Vec3::new(3., 3., 3.));
+        let mut motion = motion();
+        motion.stored = false;
+        motion.progress.remaining = -1;
+        motion.linear = Some(LinearProgram {
+            waits: [0.5, 0.25],
+            group: None,
+            start: None,
+        });
+        assert!(motion.start(&entity));
+        assert!(!motion.start(&entity));
+        motion.advance(&entity, 0.5);
+        assert_eq!(entity.transform().borrow().position().x, 0.);
+        motion.advance(&entity, 0.125);
+        assert_eq!(entity.transform().borrow().position().x, 30.);
+        motion.advance(&entity, 0.125);
+        entity
+            .transform()
+            .borrow_mut()
+            .set_position(&Vec3::new(70., 80., 90.));
+        motion.advance(&entity, 0.25);
+        assert!(motion.linear.as_ref().unwrap().start.is_none());
+        motion.advance(&entity, 0.125);
+        assert_eq!(entity.transform().borrow().position().x, 70.);
+        entity.set_enabled(false);
+        motion.advance(&entity, 10.);
+        assert_eq!(entity.transform().borrow().position().x, 70.);
+        entity.set_enabled(true);
+        motion.advance(&entity, 1.);
+        let transform = entity.transform();
+        let transform = transform.borrow();
+        let position = transform.position();
+        assert_eq!([position.x, position.y, position.z], [40., 50., 30.]);
+        let scale = (0..3)
+            .map(|row| transform.matrix()[row][0].powi(2))
+            .sum::<f32>()
+            .sqrt();
+        assert!((scale - 3.).abs() < 0.0001);
+        drop(transform);
+        motion.advance(&entity, 1.);
+        assert!(motion.running());
+        motion.advance(&entity, 0.125);
+        assert!(!motion.running());
+        assert!(motion.start(&entity));
+        motion.cancel();
+        motion.advance(&entity, 10.);
+        assert_eq!(entity.transform().borrow().position().x, motion.target.x);
+        assert!(!motion.running());
+    }
+
+    #[test]
+    fn rollback_captures_each_leg_start_and_then_reapplies_the_authored_pose() {
+        let entity = CoreEntity::create("bob".into(), true);
+        let mut motion = motion();
+        entity
+            .transform()
+            .borrow_mut()
+            .set_matrix(motion.initial_transform);
+        motion.rollback = Some(RollbackProgram {
+            waits: [0., 0., 0.],
+            phase: RollbackPhase::Idle,
+            repeat: false,
+            automatic_pending: false,
+            outbound_start: None,
+            return_start: None,
+        });
+        assert!(motion.start(&entity));
+        motion.advance(&entity, 0.1);
+        motion.advance(&entity, 0.1);
+        entity
+            .transform()
+            .borrow_mut()
+            .set_position(&Vec3::new(3., 4., 5.));
+        motion.advance(&entity, 0.1);
+        motion.advance(&entity, 1.);
+        let midpoint = entity.transform().borrow().position();
+        assert_eq!([midpoint.x, midpoint.y, midpoint.z], [6.5, 12., -12.5]);
+        motion.advance(&entity, 1.);
+        for _ in 0..10 {
+            motion.advance(&entity, 0.1);
+            if matches!(
+                motion.rollback.as_ref().unwrap().phase,
+                RollbackPhase::Returning(_)
+            ) {
+                break;
+            }
+        }
+        assert!(matches!(
+            motion.rollback.as_ref().unwrap().phase,
+            RollbackPhase::Returning(_)
+        ));
+        entity
+            .transform()
+            .borrow_mut()
+            .set_position(&Vec3::new(70., 80., 90.));
+        entity
+            .transform()
+            .borrow_mut()
+            .scale_local(&Vec3::new(1.5, 2., 2.5));
+        motion.advance(&entity, 0.1);
+        motion.advance(&entity, 1.);
+        let midpoint = entity.transform().borrow().position();
+        assert_eq!([midpoint.x, midpoint.y, midpoint.z], [36.5, 42., 47.5]);
+        motion.advance(&entity, 1.);
+        let returned = entity.transform().borrow().position();
+        assert_eq!([returned.x, returned.y, returned.z], [3., 4., 5.]);
+        motion.advance(&entity, 0.1);
+        let mut expected = Transform::from_matrix(motion.initial_transform);
+        expected.scale_local(&Vec3::new(1.5, 2., 2.5));
+        let actual = *entity.transform().borrow().matrix();
+        for (actual, expected) in actual
+            .floats()
+            .iter()
+            .flatten()
+            .zip(expected.matrix().floats().iter().flatten())
+        {
+            assert!((actual - expected).abs() < 0.0001);
+        }
+    }
+
+    #[test]
+    fn automatic_rollback_waits_for_the_return_before_repeating_and_reset_cancels_it() {
+        for remaining in [-1, 1] {
+            let entity = CoreEntity::create("bob".into(), true);
+            let mut motion = motion();
+            entity
+                .transform()
+                .borrow_mut()
+                .set_matrix(motion.initial_transform);
+            motion.progress.remaining = remaining;
+            motion.rollback = Some(RollbackProgram {
+                waits: [0., 0., 0.],
+                phase: RollbackPhase::Idle,
+                repeat: true,
+                automatic_pending: true,
+                outbound_start: None,
+                return_start: None,
+            });
+            entity.set_enabled(false);
+            motion.advance(&entity, 1.);
+            assert!(!motion.running());
+            entity.set_enabled(true);
+            motion.advance(&entity, 0.1);
+            assert!(motion.running());
+            let mut returned = false;
+            for _ in 0..100 {
+                motion.advance(&entity, 0.1);
+                if !motion.running() {
+                    returned = true;
+                    break;
+                }
+            }
+            assert!(returned);
+            let initial = Transform::from_matrix(motion.initial_transform).position();
+            let actual = entity.transform().borrow().position();
+            assert_eq!(
+                [actual.x, actual.y, actual.z],
+                [initial.x, initial.y, initial.z]
+            );
+            motion.advance(&entity, 0.1);
+            assert_eq!(motion.running(), remaining == -1);
+            let consumed = motion.progress.remaining;
+            motion.cancel();
+            motion.advance(&entity, 100.);
+            assert!(!motion.running());
+            assert_eq!(motion.progress.remaining, consumed);
+            assert!(!motion.rollback.as_ref().unwrap().automatic_pending);
+        }
+    }
+
+    #[test]
+    #[ignore = "requires original PAL4 assets; set PAL4_ASSET_ROOT"]
+    fn original_silent_rollback_programs_return_linearly_and_reject_partial_variants() {
+        use common::store_ext::StoreExt2;
+        use fileformats::{binrw::BinRead, pal4::gob::GobFile};
+        let root = std::env::var("PAL4_ASSET_ROOT").unwrap();
+        let vfs = packfs::init_virtual_fs(&root, None);
+        let mut found = 0;
+        for (scene_name, block, names) in [
+            ("M13", "1", vec!["SO003"]),
+            (
+                "M17",
+                "5",
+                vec![
+                    "move1", "move2", "move3", "move4", "move5", "move6", "move7", "move8",
+                ],
+            ),
+            ("Q04", "Q04C", vec!["MO003"]),
+        ] {
+            let bytes = vfs
+                .read_to_end(&format!(
+                    "/gamedata/scenedata/{scene_name}/{block}/GameObjs.gob"
+                ))
+                .unwrap();
+            let gob = GobFile::read(&mut std::io::Cursor::new(bytes)).unwrap();
+            for name in names {
+                let index = gob
+                    .entries
+                    .iter()
+                    .position(|e| e.name.to_string().unwrap() == name)
+                    .unwrap();
+                let entry = &gob.entries[index];
+                let runtime =
+                    ObjectMotion::from_entry(entry, gob.header.object_types[index]).unwrap();
+                let mut motion = runtime.borrow_mut();
+                assert!(motion.rollback.is_some());
+                assert!(!motion.stored);
+                let entity = CoreEntity::create(name.into(), true);
+                entity
+                    .transform()
+                    .borrow_mut()
+                    .set_matrix(motion.initial_transform);
+                assert!(motion.start(&entity));
+                let mut returning = false;
+                for _ in 0..300 {
+                    motion.advance(&entity, 0.1);
+                    if matches!(&motion.rollback.as_ref().unwrap().phase, RollbackPhase::Returning(group) if group.tasks[0].phase == TaskPhase::Running)
+                    {
+                        returning = true;
+                        break;
+                    }
+                }
+                assert!(returning, "{scene_name}/{block}/{name}");
+                assert!(motion.running());
+                assert!(!motion.start(&entity));
+                let duration = motion.duration;
+                motion.advance(&entity, duration / 2.);
+                let halfway = entity.transform().borrow().position();
+                let start = Transform::from_matrix(motion.initial_transform).position();
+                let target = motion.target;
+                for (actual, expected) in [
+                    (halfway.x, (start.x + target.x) / 2.),
+                    (halfway.y, (start.y + target.y) / 2.),
+                    (halfway.z, (start.z + target.z) / 2.),
+                ] {
+                    assert!((actual - expected).abs() < 0.001);
+                }
+                entity.set_enabled(false);
+                motion.advance(&entity, duration);
+                let paused = entity.transform().borrow().position();
+                assert_eq!(
+                    [paused.x, paused.y, paused.z],
+                    [halfway.x, halfway.y, halfway.z]
+                );
+                entity.set_enabled(true);
+                motion.advance(&entity, duration / 2.);
+                for _ in 0..30 {
+                    motion.advance(&entity, 0.1);
+                    if !motion.running() {
+                        break;
+                    }
+                }
+                assert!(!motion.running());
+                assert_eq!(
+                    entity.transform().borrow().matrix().floats(),
+                    motion.initial_transform.floats()
+                );
+                motion.cancel();
+                motion.advance(&entity, 100.);
+                assert!(!motion.running());
+                found += 1;
+                for property_name in [Fixed::STORE, Fixed::CLIP] {
+                    let mut unsupported = entry.clone();
+                    for property in &mut unsupported.properties {
+                        if let GobProperty::GobPropertyI32(p) = property {
+                            if p.name == property_name {
+                                p.value = 1;
+                            }
+                        }
+                    }
+                    assert!(
+                        ObjectMotion::from_entry(&unsupported, gob.header.object_types[index])
+                            .is_none()
+                    );
+                }
+            }
+        }
+        assert_eq!(found, 10);
+        for (scene_name, block, name) in [("M15", "1", "trans02"), ("Q04", "Q04CY", "MO003")] {
+            let bytes = vfs
+                .read_to_end(&format!(
+                    "/gamedata/scenedata/{scene_name}/{block}/GameObjs.gob"
+                ))
+                .unwrap();
+            let gob = GobFile::read(&mut std::io::Cursor::new(bytes)).unwrap();
+            let index = gob
+                .entries
+                .iter()
+                .position(|e| e.name.to_string().unwrap() == name)
+                .unwrap();
+            assert!(
+                ObjectMotion::from_entry(&gob.entries[index], gob.header.object_types[index])
+                    .is_none()
+            );
         }
     }
 
@@ -1261,7 +1937,7 @@ mod tests {
             assert_eq!(*events.lock().unwrap(), ["stop"]);
         }
         for (scene, block, name) in [
-            ("M15", "1", "JPuzzleA03"), // floating/riding semantics are not implemented
+            ("M15", "1", "JPuzzleA03"), // unsupported floating task program
             ("M17", "4", "rotate1"),    // different task program
         ] {
             let bytes = vfs
@@ -1277,6 +1953,39 @@ mod tests {
                 ObjectMotion::from_entry(&gob.entries[index], gob.header.object_types[index])
                     .is_none()
             );
+        }
+    }
+
+    #[test]
+    #[ignore = "requires original PAL4 assets; set PAL4_ASSET_ROOT"]
+    fn original_auto_platform_can_restart_after_return_despite_authored_single_use_count() {
+        use common::store_ext::StoreExt2;
+        use fileformats::{binrw::BinRead, pal4::gob::GobFile};
+        let vfs = packfs::init_virtual_fs(&std::env::var("PAL4_ASSET_ROOT").unwrap(), None);
+        let bytes = vfs
+            .read_to_end("/gamedata/scenedata/M17/2/GameObjs.gob")
+            .unwrap();
+        let gob = GobFile::read(&mut std::io::Cursor::new(bytes)).unwrap();
+        let index = gob
+            .entries
+            .iter()
+            .position(|entry| entry.name.to_string().unwrap() == "trans01")
+            .unwrap();
+        let motion =
+            ObjectMotion::from_entry(&gob.entries[index], gob.header.object_types[index]).unwrap();
+        let mut motion = motion.borrow_mut();
+        let entity = CoreEntity::create("trans01".into(), true);
+        for _ in 0..3 {
+            for _ in 0..200 {
+                motion.advance(&entity, 0.1);
+            }
+            assert!(!motion.running());
+            assert_eq!(
+                entity.transform().borrow().matrix().floats(),
+                motion.initial_transform.floats()
+            );
+            assert!(motion.start(&entity));
+            assert!(!motion.start(&entity));
         }
     }
 }
