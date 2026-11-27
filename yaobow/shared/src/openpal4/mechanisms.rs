@@ -73,20 +73,29 @@ impl Drop for ScriptObjectMotion {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub(crate) struct MotionProgress {
     remaining: i32,
     elapsed: Option<f32>,
+    #[serde(default)]
+    linear: Option<LinearProgress>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct LinearProgress {
+    tasks: Option<[MotionTaskClock; 2]>,
+    start: Option<Vec3>,
+    pose: Mat44,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 enum TaskPhase {
     Waiting,
     Running,
     Finished,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 struct MotionTaskClock {
     phase: TaskPhase,
     clock: f32,
@@ -179,6 +188,7 @@ struct LinearProgram {
     waits: [f32; 2],
     group: Option<MotionTaskGroup<2>>,
     start: Option<Vec3>,
+    automatic_pending: bool,
 }
 
 pub(crate) struct ObjectMotion {
@@ -213,7 +223,7 @@ impl ObjectMotion {
                     .any(|p| p.name().starts_with("PAL4_GAMEOBJECT_float")))
             || (floating && !super::platforms::supported_metadata(entry))
             || integer(Fixed::CLIP, 0) != 0
-            || integer(Fixed::AUTO_DISAPPEAR, 0) != 0
+            || (!floating && integer(Fixed::AUTO_DISAPPEAR, 0) != 0)
             || integer(Fixed::VALIDFOR, -1) != -1
             || integer(Fixed::MARKER, 0) != 0
         {
@@ -258,7 +268,7 @@ impl ObjectMotion {
         let repeat = integer(Machine::REPEAT, 0);
         if !matches!(automatic, 0 | 1)
             || !matches!(repeat, 0 | 1)
-            || (rollback_task.is_none() && (automatic != 0 || repeat != 0))
+            || (rollback_task.is_none() && (repeat != 0 || (!floating && automatic != 0)))
         {
             return None;
         }
@@ -302,9 +312,6 @@ impl ObjectMotion {
         let sound = movement
             .get_property(Task::MOVE_SOUND_NAME)?
             .value_string()?;
-        if floating && !sound.is_empty() {
-            return None;
-        }
         if !sound.is_empty()
             && movement
                 .get_property(Task::MOVE_SOUND_TIME)
@@ -321,6 +328,7 @@ impl ObjectMotion {
                 || scalar(task, Task::EXPT_TIME) != Some(0.)
                 || !sound.is_empty()
                 || integer(Fixed::STORE, 0) != 0
+                || (floating && (entry.rotation[0] != 0. || entry.rotation[2] != 0.))
             {
                 return None;
             }
@@ -347,6 +355,7 @@ impl ObjectMotion {
                 ],
                 group: None,
                 start: None,
+                automatic_pending: automatic != 0 && entry.active != 0,
             })
         } else {
             None
@@ -396,6 +405,7 @@ impl ObjectMotion {
                     integer(Fixed::RESEARCH_NUM, -1)
                 },
                 elapsed: None,
+                linear: None,
             },
         }))
     }
@@ -415,6 +425,7 @@ impl ObjectMotion {
             rollback.return_start = None;
             rollback.phase = RollbackPhase::Outbound(MotionTaskGroup::new(rollback.waits, 1));
         } else if let Some(linear) = self.linear.as_mut() {
+            linear.automatic_pending = false;
             linear.group = Some(MotionTaskGroup::new(linear.waits, 1));
             linear.start = None;
         } else {
@@ -462,6 +473,10 @@ impl ObjectMotion {
     }
 
     fn advance_linear(&mut self, entity: &ComRc<IEntity>, delta_sec: f32) {
+        if self.linear.as_ref().unwrap().automatic_pending {
+            self.start(entity);
+            return;
+        }
         let linear = self.linear.as_mut().unwrap();
         let Some(group) = linear.group.as_mut() else {
             return;
@@ -488,6 +503,9 @@ impl ObjectMotion {
                 }
                 _ => {}
             }
+        }
+        if finished {
+            self.stop_sound();
         }
     }
 
@@ -604,6 +622,70 @@ impl ObjectMotion {
         }
     }
 
+    fn snapshot(&self, entity: &ComRc<IEntity>) -> MotionProgress {
+        let mut progress = self.progress.clone();
+        progress.linear = self.linear.as_ref().map(|linear| LinearProgress {
+            tasks: linear.group.as_ref().map(|group| group.tasks),
+            start: linear.start,
+            pose: *entity.transform().borrow().matrix(),
+        });
+        progress
+    }
+
+    fn restore(&mut self, entity: &ComRc<IEntity>, mut progress: MotionProgress) -> bool {
+        if let Some(time) = progress.elapsed {
+            if !time.is_finite() || (self.linear.is_some() && (time < 0. || time > self.duration)) {
+                return false;
+            }
+            progress.elapsed = Some(time.clamp(0., self.duration));
+        }
+        if let Some(linear) = self.linear.as_mut() {
+            let Some(saved) = progress.linear.take() else {
+                return false;
+            };
+            if !saved.pose.floats().iter().flatten().all(|v| v.is_finite())
+                || saved
+                    .start
+                    .is_some_and(|p| ![p.x, p.y, p.z].iter().all(|v| v.is_finite()))
+                || saved.tasks.is_some_and(|tasks| {
+                    tasks.iter().any(|task| {
+                        ![task.clock, task.elapsed, task.finished_at]
+                            .iter()
+                            .all(|v| v.is_finite() && *v >= 0.)
+                            || task.elapsed > self.duration
+                            || task.finished_at > task.clock
+                    }) || (tasks[1].phase != TaskPhase::Waiting
+                        && (saved.start.is_none() || tasks[0].phase != TaskPhase::Finished))
+                })
+            {
+                return false;
+            }
+            linear.group = saved.tasks.map(|tasks| MotionTaskGroup {
+                tasks,
+                waits: linear.waits,
+                movement: 1,
+            });
+            linear.start = saved.start;
+            linear.automatic_pending = false;
+            entity.transform().borrow_mut().set_matrix(saved.pose);
+            self.progress = progress;
+        } else {
+            self.progress = progress;
+            self.apply_pose(entity);
+        }
+        true
+    }
+
+    fn sound_ready(&self) -> bool {
+        self.running()
+            && self.linear.as_ref().is_none_or(|linear| {
+                linear
+                    .group
+                    .as_ref()
+                    .is_some_and(|group| group.tasks[1].phase != TaskPhase::Waiting)
+            })
+    }
+
     pub(crate) fn cancel(&mut self) {
         self.progress.elapsed = None;
         if let Some(rollback) = self.rollback.as_mut() {
@@ -613,6 +695,7 @@ impl ObjectMotion {
         if let Some(linear) = self.linear.as_mut() {
             linear.group = None;
             linear.start = None;
+            linear.automatic_pending = false;
         }
         self.stop_sound();
     }
@@ -969,7 +1052,7 @@ impl Pal4VmContext {
             .unwrap();
         let mut motion = motion.borrow_mut();
         motion.stop_sound();
-        if !motion.running() {
+        if !motion.sound_ready() {
             return;
         }
         let Some(sound) = motion.sound.as_ref() else {
@@ -1011,7 +1094,7 @@ impl Pal4VmContext {
             self.session_handle()
                 .borrow_mut()
                 .state_mut()
-                .set_object_motion(key, motion.progress.clone());
+                .set_object_motion(key, motion.snapshot(entity));
         }
     }
 
@@ -1024,7 +1107,15 @@ impl Pal4VmContext {
             let component = component.inner::<Pal4ObjectComponent>();
             if component.object_type() != GobObjectType::FLOAT || component.platform.get() {
                 if let Some(motion) = component.motion.as_ref() {
-                    motion.borrow_mut().advance(&entity, delta_sec);
+                    let start_sound = {
+                        let mut motion = motion.borrow_mut();
+                        let was_ready = motion.sound_ready();
+                        motion.advance(&entity, delta_sec);
+                        !was_ready && motion.sound_ready()
+                    };
+                    if start_sound {
+                        self.start_object_motion_sound(&entity);
+                    }
                     self.persist_object_motion(&entity);
                 }
             }
@@ -1054,10 +1145,14 @@ impl Pal4VmContext {
             {
                 let mut motion = motion.borrow_mut();
                 if entity.enabled()
-                    && motion
+                    && (motion
                         .rollback
                         .as_ref()
                         .is_some_and(|r| r.automatic_pending)
+                        || motion
+                            .linear
+                            .as_ref()
+                            .is_some_and(|linear| linear.automatic_pending))
                 {
                     motion.start(&entity);
                 }
@@ -1068,21 +1163,16 @@ impl Pal4VmContext {
                 .state()
                 .object_motion(&self.reward_key(&entity))
                 .cloned();
-            let Some(mut restored) = restored else {
+            let Some(restored) = restored else {
                 continue;
             };
             let mut motion = motion.borrow_mut();
             if !motion.stored {
                 continue;
             }
-            if let Some(time) = restored.elapsed {
-                if !time.is_finite() {
-                    continue;
-                }
-                restored.elapsed = Some(time.clamp(0., motion.duration));
+            if !motion.restore(&entity, restored) {
+                continue;
             }
-            motion.progress = restored;
-            motion.apply_pose(&entity);
             drop(motion);
             self.start_object_motion_sound(&entity);
         }
@@ -1416,6 +1506,7 @@ mod tests {
             progress: MotionProgress {
                 remaining: 1,
                 elapsed: None,
+                linear: None,
             },
         }
     }
@@ -1459,6 +1550,7 @@ mod tests {
             waits: [0.5, 0.25],
             group: None,
             start: None,
+            automatic_pending: false,
         });
         assert!(motion.start(&entity));
         assert!(!motion.start(&entity));
@@ -1499,6 +1591,186 @@ mod tests {
         motion.advance(&entity, 10.);
         assert_eq!(entity.transform().borrow().position().x, motion.target.x);
         assert!(!motion.running());
+    }
+
+    fn stored_linear_motion() -> ObjectMotion {
+        let mut motion = motion();
+        motion.progress.remaining = -1;
+        motion.linear = Some(LinearProgram {
+            waits: [0.5, 0.5],
+            group: None,
+            start: None,
+            automatic_pending: false,
+        });
+        motion
+    }
+
+    #[test]
+    fn automatic_linear_startup_runs_once_and_saved_or_cancelled_states_do_not_rearm_it() {
+        let entity = CoreEntity::create("automatic".into(), true);
+        let fresh = || {
+            let mut motion = stored_linear_motion();
+            motion.linear.as_mut().unwrap().automatic_pending = true;
+            motion
+        };
+        let mut original = fresh();
+        entity.set_enabled(false);
+        original.advance(&entity, 1.);
+        assert!(original.linear.as_ref().unwrap().automatic_pending);
+        entity.set_enabled(true);
+        original.advance(&entity, 0.);
+        assert!(!original.running());
+        original.advance(&entity, 0.25);
+        assert!(original.running());
+        assert!(!original.linear.as_ref().unwrap().automatic_pending);
+        assert!(!original.start(&entity));
+        for _ in 0..24 {
+            let snapshot: MotionProgress =
+                serde_json::from_str(&serde_json::to_string(&original.snapshot(&entity)).unwrap())
+                    .unwrap();
+            let reloaded = CoreEntity::create("reloaded".into(), true);
+            let mut restored = fresh();
+            assert!(restored.restore(&reloaded, snapshot));
+            original.advance(&entity, 0.25);
+            restored.advance(&reloaded, 0.25);
+            assert_eq!(restored.running(), original.running());
+            assert_eq!(
+                reloaded.transform().borrow().matrix().floats(),
+                entity.transform().borrow().matrix().floats()
+            );
+        }
+        assert!(!original.running());
+        original.advance(&entity, 10.);
+        assert!(!original.running());
+        assert!(original.start(&entity));
+        original.cancel();
+        let mut restored = fresh();
+        assert!(restored.restore(&entity, original.snapshot(&entity)));
+        restored.advance(&entity, 10.);
+        assert!(!restored.running());
+        assert!(restored.start(&entity));
+    }
+
+    #[test]
+    fn stored_linear_platform_round_trips_delays_captured_start_pose_and_settlement() {
+        let entity = CoreEntity::create("platform".into(), true);
+        entity
+            .transform()
+            .borrow_mut()
+            .scale_local(&Vec3::new(3., 4., 5.))
+            .set_position(&Vec3::new(100., 200., 300.));
+        let mut original = stored_linear_motion();
+        assert!(original.start(&entity));
+        for tick in 0..24 {
+            if tick == 4 {
+                entity
+                    .transform()
+                    .borrow_mut()
+                    .set_position(&Vec3::new(70., 80., 90.));
+            }
+            let snapshot = original.snapshot(&entity);
+            let mut state = Pal4PersistentState::new(PAL4_APP_NAME.into());
+            state.set_object_motion("m15\\1\\platform".into(), snapshot);
+            let state: Pal4PersistentState =
+                serde_json::from_str(&serde_json::to_string(&state).unwrap()).unwrap();
+            let saved = state.object_motion("m15\\1\\platform").unwrap().clone();
+            let reloaded = CoreEntity::create("reloaded".into(), true);
+            let mut restored = stored_linear_motion();
+            assert!(restored.restore(&reloaded, saved));
+            assert_eq!(
+                reloaded.transform().borrow().matrix().floats(),
+                entity.transform().borrow().matrix().floats()
+            );
+            assert_eq!(restored.running(), original.running());
+            assert_eq!(restored.sound_ready(), original.sound_ready());
+            if original.running() {
+                assert!(!restored.start(&reloaded));
+            }
+            original.advance(&entity, 0.25);
+            restored.advance(&reloaded, 0.25);
+            assert_eq!(
+                restored
+                    .linear
+                    .as_ref()
+                    .unwrap()
+                    .group
+                    .as_ref()
+                    .map(|g| g.tasks),
+                original
+                    .linear
+                    .as_ref()
+                    .unwrap()
+                    .group
+                    .as_ref()
+                    .map(|g| g.tasks)
+            );
+            assert_eq!(
+                reloaded.transform().borrow().matrix().floats(),
+                entity.transform().borrow().matrix().floats()
+            );
+            assert_eq!(restored.running(), original.running());
+        }
+        assert!(!original.running());
+        original.cancel();
+        entity
+            .transform()
+            .borrow_mut()
+            .set_matrix(original.initial_transform);
+        let mut restored = stored_linear_motion();
+        let reloaded = CoreEntity::create("reset".into(), true);
+        assert!(restored.restore(&reloaded, original.snapshot(&entity)));
+        assert!(!restored.running());
+        assert_eq!(
+            reloaded.transform().borrow().matrix().floats(),
+            original.initial_transform.floats()
+        );
+        assert!(restored.start(&reloaded));
+    }
+
+    #[test]
+    fn stored_linear_platform_rejects_invalid_clocks_or_missing_capture_without_changing_pose() {
+        let entity = CoreEntity::create("platform".into(), true);
+        let mut original = stored_linear_motion();
+        original.start(&entity);
+        for _ in 0..7 {
+            original.advance(&entity, 0.25);
+        }
+        assert!(original.sound_ready());
+        let valid = original.snapshot(&entity);
+        for invalid in 0..4 {
+            let mut saved = valid.clone();
+            let linear = saved.linear.as_mut().unwrap();
+            match invalid {
+                0 => linear.tasks.as_mut().unwrap()[1].clock = f32::NAN,
+                1 => linear.tasks.as_mut().unwrap()[1].elapsed = -1.,
+                2 => linear.start = None,
+                _ => linear.pose[0][3] = f32::INFINITY,
+            }
+            let reloaded = CoreEntity::create("invalid".into(), true);
+            assert!(!stored_linear_motion().restore(&reloaded, saved));
+            assert_eq!(reloaded.transform().borrow().position().x, 0.);
+        }
+    }
+
+    #[test]
+    fn linear_platform_sound_begins_at_movement_and_survives_until_group_cleanup() {
+        let entity = CoreEntity::create("platform".into(), true);
+        let mut motion = stored_linear_motion();
+        motion.start(&entity);
+        for _ in 0..6 {
+            motion.advance(&entity, 0.25);
+            assert!(!motion.sound_ready());
+        }
+        motion.advance(&entity, 0.25);
+        assert!(motion.sound_ready());
+        let events = attach_test_sound(&mut motion);
+        assert!(!motion.start(&entity));
+        motion.advance(&entity, 2.);
+        assert!(motion.sound_ready());
+        assert!(!events.lock().unwrap().contains(&"stop"));
+        motion.advance(&entity, 0.25);
+        assert!(!motion.sound_ready());
+        assert_eq!(events.lock().unwrap().last(), Some(&"stop"));
     }
 
     #[test]
@@ -1937,8 +2209,9 @@ mod tests {
             assert_eq!(*events.lock().unwrap(), ["stop"]);
         }
         for (scene, block, name) in [
-            ("M15", "1", "JPuzzleA03"), // unsupported floating task program
-            ("M17", "4", "rotate1"),    // different task program
+            ("M15", "2", "JPuzzleG_7"),  // clipped floating task program
+            ("M14", "3", "ctrl_flat01"), // unsupported controller compound
+            ("M17", "4", "rotate1"),     // different task program
         ] {
             let bytes = vfs
                 .read_to_end(&format!("/gamedata/scenedata/{scene}/{block}/GameObjs.gob"))
@@ -1958,34 +2231,131 @@ mod tests {
 
     #[test]
     #[ignore = "requires original PAL4 assets; set PAL4_ASSET_ROOT"]
+    fn original_linear_platforms_restore_tasks_and_tilted_poses_and_reach_their_targets() {
+        use common::store_ext::StoreExt2;
+        use fileformats::{binrw::BinRead, pal4::gob::GobFile};
+        let vfs = packfs::init_virtual_fs(&std::env::var("PAL4_ASSET_ROOT").unwrap(), None);
+        for (block, name, stored, sound) in [
+            ("1", "JPuzzleA01", true, Some("WE136")),
+            ("1", "JPuzzleA03", true, None),
+            ("1", "JPuzzleA05", true, None),
+            ("1", "JPuzzleB04", true, Some("WE136")),
+            ("1", "JPuzzleB05", true, Some("wc009")),
+            ("1", "JPuzzleB06", true, Some("wc009")),
+            ("1", "JPuzzleC05", false, None),
+            ("1", "JPuzzleD_1", true, Some("WE136")),
+            ("1", "JPuzzleD_2", true, None),
+            ("1", "JPuzzleD_9", true, None),
+            ("1", "JPuzzleE_5", false, Some("wc009")),
+            ("1", "JPuzzleE_8", false, None),
+            ("2", "JPuzzleF_1", true, None),
+            ("2", "JPuzzleF_2", true, None),
+            ("2", "JPuzzleF_5", true, Some("WE136")),
+            ("2", "JPuzzleF_6", true, None),
+            ("2", "JPuzzleG_2", false, None),
+            ("2", "JPuzzleH_1", true, None),
+            ("2", "JPuzzleH_11", true, None),
+            ("2", "JPuzzleH_3", true, None),
+            ("2", "JPuzzleH_8", true, Some("WE136")),
+            ("2", "JPuzzleI_13", false, None),
+            ("2", "JPuzzleI_14", false, None),
+            ("2", "JPuzzleI_9", false, None),
+        ] {
+            let bytes = vfs
+                .read_to_end(&format!("/gamedata/scenedata/M15/{block}/GameObjs.gob"))
+                .unwrap();
+            let gob = GobFile::read(&mut std::io::Cursor::new(bytes)).unwrap();
+            let entry = gob
+                .entries
+                .iter()
+                .find(|e| e.name.to_string().unwrap() == name)
+                .unwrap();
+            let parsed = ObjectMotion::from_entry(entry, GobObjectType::FLOAT).unwrap();
+            let mut original = parsed.borrow_mut();
+            assert_eq!(original.stored, stored);
+            assert_eq!(original.sound.as_deref(), sound);
+            assert_eq!(original.progress.remaining, -1);
+            if let Some(sound) = sound {
+                assert!(
+                    vfs.read_to_end(&format!("/gamedata/PALSound/{sound}.wav"))
+                        .is_ok()
+                );
+            }
+            let entity = CoreEntity::create(name.into(), true);
+            entity
+                .transform()
+                .borrow_mut()
+                .set_matrix(original.initial_transform);
+            assert!(original.start(&entity));
+            let step = 0.125;
+            let mut ticks = 0;
+            while original.running() {
+                let saved: MotionProgress = serde_json::from_str(
+                    &serde_json::to_string(&original.snapshot(&entity)).unwrap(),
+                )
+                .unwrap();
+                let restored = ObjectMotion::from_entry(entry, GobObjectType::FLOAT).unwrap();
+                let mut restored = restored.borrow_mut();
+                let reloaded = CoreEntity::create("reloaded".into(), true);
+                assert!(restored.restore(&reloaded, saved));
+                original.advance(&entity, step);
+                restored.advance(&reloaded, step);
+                assert_eq!(
+                    reloaded.transform().borrow().matrix().floats(),
+                    entity.transform().borrow().matrix().floats(),
+                    "{name} tick {ticks}"
+                );
+                assert_eq!(restored.sound_ready(), original.sound_ready());
+                ticks += 1;
+                assert!(ticks < 500);
+            }
+            let position = entity.transform().borrow().position();
+            assert_eq!(
+                [position.x, position.y, position.z],
+                [original.target.x, original.target.y, original.target.z]
+            );
+            assert!(!original.sound_ready());
+            assert!(entity.visible());
+            assert!(entity.enabled());
+            assert!(original.start(&entity));
+        }
+    }
+
+    #[test]
+    #[ignore = "requires original PAL4 assets; set PAL4_ASSET_ROOT"]
     fn original_auto_platform_can_restart_after_return_despite_authored_single_use_count() {
         use common::store_ext::StoreExt2;
         use fileformats::{binrw::BinRead, pal4::gob::GobFile};
         let vfs = packfs::init_virtual_fs(&std::env::var("PAL4_ASSET_ROOT").unwrap(), None);
-        let bytes = vfs
-            .read_to_end("/gamedata/scenedata/M17/2/GameObjs.gob")
-            .unwrap();
-        let gob = GobFile::read(&mut std::io::Cursor::new(bytes)).unwrap();
-        let index = gob
-            .entries
-            .iter()
-            .position(|entry| entry.name.to_string().unwrap() == "trans01")
-            .unwrap();
-        let motion =
-            ObjectMotion::from_entry(&gob.entries[index], gob.header.object_types[index]).unwrap();
-        let mut motion = motion.borrow_mut();
-        let entity = CoreEntity::create("trans01".into(), true);
-        for _ in 0..3 {
-            for _ in 0..200 {
-                motion.advance(&entity, 0.1);
+        for (scene, block, name) in [("M17", "2", "trans01"), ("M15", "1", "trans04")] {
+            let bytes = vfs
+                .read_to_end(&format!("/gamedata/scenedata/{scene}/{block}/GameObjs.gob"))
+                .unwrap();
+            let gob = GobFile::read(&mut std::io::Cursor::new(bytes)).unwrap();
+            let index = gob
+                .entries
+                .iter()
+                .position(|entry| entry.name.to_string().unwrap() == name)
+                .unwrap();
+            let motion =
+                ObjectMotion::from_entry(&gob.entries[index], gob.header.object_types[index])
+                    .unwrap();
+            let mut motion = motion.borrow_mut();
+            let entity = CoreEntity::create(name.into(), true);
+            for _ in 0..3 {
+                for _ in 0..300 {
+                    motion.advance(&entity, 0.1);
+                }
+                assert!(!motion.running());
+                assert_eq!(
+                    entity.transform().borrow().matrix().floats(),
+                    motion.initial_transform.floats()
+                );
+                assert!(entity.visible());
+                assert!(entity.enabled());
+                assert!(motion.start(&entity));
+                assert!(!motion.start(&entity));
             }
-            assert!(!motion.running());
-            assert_eq!(
-                entity.transform().borrow().matrix().floats(),
-                motion.initial_transform.floats()
-            );
-            assert!(motion.start(&entity));
-            assert!(!motion.start(&entity));
         }
     }
 }

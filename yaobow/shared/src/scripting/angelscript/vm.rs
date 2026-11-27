@@ -26,6 +26,31 @@ impl ScriptFunctionContext {
     }
 }
 
+struct TaskScriptState<T: 'static> {
+    context: Option<ScriptFunctionContext>,
+    call_stack: Vec<ScriptCallFrame>,
+    robj: usize,
+    stack: Vec<u8>,
+    sp: usize,
+    fp: usize,
+    r1: u32,
+    r2: u32,
+    faulted: bool,
+    yield_func: Vec<GlobalFunctionContinuation<T>>,
+    imm: bool,
+}
+
+struct ScriptCallFrame {
+    context: ScriptFunctionContext,
+    fp: usize,
+}
+
+struct TaskScript<T: 'static> {
+    module: Rc<RefCell<ScriptModule>>,
+    function_index: usize,
+    state: TaskScriptState<T>,
+}
+
 pub struct ScriptVm<TAppContext: 'static> {
     pub(crate) vm_context: TAppContext,
     pub(crate) g: Rc<RefCell<ScriptGlobalContext<TAppContext>>>,
@@ -34,7 +59,10 @@ pub struct ScriptVm<TAppContext: 'static> {
     #[cfg(enable_debug)]
     debug_client: DebugIpcClient,
 
-    call_stack: Vec<ScriptFunctionContext>,
+    call_stack: Vec<ScriptCallFrame>,
+    task_scripts: Vec<TaskScript<TAppContext>>,
+    executing_task: bool,
+    clear_other_scripts: bool,
 
     pub(crate) heap: Vec<Option<String>>,
     pub(crate) robj: usize,
@@ -115,6 +143,9 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
             g,
             context: entry.map(|(module, index)| ScriptFunctionContext::new(module, index)),
             call_stack: vec![],
+            task_scripts: vec![],
+            executing_task: false,
+            clear_other_scripts: false,
             heap: vec![],
             r1: 0,
             r2: 0,
@@ -154,12 +185,111 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
     /// gate "install the new-game opening" logic so they don't
     /// trample a running script.
     pub fn is_idle(&self) -> bool {
-        self.context.is_none() && self.call_stack.is_empty()
+        self.context.is_none() && self.call_stack.is_empty() && !self.has_task_scripts()
+    }
+
+    pub fn has_task_scripts(&self) -> bool {
+        self.executing_task || !self.task_scripts.is_empty()
+    }
+
+    pub fn clear_task_scripts(&mut self) {
+        self.task_scripts.clear();
+    }
+
+    pub fn clear_contexts_but_current(&mut self) {
+        self.clear_task_scripts();
+        if self.executing_task {
+            self.clear_other_scripts = true;
+        }
+    }
+
+    /// Independent contexts share engine services, globals and string handles,
+    /// but never operand stacks, registers, callers or suspended continuations.
+    pub fn start_task_script(&mut self, module: Rc<RefCell<ScriptModule>>, name: &str) -> bool {
+        let Some(function_index) = module
+            .borrow()
+            .functions
+            .iter()
+            .position(|f| f.name == name)
+        else {
+            return false;
+        };
+        if self
+            .task_scripts
+            .iter()
+            .any(|task| Rc::ptr_eq(&module, &task.module) && task.function_index == function_index)
+        {
+            return true;
+        }
+        self.task_scripts.push(TaskScript {
+            module: module.clone(),
+            function_index,
+            state: TaskScriptState {
+                context: Some(ScriptFunctionContext::new(module, function_index)),
+                call_stack: vec![],
+                robj: 0,
+                stack: vec![0; Self::DEFAULT_STACK_SIZE],
+                sp: Self::DEFAULT_STACK_SIZE,
+                fp: Self::DEFAULT_STACK_SIZE,
+                r1: 0,
+                r2: 0,
+                faulted: false,
+                yield_func: vec![],
+                imm: true,
+            },
+        });
+        true
+    }
+
+    pub fn execute_task_scripts(&mut self, delta_sec: f32) {
+        let tasks = std::mem::take(&mut self.task_scripts);
+        self.executing_task = true;
+        for mut task in tasks {
+            self.swap_task_state(&mut task.state);
+            self.debug_update_module();
+            self.execute(delta_sec);
+            let finished = self.context.is_none() && self.call_stack.is_empty();
+            self.swap_task_state(&mut task.state);
+            if self.clear_other_scripts {
+                self.context = None;
+                self.call_stack.clear();
+                self.yield_func.clear();
+                self.rebase_stack("clear_contexts_but_current");
+                self.clear_task_scripts();
+            }
+            if !finished {
+                self.task_scripts.push(task);
+            }
+            if self.clear_other_scripts {
+                break;
+            }
+        }
+        self.executing_task = false;
+        self.clear_other_scripts = false;
+        self.debug_update_module();
+    }
+
+    fn swap_task_state(&mut self, state: &mut TaskScriptState<TAppContext>) {
+        use std::mem::swap;
+        swap(&mut self.context, &mut state.context);
+        swap(&mut self.call_stack, &mut state.call_stack);
+        swap(&mut self.robj, &mut state.robj);
+        swap(&mut self.stack, &mut state.stack);
+        swap(&mut self.sp, &mut state.sp);
+        swap(&mut self.fp, &mut state.fp);
+        swap(&mut self.r1, &mut state.r1);
+        swap(&mut self.r2, &mut state.r2);
+        state.faulted = self.faulted.replace(state.faulted);
+        swap(&mut self.yield_func, &mut state.yield_func);
+        swap(&mut self.imm, &mut state.imm);
     }
 
     pub fn set_function(&mut self, module: Rc<RefCell<ScriptModule>>, index: usize) {
         if self.context.is_some() {
-            self.call_stack.push(self.context.clone().unwrap());
+            self.call_stack.push(ScriptCallFrame {
+                context: self.context.clone().unwrap(),
+                fp: self.fp,
+            });
         } else if self.call_stack.is_empty() {
             // Fresh top-level entry: nothing can still be live on the
             // operand stack, so re-base it. See `rebase_stack`.
@@ -167,6 +297,7 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
         }
 
         self.context = Some(ScriptFunctionContext::new(module, index));
+        self.fp = self.sp;
 
         self.debug_update_module();
     }
@@ -398,6 +529,7 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
         self.context = None;
         self.call_stack.clear();
         self.yield_func.clear();
+        self.clear_task_scripts();
         self.rebase_stack("abort_script");
     }
 
@@ -753,7 +885,8 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
     /// The slot address is relative to `fp`, matching `psf` / `movsf4`.
     fn rdsf4(&mut self, index: u16) {
         unsafe {
-            let data: u32 = self.read_stack(self.fp - index as usize * 4);
+            let data: u32 =
+                self.read_stack((self.fp as isize - index as i16 as isize * 4) as usize);
             self.sp -= 4;
             self.write_stack(self.sp, data);
         }
@@ -775,7 +908,7 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
 
     fn psf(&mut self, index: u16) {
         unsafe {
-            let pos = self.fp - index as usize * 4;
+            let pos = (self.fp as isize - index as i16 as isize * 4) as usize;
             self.sp -= 4;
             self.write_stack(self.sp, pos as u32);
         }
@@ -783,7 +916,7 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
 
     fn movsf4(&mut self, index: u16) {
         unsafe {
-            let pos = self.fp - index as usize * 4;
+            let pos = (self.fp as isize - index as i16 as isize * 4) as usize;
             let data: u32 = self.read_stack(self.sp);
             self.write_stack(pos, data);
             self.sp += 4;
@@ -1010,7 +1143,8 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
         unsafe {
             let addr = (self.sp as isize + offset as isize * 4) as usize;
             let index: u32 = self.read_stack(addr);
-            let objref: u32 = self.read_stack((self.fp as isize - index as isize * 4) as usize);
+            let objref: u32 =
+                self.read_stack((self.fp as isize - index as i32 as isize * 4) as usize);
             self.write_stack(addr, objref);
         }
     }
@@ -1035,10 +1169,15 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
             let depth = self.call_stack.len();
             self.trace(TraceEventKind::FnExit { name, depth });
         }
-        let func = self.call_stack.pop();
-        self.context = func;
-
-        self.sp -= param_size as usize;
+        if let Some(frame) = self.call_stack.pop() {
+            // RET's operand is argument words, not bytes. Locals belong
+            // to the callee; its caller's frame and arguments are separate.
+            self.sp = self.fp + param_size as usize * 4;
+            self.fp = frame.fp;
+            self.context = Some(frame.context);
+        } else {
+            self.context = None;
+        }
     }
 
     fn jz(&mut self, offset: i32) {
@@ -2003,6 +2142,253 @@ mod tests {
             7,
             "target's Movga4 must have run; a stale decode aborts it instead"
         );
+    }
+
+    #[test]
+    fn helper_arguments_and_locals_use_signed_callee_offsets_and_restore_the_caller_frame() {
+        let module = Rc::new(RefCell::new(ScriptModule::test_module(vec![
+            ScriptFunction::test_function(
+                "caller",
+                assemble(&[
+                    &op(1),
+                    &1u16.to_le_bytes(),
+                    &op(2),
+                    &666u32.to_le_bytes(),
+                    &op(8),
+                    &1u16.to_le_bytes(),
+                    &op(2),
+                    &77u32.to_le_bytes(),
+                    &op(2),
+                    &42u32.to_le_bytes(),
+                    &op(12),
+                    &1u32.to_le_bytes(),
+                    &op(4),
+                    &1u16.to_le_bytes(),
+                    &op(100),
+                    &(-3i32).to_le_bytes(),
+                    &op(13),
+                    &0u16.to_le_bytes(),
+                ]),
+            ),
+            ScriptFunction::test_function(
+                "helper",
+                assemble(&[
+                    &op(1),
+                    &1u16.to_le_bytes(),
+                    &op(4),
+                    &0u16.to_le_bytes(),
+                    &op(8),
+                    &1u16.to_le_bytes(),
+                    &op(108),
+                    &op(4),
+                    &1u16.to_le_bytes(),
+                    &op(100),
+                    &(-1i32).to_le_bytes(),
+                    &op(4),
+                    &u16::MAX.to_le_bytes(),
+                    &op(100),
+                    &(-2i32).to_le_bytes(),
+                    &op(0),
+                    &1u16.to_le_bytes(),
+                    &op(13),
+                    &2u16.to_le_bytes(),
+                ]),
+            ),
+        ])));
+        let g = Rc::new(RefCell::new(ScriptGlobalContext::<()>::new()));
+        let mut vm = ScriptVm::new(g.clone(), module.clone(), 0, ());
+        for _ in 0..3 {
+            vm.execute(0.1);
+        }
+        assert_eq!(g.borrow().globals_snapshot()[..3], [42, 77, 666]);
+        assert_eq!(vm.sp, ScriptVm::<()>::DEFAULT_STACK_SIZE - 4);
+        assert_eq!(vm.fp, ScriptVm::<()>::DEFAULT_STACK_SIZE);
+        assert!(vm.is_idle());
+        vm.start_task_script(module, "caller");
+        for _ in 0..3 {
+            vm.execute_task_scripts(0.1);
+        }
+        assert!(vm.is_idle());
+        assert!(!vm.faulted.get());
+    }
+
+    #[test]
+    fn independent_task_scripts_preserve_stacks_registers_strings_and_continuations() {
+        use super::super::{ContinuationState, GlobalFunctionState, ScriptGlobalFunction};
+        let g = Rc::new(RefCell::new(ScriptGlobalContext::<()>::new()));
+        let operand = -(g.borrow().functions().len() as i32) - 1;
+        g.borrow_mut().register_function(ScriptGlobalFunction::new(
+            "wait_and_record",
+            Box::new(|_, vm: &mut ScriptVm<()>| {
+                let value = vm.stack_pop::<u32>();
+                vm.stack_push(value);
+                vm.robj = vm.push_object(format!("string-{value}"));
+                vm.r1 = value;
+                vm.r2 = value * 2;
+                vm.imm = false;
+                let mut remaining = value;
+                GlobalFunctionState::Yield(Box::new(move |vm, _| {
+                    assert_eq!(vm.r1, value);
+                    assert_eq!(vm.r2, value * 2);
+                    assert!(!vm.imm);
+                    assert_eq!(
+                        vm.heap[vm.robj].as_deref(),
+                        Some(format!("string-{value}").as_str())
+                    );
+                    remaining -= 1;
+                    if remaining > 0 {
+                        return ContinuationState::Loop;
+                    }
+                    assert_eq!(vm.stack_pop::<u32>(), value);
+                    vm.g.borrow_mut().set_global(value as usize, value);
+                    ContinuationState::Completed
+                }))
+            }),
+        ));
+        let function = |name, value: u32| {
+            ScriptFunction::test_function(
+                name,
+                assemble(&[
+                    &op(2),
+                    &value.to_le_bytes(),
+                    &op(97),
+                    &operand.to_le_bytes(),
+                    &op(13),
+                    &0u16.to_le_bytes(),
+                ]),
+            )
+        };
+        let module = Rc::new(RefCell::new(ScriptModule::test_module(vec![
+            function("main", 3),
+            function("short_task", 1),
+            function("long_task", 2),
+        ])));
+        let mut vm = ScriptVm::new(g.clone(), module.clone(), 0, ());
+        vm.execute(0.1);
+        let main_sp = vm.sp;
+        let main_robj = vm.robj;
+        assert!(vm.start_task_script(module.clone(), "short_task"));
+        assert!(vm.start_task_script(module.clone(), "short_task"));
+        assert!(vm.start_task_script(module.clone(), "long_task"));
+        assert!(!vm.start_task_script(module, "missing"));
+        assert_eq!(vm.task_scripts.len(), 2);
+        vm.execute_task_scripts(0.1);
+        assert_eq!(vm.current_function_name().as_deref(), Some("main"));
+        assert_eq!((vm.sp, vm.robj, vm.r1, vm.r2), (main_sp, main_robj, 3, 6));
+        assert_eq!(vm.yield_func.len(), 1);
+        vm.execute_task_scripts(0.1);
+        assert_eq!(g.borrow().get_global(1), 1);
+        assert_eq!(g.borrow().get_global(2), 0);
+        assert_eq!(g.borrow().get_global(3), 0);
+        vm.execute_task_scripts(0.1);
+        assert_eq!(g.borrow().get_global(2), 2);
+        assert!(!vm.has_task_scripts());
+        assert!(!vm.is_idle());
+        for _ in 0..3 {
+            vm.execute(0.1);
+        }
+        assert_eq!(g.borrow().get_global(3), 3);
+        assert!(vm.is_idle());
+    }
+
+    #[test]
+    fn task_clear_except_current_aborts_story_and_siblings_but_keeps_its_own_continuation() {
+        use super::super::{GlobalFunctionState, ScriptGlobalFunction};
+        let g = Rc::new(RefCell::new(ScriptGlobalContext::<()>::new()));
+        let operand = -(g.borrow().functions().len() as i32) - 1;
+        g.borrow_mut().register_function(ScriptGlobalFunction::new(
+            "clear_except_current",
+            Box::new(|_, vm| {
+                vm.clear_contexts_but_current();
+                GlobalFunctionState::Completed
+            }),
+        ));
+        let module = Rc::new(RefCell::new(ScriptModule::test_module(vec![
+            ScriptFunction::test_function(
+                "story",
+                assemble(&[
+                    &op(108),
+                    &op(2),
+                    &99u32.to_le_bytes(),
+                    &op(100),
+                    &(-1i32).to_le_bytes(),
+                    &op(13),
+                    &0u16.to_le_bytes(),
+                ]),
+            ),
+            ScriptFunction::test_function(
+                "hazard",
+                assemble(&[
+                    &op(97),
+                    &operand.to_le_bytes(),
+                    &op(108),
+                    &op(2),
+                    &7u32.to_le_bytes(),
+                    &op(100),
+                    &(-2i32).to_le_bytes(),
+                    &op(13),
+                    &0u16.to_le_bytes(),
+                ]),
+            ),
+        ])));
+        let mut vm = ScriptVm::new(g.clone(), module.clone(), 0, ());
+        vm.execute(0.1);
+        vm.start_task_script(module.clone(), "hazard");
+        vm.start_task_script(module.clone(), "story");
+        vm.execute_task_scripts(0.1);
+        assert!(vm.context.is_none());
+        assert_eq!(vm.task_scripts.len(), 1);
+        vm.execute(0.1);
+        vm.execute_task_scripts(0.1);
+        vm.execute_task_scripts(0.1);
+        assert_eq!(g.borrow().get_global(0), 0);
+        assert_eq!(g.borrow().get_global(1), 7);
+        assert!(vm.is_idle());
+
+        vm.set_function(module.clone(), 0);
+        vm.start_task_script(module, "hazard");
+        vm.clear_contexts_but_current();
+        assert!(vm.context.is_some());
+        assert!(!vm.has_task_scripts());
+        vm.execute(0.1);
+        vm.execute(0.1);
+        assert_eq!(g.borrow().get_global(0), 99);
+    }
+
+    #[test]
+    fn task_stack_fault_is_isolated_and_clearing_tasks_preserves_the_story_script() {
+        let module = Rc::new(RefCell::new(ScriptModule::test_module(vec![
+            ScriptFunction::test_function(
+                "main",
+                assemble(&[&op(108), &op(13), &0u16.to_le_bytes()]),
+            ),
+            ScriptFunction::test_function(
+                "bad",
+                assemble(&[&op(0), &u16::MAX.to_le_bytes(), &op(2), &0u32.to_le_bytes()]),
+            ),
+            ScriptFunction::test_function(
+                "suspended",
+                assemble(&[&op(108), &op(13), &0u16.to_le_bytes()]),
+            ),
+        ])));
+        let mut vm = ScriptVm::new(
+            Rc::new(RefCell::new(ScriptGlobalContext::<()>::new())),
+            module.clone(),
+            0,
+            (),
+        );
+        vm.execute(0.1);
+        vm.start_task_script(module.clone(), "bad");
+        vm.start_task_script(module, "suspended");
+        vm.execute_task_scripts(0.1);
+        assert_eq!(vm.task_scripts.len(), 1);
+        assert!(!vm.faulted.get());
+        assert_eq!(vm.sp, ScriptVm::<()>::DEFAULT_STACK_SIZE);
+        assert_eq!(vm.context.as_ref().unwrap().pc, 4);
+        vm.clear_task_scripts();
+        assert!(!vm.has_task_scripts());
+        vm.execute(0.1);
+        assert!(vm.is_idle());
     }
 
     /// The operand stack must be re-based when the VM starts a fresh

@@ -378,6 +378,7 @@ impl Pal4SceneSwap {
                     (state.leader(), state.player_locked())
                 };
                 let mut vm = self.vm.borrow_mut();
+                vm.clear_task_scripts();
                 let app = vm.vm_context_mut();
                 app.set_leader(leader as i32);
                 app.lock_player(player_locked);
@@ -771,6 +772,7 @@ pub(crate) fn swap_pal4_scene(
         (state.leader(), state.player_locked())
     };
     let mut vm = vm.borrow_mut();
+    vm.clear_task_scripts();
     let app = vm.vm_context_mut();
     app.set_leader(leader as i32);
     app.lock_player(player_locked);

@@ -944,20 +944,6 @@ impl Pal4SceneLoader {
                             .query_interface::<IComponent>()
                             .unwrap(),
                     );
-                    let component = object_component(&entity).unwrap();
-                    let component = component.inner::<Pal4ObjectComponent>();
-                    if super::platforms::supported_platform(
-                        &entry,
-                        object_type,
-                        component.motion.is_some(),
-                    ) && scene
-                        .collision_world()
-                        .inner::<CollisionWorldComponent>()
-                        .attach_dynamic_collider(&entity)
-                    {
-                        component.platform.set(true);
-                    }
-
                     scene.add_entity(entity);
                 }
                 (object_name, folder, file_name) => {
@@ -1030,6 +1016,20 @@ impl Pal4SceneLoader {
                     continue;
                 };
                 let component = component.inner::<Pal4ObjectComponent>();
+                if super::platforms::supported_platform(
+                    component.entry(),
+                    component.object_type(),
+                    component.motion.is_some(),
+                ) && component.platform_script.as_ref().is_none_or(|program| {
+                    module
+                        .borrow()
+                        .functions
+                        .iter()
+                        .any(|function| function.name == program.borrow().function_name())
+                }) && world.attach_dynamic_collider(&e)
+                {
+                    component.platform.set(true);
+                }
                 let research = component.research_function();
                 if research.is_empty() {
                     continue;
@@ -1401,6 +1401,13 @@ impl Pal4Scene {
         entity.transform().borrow_mut().set_matrix(saved);
         self.clear_platform_rider_for(&entity);
         if let Some(component) = object_component(&entity) {
+            if let Some(program) = component
+                .inner::<Pal4ObjectComponent>()
+                .platform_script
+                .as_ref()
+            {
+                program.borrow_mut().reset();
+            }
             if let Some(motion) = component.inner::<Pal4ObjectComponent>().motion.as_ref() {
                 motion.borrow_mut().cancel();
             }

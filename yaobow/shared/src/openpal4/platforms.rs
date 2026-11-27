@@ -1,7 +1,7 @@
 use crosscom::ComRc;
 use fileformats::pal4::gob::{
-    GobEntry, GobFixedProperty as Fixed, GobFloatProperty as Float, GobMachineProperty as Machine,
-    GobObjectType, GobParameterBlock, GobProperty,
+    GobEntry, GobFixedProperty as Fixed, GobFloatProperty as Float, GobGomTaskProperty as Task,
+    GobMachineProperty as Machine, GobObjectType, GobParameterBlock, GobProperty,
 };
 use radiance::{
     comdef::{IEntity, IEntityExt},
@@ -10,10 +10,12 @@ use radiance::{
     scene::ISceneExt,
 };
 
+use super::vm_context::Pal4VmContext;
 use super::{
     object_component::Pal4ObjectComponent,
     scene::{Pal4Scene, object_component},
 };
+use crate::scripting::angelscript::ScriptVm;
 
 const BOARD_HEIGHT: f32 = 15.;
 
@@ -33,14 +35,12 @@ pub(crate) fn supported_metadata(entry: &GobEntry) -> bool {
         && matches!(integer(GobParameterBlock::FLOAT, -1), 1 | 2)
         && matches!(integer(Float::AUTO_TOUCH, 0), 0 | 1)
         && matches!(integer(Float::TOUCH_TYPE, 1), 0 | 1)
-        && integer(Fixed::STORE, 0) == 0
+        && matches!(integer(Fixed::STORE, 0), 0 | 1)
         && integer(Fixed::CLIP, 0) == 0
-        && integer(Fixed::AUTO_DISAPPEAR, 0) == 0
+        && matches!(integer(Fixed::AUTO_DISAPPEAR, 0), 0 | 1)
         && integer(Fixed::MARKER, 0) == 0
         && integer(Fixed::HIDE, 0) == 0
         && integer(Fixed::VALIDFOR, -1) == -1
-        && entry.rotation[0] == 0.
-        && entry.rotation[2] == 0.
         && !entry.parameters.iter().any(|property| {
             if let GobProperty::GobPropertyObjectArray(array) = property {
                 property.name() == Machine::CONDITION
@@ -60,15 +60,183 @@ pub(crate) fn supported_platform(entry: &GobEntry, kind: u32, has_motion: bool) 
     kind == GobObjectType::FLOAT
         && supported_metadata(entry)
         && (has_motion
-            || (!entry
-                .parameters
-                .iter()
-                .any(|property| property.name().starts_with(Machine::TASK_LIST_PREFIX))
+            || (entry
+                .get_property(Fixed::AUTO_DISAPPEAR)
+                .or_else(|| entry.get_parameter(Fixed::AUTO_DISAPPEAR))
+                .and_then(GobProperty::value_i32)
+                .unwrap_or(0)
+                == 0
                 && entry
-                    .get_property(Fixed::RESEARCH_NUM)
+                    .get_property(Fixed::STORE)
+                    .or_else(|| entry.get_parameter(Fixed::STORE))
                     .and_then(GobProperty::value_i32)
-                    .unwrap_or(-1)
-                    == -1))
+                    .unwrap_or(0)
+                    == 0
+                && (ScriptPlatform::from_entry(entry, kind).is_some()
+                    || (entry.rotation[0] == 0.
+                        && entry.rotation[2] == 0.
+                        && !entry.parameters.iter().any(|property| {
+                            property.name().starts_with(Machine::TASK_LIST_PREFIX)
+                        })
+                        && entry
+                            .get_property(Fixed::RESEARCH_NUM)
+                            .and_then(GobProperty::value_i32)
+                            .unwrap_or(-1)
+                            == -1))))
+}
+
+enum ScriptPlatformPhase {
+    Idle,
+    Waiting(f32),
+    Running,
+    Settling,
+}
+
+pub(crate) struct ScriptPlatform {
+    function: String,
+    wait: bool,
+    delay: f32,
+    remaining: i32,
+    phase: ScriptPlatformPhase,
+}
+
+impl ScriptPlatform {
+    pub(crate) fn function_name(&self) -> &str {
+        &self.function
+    }
+
+    pub(crate) fn from_entry(entry: &GobEntry, kind: u32) -> Option<Self> {
+        if kind != GobObjectType::FLOAT || !supported_metadata(entry) {
+            return None;
+        }
+        let integer = |name, default| {
+            entry
+                .get_property(name)
+                .or_else(|| entry.get_parameter(name))
+                .and_then(GobProperty::value_i32)
+                .unwrap_or(default)
+        };
+        if integer(Fixed::STORE, 0) != 0
+            || integer(Fixed::AUTO_DISAPPEAR, 0) != 0
+            || integer(Float::TOUCH_TYPE, 1) != 0
+            || integer(Float::AUTO_TOUCH, 0) != 0
+        {
+            return None;
+        }
+        let tasks: Vec<_> = entry
+            .parameters
+            .iter()
+            .filter_map(|property| match property {
+                GobProperty::GobPropertyObjectArray(array)
+                    if property.name().starts_with(Machine::TASK_LIST_PREFIX) =>
+                {
+                    Some(&array.0)
+                }
+                _ => None,
+            })
+            .flatten()
+            .collect();
+        let [task] = tasks.as_slice() else {
+            return None;
+        };
+        let get_i32 = |name| task.get_property(name).and_then(GobProperty::value_i32);
+        let get_f32 = |name| task.get_property(name).and_then(GobProperty::value_f32);
+        let delay = get_f32(Task::WAIT_TIME)?;
+        let function = task
+            .get_property(Task::SCRIPT_FUNC)?
+            .value_string()?
+            .to_owned();
+        // With no predecessor, start-relative and finish-relative waits coincide.
+        if get_i32(Task::TYPE) != Some(2)
+            || !matches!(get_i32(Task::WAIT_MODE), Some(1 | 2))
+            || !matches!(get_i32(Task::SCRIPT_WAIT), Some(0 | 1))
+            || get_f32(Task::EXPT_TIME) != Some(0.)
+            || !delay.is_finite()
+            || delay < 0.
+            || function.is_empty()
+        {
+            return None;
+        }
+        Some(Self {
+            function,
+            wait: get_i32(Task::SCRIPT_WAIT) == Some(1),
+            delay,
+            remaining: integer(Fixed::RESEARCH_NUM, -1),
+            phase: ScriptPlatformPhase::Idle,
+        })
+    }
+
+    fn board(&mut self) {
+        if matches!(self.phase, ScriptPlatformPhase::Idle) && self.remaining != 0 {
+            if self.remaining > 0 {
+                self.remaining -= 1;
+            }
+            self.phase = ScriptPlatformPhase::Waiting(0.);
+        }
+    }
+
+    pub(crate) fn reset(&mut self) {
+        // Native task destruction/reset does not destroy the separately registered script.
+        self.phase = ScriptPlatformPhase::Idle;
+    }
+
+    fn advance(&mut self, delta_sec: f32, scripts_running: bool) -> Option<String> {
+        if !delta_sec.is_finite() || delta_sec <= 0. {
+            return None;
+        }
+        match &mut self.phase {
+            ScriptPlatformPhase::Waiting(clock) => {
+                *clock += delta_sec;
+                if *clock > self.delay {
+                    self.phase = if self.wait {
+                        ScriptPlatformPhase::Running
+                    } else {
+                        ScriptPlatformPhase::Settling
+                    };
+                    return Some(self.function.clone());
+                }
+            }
+            ScriptPlatformPhase::Running if !scripts_running => {
+                self.phase = ScriptPlatformPhase::Settling;
+            }
+            ScriptPlatformPhase::Settling => self.phase = ScriptPlatformPhase::Idle,
+            _ => {}
+        }
+        None
+    }
+}
+
+impl ScriptVm<Pal4VmContext> {
+    pub(crate) fn tick_platform_scripts(&mut self, delta_sec: f32) {
+        let (entities, module) = {
+            let scene = self.vm_context().scene.borrow();
+            (
+                scene.scene.find_entities_by_tag(super::scene::TAG_OBJECT),
+                scene.module.clone(),
+            )
+        };
+        let Some(module) = module else { return };
+        for entity in entities {
+            if !entity.enabled() {
+                continue;
+            }
+            let Some(component) = object_component(&entity) else {
+                continue;
+            };
+            let component = component.inner::<Pal4ObjectComponent>();
+            if !component.platform.get() {
+                continue;
+            }
+            if let Some(program) = component.platform_script.as_ref() {
+                let function = program
+                    .borrow_mut()
+                    .advance(delta_sec, self.has_task_scripts());
+                if let Some(function) = function {
+                    self.start_task_script(module.clone(), &function);
+                }
+            }
+        }
+    }
 }
 
 pub(crate) struct PlatformRide {
@@ -101,6 +269,9 @@ impl Pal4Scene {
             return;
         };
         let point = player.transform().borrow().position();
+        let previous_platform = previous
+            .as_ref()
+            .map(|ride| (ride.platform.ptr_value(), ride.leader));
         let origin = Vec3::new(point.x, point.y + BOARD_HEIGHT, point.z);
         let world = self.scene.collision_world();
         let world = world.inner::<CollisionWorldComponent>();
@@ -144,6 +315,17 @@ impl Pal4Scene {
 
         let position = platform.transform().borrow().position();
         let yaw = yaw(&platform);
+        if previous_platform != Some((platform.ptr_value(), leader)) {
+            if let Some(component) = object_component(&platform) {
+                if let Some(program) = component
+                    .inner::<Pal4ObjectComponent>()
+                    .platform_script
+                    .as_ref()
+                {
+                    program.borrow_mut().board();
+                }
+            }
+        }
         *self.platform_rider.borrow_mut() = Some(PlatformRide {
             platform,
             leader,
@@ -204,6 +386,43 @@ mod tests {
             [position.x, position.y, position.z],
             [unchanged.x, unchanged.y, unchanged.z]
         );
+    }
+
+    #[test]
+    fn fixed_pitch_and_roll_do_not_tilt_or_rotate_a_translated_rider() {
+        for (pitch, roll) in [(35_f32, 33_f32), (180., 180.)] {
+            let scene = Pal4Scene::new_empty();
+            let platform = CoreEntity::create("tilted".into(), true);
+            platform
+                .transform()
+                .borrow_mut()
+                .rotate_axis_angle_local(&Vec3::BACK, roll.to_radians())
+                .rotate_axis_angle_local(&Vec3::UP, 273_f32.to_radians())
+                .rotate_axis_angle_local(&Vec3::EAST, pitch.to_radians())
+                .set_position(&Vec3::new(100., 200., 300.));
+            let player = scene.players[0].transform();
+            player
+                .borrow_mut()
+                .rotate_axis_angle_local(&Vec3::UP, 0.4)
+                .set_position(&Vec3::new(140., 208., 260.));
+            let mut expected = *player.borrow().matrix();
+            *scene.platform_rider.borrow_mut() = Some(PlatformRide {
+                platform: platform.clone(),
+                leader: 0,
+                position: platform.transform().borrow().position(),
+                yaw: yaw(&platform),
+                rider_position: player.borrow().position(),
+            });
+            platform
+                .transform()
+                .borrow_mut()
+                .set_position(&Vec3::new(125., 180., 310.));
+            scene.carry_platform_rider();
+            expected[0][3] += 25.;
+            expected[1][3] -= 20.;
+            expected[2][3] += 10.;
+            assert_eq!(player.borrow().matrix().floats(), expected.floats());
+        }
     }
 
     #[test]
@@ -271,10 +490,11 @@ mod tests {
                         "{scene}/{block}/{}",
                         entry.name.to_string().unwrap()
                     ));
-                } else if entry
-                    .parameters
-                    .iter()
-                    .any(|p| p.name().starts_with(Machine::TASK_LIST_PREFIX))
+                } else if ScriptPlatform::from_entry(entry, GobObjectType::FLOAT).is_none()
+                    && entry
+                        .parameters
+                        .iter()
+                        .any(|p| p.name().starts_with(Machine::TASK_LIST_PREFIX))
                 {
                     assert!(!supported_platform(entry, GobObjectType::FLOAT, false));
                 }
@@ -283,11 +503,36 @@ mod tests {
         assert_eq!(
             accepted,
             [
+                "M15/1/JPuzzleA01",
+                "M15/1/JPuzzleA03",
+                "M15/1/JPuzzleA05",
+                "M15/1/JPuzzleB04",
+                "M15/1/JPuzzleB05",
+                "M15/1/JPuzzleB06",
+                "M15/1/JPuzzleC05",
+                "M15/1/JPuzzleD_1",
+                "M15/1/JPuzzleD_2",
+                "M15/1/JPuzzleD_9",
                 "M15/1/JPuzzleE_2",
                 "M15/1/JPuzzleE_3",
+                "M15/1/JPuzzleE_5",
+                "M15/1/JPuzzleE_8",
+                "M15/1/trans04",
+                "M15/2/JPuzzleF_1",
+                "M15/2/JPuzzleF_2",
+                "M15/2/JPuzzleF_5",
+                "M15/2/JPuzzleF_6",
+                "M15/2/JPuzzleG_2",
                 "M15/2/JPuzzleG_4",
                 "M15/2/JPuzzleG_8",
+                "M15/2/JPuzzleH_1",
+                "M15/2/JPuzzleH_11",
+                "M15/2/JPuzzleH_3",
+                "M15/2/JPuzzleH_8",
+                "M15/2/JPuzzleI_13",
+                "M15/2/JPuzzleI_14",
                 "M15/2/JPuzzleI_4",
+                "M15/2/JPuzzleI_9",
                 "M15/2/trans05",
                 "M15/2/trans06",
                 "M15/2/trans13",
@@ -299,7 +544,7 @@ mod tests {
             .read_to_end("/gamedata/scenedata/M08/2/GameObjs.gob")
             .unwrap();
         let gob = GobFile::read(&mut std::io::Cursor::new(bytes)).unwrap();
-        for (name, supported) in [("floor02", true), ("floor01", false)] {
+        for (name, supported) in [("floor02", true), ("floor01", true)] {
             let index = gob
                 .entries
                 .iter()
@@ -308,6 +553,217 @@ mod tests {
             assert_eq!(
                 supported_platform(&gob.entries[index], gob.header.object_types[index], false),
                 supported
+            );
+        }
+    }
+
+    #[test]
+    fn boarding_program_waits_strictly_deduplicates_board_edges_and_settles() {
+        let mut program = ScriptPlatform {
+            function: "board".into(),
+            wait: true,
+            delay: 0.2,
+            remaining: 2,
+            phase: ScriptPlatformPhase::Idle,
+        };
+        program.board();
+        program.board();
+        assert_eq!(program.remaining, 1);
+        assert!(program.advance(0.2, false).is_none());
+        assert_eq!(program.advance(0.1, false).as_deref(), Some("board"));
+        program.board();
+        assert_eq!(program.remaining, 1);
+        assert!(program.advance(1., true).is_none());
+        assert!(matches!(program.phase, ScriptPlatformPhase::Running));
+        program.advance(0.1, false);
+        assert!(matches!(program.phase, ScriptPlatformPhase::Settling));
+        program.advance(0.1, false);
+        program.board();
+        assert_eq!(program.remaining, 0);
+        program.reset();
+        program.board();
+        assert!(matches!(program.phase, ScriptPlatformPhase::Idle));
+
+        program.remaining = -1;
+        program.wait = false;
+        program.board();
+        assert_eq!(program.advance(0.3, true).as_deref(), Some("board"));
+        program.advance(0.1, true);
+        assert!(matches!(program.phase, ScriptPlatformPhase::Idle));
+        program.board();
+        assert!(matches!(program.phase, ScriptPlatformPhase::Waiting(_)));
+        program.reset();
+        assert!(program.advance(1., false).is_none());
+    }
+
+    #[test]
+    #[ignore = "requires original PAL4 assets; set PAL4_ASSET_ROOT"]
+    fn original_boarding_platforms_have_complete_programs_and_script_entries() {
+        use crate::scripting::angelscript::ScriptModule;
+        use common::store_ext::StoreExt2;
+        use fileformats::{binrw::BinRead, pal4::gob::GobFile};
+        let vfs = packfs::init_virtual_fs(&std::env::var("PAL4_ASSET_ROOT").unwrap(), None);
+        let mut accepted = 0;
+        let mut waited = 0;
+        let mut start_relative = 0;
+        for (scene, blocks) in [("M08", vec!["2", "3", "4"]), ("M15", vec!["2"])] {
+            let script = ScriptModule::read_from_buffer(
+                &vfs.read_to_end(&format!("/gamedata/script/{scene}.csb"))
+                    .unwrap(),
+            )
+            .unwrap();
+            for block in blocks {
+                let bytes = vfs
+                    .read_to_end(&format!("/gamedata/scenedata/{scene}/{block}/GameObjs.gob"))
+                    .unwrap();
+                let gob = GobFile::read(&mut std::io::Cursor::new(bytes)).unwrap();
+                for (index, entry) in gob.entries.iter().enumerate() {
+                    if let Some(program) =
+                        ScriptPlatform::from_entry(entry, gob.header.object_types[index])
+                    {
+                        assert!(supported_platform(entry, GobObjectType::FLOAT, false));
+                        assert!(script.functions.iter().any(|f| f.name == program.function));
+                        accepted += 1;
+                        waited += usize::from(program.wait);
+                        for property in &entry.parameters {
+                            if let GobProperty::GobPropertyObjectArray(array) = property {
+                                if property.name().starts_with(Machine::TASK_LIST_PREFIX) {
+                                    start_relative += usize::from(
+                                        array.0[0]
+                                            .get_property(Task::WAIT_MODE)
+                                            .and_then(GobProperty::value_i32)
+                                            == Some(2),
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            let context = super::super::scripting::create_context();
+            for name in if scene == "M08" {
+                vec!["func7004"]
+            } else {
+                vec!["func7022"]
+            } {
+                let function = script.functions.iter().find(|f| f.name == name).unwrap();
+                let calls: Vec<_> = function
+                    .inst2
+                    .iter()
+                    .filter(|i| i.inst == 97)
+                    .map(|i| {
+                        let operand = i32::from_le_bytes(i.params[..4].try_into().unwrap());
+                        context.functions()[(-operand - 1) as usize].name.as_str()
+                    })
+                    .collect();
+                if scene == "M08" {
+                    assert!(calls.contains(&"giScriptClearCTXButCurrent"));
+                    assert!(calls.contains(&"giPlayerCurrentSetPos"));
+                    assert!(calls.contains(&"giFlashOutWhite"));
+                } else {
+                    for call in function.inst2.iter().filter(|i| i.inst == 12) {
+                        let index =
+                            u32::from_le_bytes(call.params[..4].try_into().unwrap()) as usize;
+                        let helper = &script.functions[index];
+                        assert_eq!(helper.param_types.len(), 10);
+                        assert_eq!(helper.inst2.last().unwrap().params, 10u16.to_le_bytes());
+                        let helper_calls: Vec<_> = helper
+                            .inst2
+                            .iter()
+                            .filter(|i| i.inst == 97)
+                            .map(|i| {
+                                let operand = i32::from_le_bytes(i.params[..4].try_into().unwrap());
+                                context.functions()[(-operand - 1) as usize].name.as_str()
+                            })
+                            .collect();
+                        assert_eq!(helper.name, "func7021");
+                        assert!(helper_calls.contains(&"giGetVisibleObject"));
+                        assert!(helper_calls.contains(&"giSetObjectVisible"));
+                    }
+                }
+            }
+        }
+        assert_eq!((accepted, waited, start_relative), (127, 116, 3));
+        let bytes = vfs
+            .read_to_end("/gamedata/scenedata/M14/3/GameObjs.gob")
+            .unwrap();
+        let gob = GobFile::read(&mut std::io::Cursor::new(bytes)).unwrap();
+        let entry = gob
+            .entries
+            .iter()
+            .find(|e| e.name.to_string().unwrap() == "ctrl_flat01")
+            .unwrap();
+        assert!(ScriptPlatform::from_entry(entry, GobObjectType::FLOAT).is_none());
+        assert!(!supported_platform(entry, GobObjectType::FLOAT, false));
+    }
+
+    #[test]
+    #[ignore = "requires original PAL4 assets; set PAL4_ASSET_ROOT"]
+    fn original_visibility_puzzle_callbacks_execute_their_helper_with_ten_arguments() {
+        use crate::scripting::angelscript::{
+            GlobalFunctionState, ScriptGlobalContext, ScriptGlobalFunction, ScriptModule,
+        };
+        use common::store_ext::StoreExt2;
+        use std::{cell::RefCell, collections::HashMap, rc::Rc};
+        let vfs = packfs::init_virtual_fs(&std::env::var("PAL4_ASSET_ROOT").unwrap(), None);
+        let module = Rc::new(RefCell::new(
+            ScriptModule::read_from_buffer(&vfs.read_to_end("/gamedata/script/M15.csb").unwrap())
+                .unwrap(),
+        ));
+        let native = super::super::scripting::create_context();
+        let mut globals = ScriptGlobalContext::<HashMap<String, bool>>::new();
+        for function in native.functions().iter().skip(globals.functions().len()) {
+            globals.register_function(ScriptGlobalFunction::new(
+                &function.name,
+                Box::new(|name, vm: &mut ScriptVm<HashMap<String, bool>>| {
+                    match name {
+                        "giIMMBegin" => vm.imm = true,
+                        "giIMMEnd" => {
+                            vm.imm = false;
+                            vm.vm_context_mut().insert("completed".into(), true);
+                        }
+                        "giGetVisibleObject" | "giSetObjectVisible" => {
+                            let value = vm.stack_pop::<u32>();
+                            let index = vm.resolve_object_index(value).unwrap();
+                            let key = vm.get_object(index).unwrap().clone();
+                            if name == "giGetVisibleObject" {
+                                let visible = vm.vm_context().get(&key).copied().unwrap_or(true);
+                                vm.set_ret_value(i32::from(visible));
+                            } else {
+                                let visible = vm.stack_pop::<i32>() != 0;
+                                vm.vm_context_mut().insert(key, visible);
+                            }
+                        }
+                        "gi2DSoundPlay" => {
+                            vm.stack_pop::<u32>();
+                            vm.stack_pop::<i32>();
+                            vm.set_ret_value(0i32);
+                        }
+                        _ => panic!("unexpected original puzzle syscall {name}"),
+                    }
+                    GlobalFunctionState::Completed
+                }),
+            ));
+        }
+        let globals = Rc::new(RefCell::new(globals));
+        for index in 7022..=7033 {
+            let mut vm = ScriptVm::new_idle(globals.clone(), HashMap::new());
+            assert!(vm.start_task_script(module.clone(), &format!("func{index}")));
+            for _ in 0..300 {
+                vm.execute_task_scripts(0.1);
+                if vm.is_idle() {
+                    break;
+                }
+            }
+            assert!(vm.is_idle(), "func{index} did not settle");
+            assert_eq!(
+                vm.vm_context().get("completed"),
+                Some(&true),
+                "func{index} aborted before its helper completed"
+            );
+            assert!(
+                vm.vm_context().keys().any(|name| name.starts_with("trans")),
+                "func{index} did not change a puzzle surface"
             );
         }
     }

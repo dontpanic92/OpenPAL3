@@ -51,6 +51,7 @@ pub struct Pal4ObjectComponent {
     pub(crate) switch: Option<std::cell::RefCell<super::mechanisms::ObjectSwitch>>,
     pub(crate) script_motion: std::cell::RefCell<Option<super::mechanisms::ScriptObjectMotion>>,
     pub(crate) platform: std::cell::Cell<bool>,
+    pub(crate) platform_script: Option<std::cell::RefCell<super::platforms::ScriptPlatform>>,
 }
 
 ComObject_Pal4ObjectComponent!(super::Pal4ObjectComponent);
@@ -65,6 +66,8 @@ impl Pal4ObjectComponent {
         let continuous_rotation = super::scene::continuous_rotation_speed(&entry, object_type);
         let motion = super::mechanisms::ObjectMotion::from_entry(&entry, object_type);
         let switch = super::mechanisms::ObjectSwitch::from_entry(&entry, object_type);
+        let platform_script = super::platforms::ScriptPlatform::from_entry(&entry, object_type)
+            .map(std::cell::RefCell::new);
         let initial_transform = motion.as_ref().map_or(initial_transform, |motion| {
             motion.borrow().initial_transform
         });
@@ -78,6 +81,7 @@ impl Pal4ObjectComponent {
             switch,
             script_motion: std::cell::RefCell::new(None),
             platform: std::cell::Cell::new(false),
+            platform_script,
         })
     }
 

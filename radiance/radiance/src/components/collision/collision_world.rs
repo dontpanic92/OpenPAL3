@@ -380,6 +380,40 @@ mod tests {
         assert!(!world.attach_dynamic_collider(&CoreEntity::create("empty".into(), true)));
     }
 
+    #[test]
+    fn dynamic_floor_queries_keep_fixed_pitch_roll_and_nonuniform_scale() {
+        for (pitch, roll) in [(35_f32, 33_f32), (180., 180.)] {
+            let world = CollisionWorldComponent::create();
+            let world = world.inner::<CollisionWorldComponent>();
+            let script = world.floor_ray_caster();
+            let platform = crate::debug::create_box_entity(Rc::new(UnrenderedFactory));
+            platform
+                .transform()
+                .borrow_mut()
+                .scale_local(&Vec3::new(2., 3., 4.))
+                .rotate_axis_angle(&Vec3::BACK, roll.to_radians())
+                .rotate_axis_angle(&Vec3::EAST, pitch.to_radians())
+                .set_position(&Vec3::new(100., 200., 300.));
+            assert!(world.attach_dynamic_collider(&platform));
+            for position in [Vec3::new(100., 200., 300.), Vec3::new(125., 180., 310.)] {
+                platform.transform().borrow_mut().set_position(&position);
+                let pose = *platform.transform().borrow().matrix();
+                let side = if pose[1][1] > 0. { 3. } else { -3. };
+                let contact = Vec3::new(
+                    pose[0][3] + pose[0][1] * side,
+                    pose[1][3] + pose[1][1] * side,
+                    pose[2][3] + pose[2][1] * side,
+                );
+                let origin = Vec3::new(contact.x, contact.y + 10., contact.z);
+                let (entity, depth) = world.dynamic_floor_hit(&origin).unwrap();
+                assert_eq!(entity.ptr_value(), platform.ptr_value());
+                assert!((depth - 10.).abs() < 0.001);
+                let shared_depth = script.cast_aa_ny(origin.x, origin.y, origin.z).unwrap();
+                assert!((shared_depth - depth).abs() < 0.001);
+            }
+        }
+    }
+
     /// The world returns the nearest proximity trigger within its radius
     /// and reports its opaque payload, and returns `None` once the probe
     /// leaves every radius.

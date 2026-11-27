@@ -1970,7 +1970,8 @@ fn gob_set_position(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionSt
     Pal4FunctionState::Completed
 }
 
-fn script_clear_ctx_but_current(_: &str, _vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
+fn script_clear_ctx_but_current(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
+    vm.clear_contexts_but_current();
     Pal4FunctionState::Completed
 }
 
@@ -2668,13 +2669,34 @@ fn player_back_to(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionStat
 }
 
 fn player_blend_out(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
-    as_params!(vm,_player_id:i32,_blend_out_time:f32,_blend_out :i32);
-    Pal4FunctionState::Completed
+    as_params!(vm,player:i32,duration:f32,sync:i32);
+    player_blend(vm, player, duration, sync, false)
 }
 
 fn player_blend_in(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
-    as_params!(vm,_player_id:i32,_blend_in_time:f32,_blend_in :i32);
-    Pal4FunctionState::Completed
+    as_params!(vm,player:i32,duration:f32,sync:i32);
+    player_blend(vm, player, duration, sync, true)
+}
+
+fn player_blend(
+    vm: &mut ScriptVm<Pal4VmContext>,
+    player: i32,
+    duration: f32,
+    sync: i32,
+    visible: bool,
+) -> Pal4FunctionState {
+    let completed = vm.vm_context.blend_player(player, duration, visible);
+    if sync == 1 && !completed.get() {
+        Pal4FunctionState::Yield(Box::new(move |_, _| {
+            if completed.get() {
+                ContinuationState::Completed
+            } else {
+                ContinuationState::Loop
+            }
+        }))
+    } else {
+        Pal4FunctionState::Completed
+    }
 }
 
 fn player_face_to_current_player(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
@@ -3032,13 +3054,38 @@ fn flash_in_black(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionStat
 }
 
 fn flash_out_white(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
-    as_params!(vm, _flash_time:f32,_flash_out_white1 :i32,_flash_out_white2 :i32);
-    Pal4FunctionState::Completed
+    as_params!(vm, duration:f32,_keep:i32,sync:i32);
+    flash_white(vm, duration, sync, 1.)
 }
 
 fn flash_in_white(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
-    as_params!(vm, _flash_time:f32,_flash_in_white :i32);
-    Pal4FunctionState::Completed
+    as_params!(vm, duration:f32,sync:i32);
+    flash_white(vm, duration, sync, 0.)
+}
+
+fn flash_white(
+    vm: &mut ScriptVm<Pal4VmContext>,
+    duration: f32,
+    sync: i32,
+    target: f32,
+) -> Pal4FunctionState {
+    vm.vm_context
+        .set_white_actdrop(InterpValue::new(1. - target, target, duration));
+    if sync == 1 {
+        Pal4FunctionState::Yield(Box::new(move |vm, _| {
+            if vm.vm_context().fast_forward() {
+                vm.vm_context
+                    .set_white_actdrop(InterpValue::new(target, target, 0.));
+                ContinuationState::Completed
+            } else if vm.vm_context.get_actdrop().current() == target {
+                ContinuationState::Completed
+            } else {
+                ContinuationState::Loop
+            }
+        }))
+    } else {
+        Pal4FunctionState::Completed
+    }
 }
 
 fn flash_out_red(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {

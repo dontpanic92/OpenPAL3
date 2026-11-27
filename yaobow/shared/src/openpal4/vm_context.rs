@@ -194,6 +194,37 @@ pub struct Pal4VmContext {
     /// values the scripts pass (`giTimeScript(180, "func9001")` =
     /// every 3 seconds).
     time_script: Option<TimeScript>,
+    player_blends: HashMap<usize, PlayerBlend>,
+}
+
+struct PlayerBlend {
+    entity: ComRc<IEntity>,
+    remaining: f32,
+    visible: bool,
+    completed: Rc<Cell<bool>>,
+}
+
+impl PlayerBlend {
+    fn advance(&mut self, delta_sec: f32) -> bool {
+        if !delta_sec.is_finite() || delta_sec <= 0. {
+            return false;
+        }
+        self.remaining -= delta_sec;
+        if self.remaining <= 0. {
+            self.entity.set_visible(self.visible);
+            self.entity.set_enabled(self.visible);
+            self.completed.set(true);
+            true
+        } else {
+            false
+        }
+    }
+}
+
+impl Drop for PlayerBlend {
+    fn drop(&mut self) {
+        self.completed.set(true);
+    }
 }
 
 /// Registration for a periodic block script (`giTimeScript`).
@@ -256,6 +287,7 @@ impl Pal4VmContext {
             session,
             active_reward: None,
             time_script: None,
+            player_blends: HashMap::new(),
         }
     }
 
@@ -269,6 +301,8 @@ impl Pal4VmContext {
         self.session.borrow_mut().advance_reward_notice(notice_dt);
         self.tick_object_reward();
         if self.session.borrow().menu_tab().is_none() {
+            self.player_blends
+                .retain(|_, blend| !blend.advance(notice_dt));
             let leader = self.session.borrow().state().leader();
             self.scene.borrow().prepare_platform_rider(leader);
             self.tick_object_motions(notice_dt);
@@ -292,7 +326,7 @@ impl Pal4VmContext {
             "pal4.app_context.rotating_entities",
             self.rotating_entities.borrow().len() as u64,
         );
-        self.actdrop.update(self.ui.ui(), delta_sec);
+        self.actdrop.advance(delta_sec);
         // Motion / rotation tweens are ticked by `OpenPAL4Director::update`
         // (it owns the authoritative `Rc<RefCell<_>>` cells and can call
         // back into `Pal4VmContext` for the `*_play_animation` completion
@@ -444,6 +478,44 @@ impl Pal4VmContext {
 
     pub fn set_actdrop(&mut self, darkness: InterpValue<f32>) {
         self.actdrop.set_darkness(darkness);
+    }
+
+    pub(crate) fn set_white_actdrop(&mut self, opacity: InterpValue<f32>) {
+        self.actdrop.set_darkness(opacity);
+        self.actdrop.set_color([1.; 3]);
+    }
+
+    pub(crate) fn blend_player(
+        &mut self,
+        player: i32,
+        duration: f32,
+        visible: bool,
+    ) -> Rc<Cell<bool>> {
+        let player = self.map_player(player);
+        let entity = self.scene.borrow().get_player(player);
+        let completed = Rc::new(Cell::new(false));
+        self.player_blends.remove(&player);
+        if visible {
+            entity.set_visible(true);
+            entity.set_enabled(true);
+        }
+        if !duration.is_finite() || duration <= 0. || self.fast_forward() {
+            entity.set_visible(visible);
+            entity.set_enabled(visible);
+            completed.set(true);
+        } else {
+            // Per-entity alpha is unavailable; preserve the native timing and endpoint.
+            self.player_blends.insert(
+                player,
+                PlayerBlend {
+                    entity,
+                    remaining: duration,
+                    visible,
+                    completed: completed.clone(),
+                },
+            );
+        }
+        completed
     }
 
     pub fn get_actdrop(&self) -> &ActDrop {
@@ -1161,6 +1233,10 @@ impl Pal4VmContext {
     /// alone so the upcoming re-evaluation can keep it seamless when it
     /// resolves to the same track.
     pub fn note_block_loaded(&mut self, scene_name: &str) {
+        self.player_blends.clear();
+        if self.actdrop.color() == [1.; 3] {
+            self.set_actdrop(InterpValue::new(0., 0., 0.));
+        }
         self.restore_object_rewards();
         self.restore_object_motions();
         self.script_music_active = false;
@@ -1537,6 +1613,40 @@ fn yaw_from_transform(entity: &ComRc<IEntity>) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::normalize_track_name;
+
+    #[test]
+    fn player_blend_keeps_visibility_until_completion_and_cancel_does_not_apply_endpoint() {
+        use super::{Cell, PlayerBlend, Rc};
+        use radiance::scene::CoreEntity;
+        let entity = CoreEntity::create("player".into(), true);
+        let completed = Rc::new(Cell::new(false));
+        let mut blend = PlayerBlend {
+            entity: entity.clone(),
+            remaining: 0.5,
+            visible: false,
+            completed: completed.clone(),
+        };
+        assert!(!blend.advance(0.2));
+        assert!(entity.visible());
+        assert!(entity.enabled());
+        assert!(!completed.get());
+        assert!(!blend.advance(0.));
+        assert!(blend.advance(0.3));
+        assert!(!entity.visible());
+        assert!(!entity.enabled());
+        assert!(completed.get());
+        let cancelled = Rc::new(Cell::new(false));
+        let mut blend = PlayerBlend {
+            entity: entity.clone(),
+            remaining: 0.5,
+            visible: true,
+            completed: cancelled.clone(),
+        };
+        assert!(!blend.advance(0.2));
+        drop(blend);
+        assert!(cancelled.get());
+        assert!(!entity.visible());
+    }
 
     #[test]
     fn normalize_track_name_strips_extension_and_lowercases() {

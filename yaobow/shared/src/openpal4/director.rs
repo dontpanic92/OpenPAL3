@@ -11,7 +11,7 @@ use agent_server::protocol::{
 };
 use crosscom::ComRc;
 use fileformats::pal4::gob::GobObjectType;
-use radiance::comdef::{IEntityExt, IUiHost, IUiLayerImpl};
+use radiance::comdef::{IEntityExt, ISceneExt, IUiHost, IUiLayerImpl};
 use radiance::math::Vec3;
 use radiance::{
     audio::AudioEngine,
@@ -582,6 +582,14 @@ impl OpenPAL4Director {
         let globals = vm.g.borrow().globals_snapshot();
 
         let app = vm.vm_context_mut();
+        for entity in app
+            .scene
+            .borrow()
+            .scene
+            .find_entities_by_tag(super::scene::TAG_OBJECT)
+        {
+            app.persist_object_motion(&entity);
+        }
         let position = Some(app.leader_pos());
         let direction = Some(app.leader_direction());
         let camera = app.camera_transform();
@@ -896,7 +904,7 @@ impl IDirectorImpl for OpenPAL4Director {
 
         self.poll_save_load_hotkeys();
 
-        if self.vm.borrow().context.is_none() {
+        if self.vm.borrow().is_idle() {
             // Establish the scene's default ("baseline") BGM before any
             // event/trigger script runs this block, so a cutscene's
             // `giScriptMusicPlay` still overrides it. One-shot per block
@@ -936,7 +944,10 @@ impl IDirectorImpl for OpenPAL4Director {
         }
 
         radiance::perf::time("pal4.vm.execute_total_ns", || {
-            self.vm.borrow_mut().execute(effective_dt);
+            let mut vm = self.vm.borrow_mut();
+            vm.tick_platform_scripts(motion_dt);
+            vm.execute(effective_dt);
+            vm.execute_task_scripts(effective_dt);
         });
 
         // Reply to any deferred `fire_trigger { wait_until_idle }`
@@ -1028,6 +1039,7 @@ impl IUiLayerImpl for OpenPAL4Director {
                 && vm.vm_context.session().menu_tab().is_none()
                 && vm.vm_context.session().reward_notice().is_none()
                 && !vm.vm_context.session().reward_busy()
+                && vm.vm_context.get_actdrop().current() == 0.
                 && !self.debug_visible.get()
         };
         self.rendered_clean_frame.set(clean);
@@ -1058,6 +1070,10 @@ impl IUiLayerImpl for OpenPAL4Director {
         // input engine: it only needs to know "render me when called".
         if self.poll_tilde() {
             self.debug_visible.set(!self.debug_visible.get());
+        }
+        {
+            let vm = self.vm.borrow();
+            vm.vm_context.get_actdrop().draw(vm.vm_context.ui.ui());
         }
 
         if !self.debug_visible.get() {
@@ -1122,7 +1138,7 @@ impl OpenPAL4Director {
         let drained = std::mem::take(&mut *self.pending_fires.borrow_mut());
         let vm = self.vm.borrow();
         let now_seq = bridge.trace_sink.drain(u64::MAX, 0).next_seq;
-        let script_idle = vm.context.is_none();
+        let script_idle = vm.is_idle();
         drop(vm);
         for mut pf in drained {
             pf.waited_frames = pf.waited_frames.saturating_add(1);
@@ -1712,7 +1728,7 @@ impl OpenPAL4Director {
         let frame = bridge.as_ref().map(|b| b.frame.get()).unwrap_or(0);
 
         let current_script_fn = vm.current_function_name();
-        let script_running = current_script_fn.is_some() || app.session().reward_busy();
+        let script_running = !vm.is_idle() || app.session().reward_busy();
         let movie_playing = app.movie_playing();
         let inventory = app
             .inventory_snapshot()

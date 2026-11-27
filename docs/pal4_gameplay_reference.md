@@ -1240,7 +1240,8 @@ M15/1 `JPuzzleE_2`, `JPuzzleE_3`, and M15/2 `JPuzzleG_4`, `JPuzzleG_8`,
 `giGOMTouch` calls, not by walking onto them. No new direct player/agent
 interaction handler is added. Boarding-triggered taskful platforms in the
 original corpus instead use task 2 scripts or controller compounds; none is
-a plain `(16,0)` program, and those unsupported families remain gated.
+a plain `(16,0)` program. Singleton task 2 support is described below;
+unsupported controller compounds remain gated.
 
 The two-task floating path uses the same native strict delay and separate
 start/update/completion frame rules as rollback groups, without inventing a
@@ -1249,7 +1250,8 @@ preserving current scale (`0x005981c0`). Task 0 captures the actual position
 when movement starts (`0x00595120`), rather than always interpolating from the
 load-time anchor. Activation remains busy until group settlement; reset
 cancels the complete group. Existing ordinary-machine motion behavior is
-unchanged. Stored, sounded, tilted or clipped puzzle variants remain rejected.
+unchanged. This initial slice excluded stored, sounded, tilted and clipped
+variants; the upright stored/sounded extension is described below.
 
 Further tracing of native rider selection `0x004290d0` shows that a missed
 intersection or a rejected new candidate does not clear the previously
@@ -1283,10 +1285,13 @@ the owned validation game are removed/stopped after testing.
 
 The full 588-record census distinguishes empty floating programs (146)
 and single-script floating programs (127) from ordinary machine tasks.
-Only eligible empty surfaces, the five linear return platforms and the five
-manual linear platforms above are enabled. Boarding-triggered taskful platforms, stored/sounded
-puzzle platforms, curves, controller lifecycles, native minimap/floor-attribute
-refresh, hazards and wider original-route checks remain incomplete.
+Eligible empty surfaces, six linear return platforms, twenty-six manual linear
+platforms, three automatic linear platforms and complete single-script boarding
+programs are enabled. Floating auto-disappearance is overridden by the native
+class, as detailed below; it is not a missing disappearance lifecycle for these
+platforms. Clipped variants, task-16 programs missing authored rotation fields,
+curves, controller lifecycles, native minimap/floor-attribute refresh and wider
+original-route checks remain incomplete.
 
 The native evidence distinguishes controllers from rollback scheduling:
 
@@ -1311,6 +1316,219 @@ The native evidence distinguishes controllers from rollback scheduling:
 The corpus has 19 `(16,0,6)` entries, including floating transitions and
 automatic M13/M17 machines with authored start/rollback delays. Wider
 task 10 curves, task 11-14 controllers, task 19 timers, task 20/21 quake
-lifecycle, inventory conditions and parallel task 2 scripts remain
+lifecycle, inventory conditions and task 2 within larger compound programs remain
 completion prerequisites. No unsupported compound or platform program
 has been partially enabled.
+
+### Boarding-triggered script platforms
+
+All 127 original single-task `(2)` floating programs are now eligible:
+115 M08/2-4 recovery surfaces and 12 M15/2 visibility-puzzle surfaces.
+116 tasks wait for their script group; 11 launch without waiting. The
+three start-relative waits have no predecessor and the same zero-delay
+readiness as the finish-relative singleton tasks. Registration still requires
+actual rigid-mesh geometry and a resolvable scene script function. Tilted
+script surfaces use the complete authored mesh transform; eligible tilted
+manual linear programs are covered by the extension below. Registration runs
+during scene finalization, after the script module is available, rather than
+during the earlier GOB stage.
+
+Native dispatcher `0x0059f957` creates task 2 and configures it through
+`0x00598040`. Startup `0x00597df0` registers a separate script context
+under `palGameOMTask_script`, with a function-qualified name to suppress
+duplicate active entries (`0x007dc8f0`). Nonwaiting tasks complete at
+startup; waited tasks poll group status through `0x00597ff0` /
+`0x007dd320`. Boarding is an edge, not a continuous proximity trigger:
+`0x0059cf10` starts touch-type-0 programs only on first contact, and
+leaving (`0x0059cf80`) only clears boarding. Script contexts are independent
+of the task object's running flag: resetting/disabled polling does not
+silently destroy an already launched script. Scene replacement does clear
+the outgoing task contexts.
+
+The AngelScript host now retains separate operand stacks, registers,
+string-result registers, caller stacks, immediate-mode flags and suspended
+continuations for each task script, sharing the existing engine services,
+globals and string-handle heap. Story scripts are not overwritten or
+used as a serial queue for boarding callbacks. New interaction dispatch
+waits until the active task scripts settle; observer busy/idle status
+includes the independent contexts. Pause and gameplay menus freeze task
+clocks and execution together.
+
+M08's original `func7004` locks the player, clears other contexts, runs a
+white-flash recovery and moves the current leader to its authored fallback.
+The formerly empty `giScriptClearCTXButCurrent` now implements the native
+clear-except-current behavior verified at `0x005d6870` / `0x007dc970`,
+including a hazard cancelling a suspended story script without cancelling
+itself. White flashes now render and respect synchronous waits. Player
+blend requests preserve both asynchronous timing and synchronous completion,
+including cancellation on scene change. Flash interpolation advances in
+simulation updates; painting occurs in the director's UI layer, before
+scene updates, so paused frames still draw the current flash. An interrupted
+white recovery is cleared when the replacement scene is installed; existing
+black-fade behavior is preserved. The engine still lacks per-entity
+alpha: player blends preserve visibility endpoints, not native smooth
+alpha interpolation. Existing effect and special camera-mode sysfn stubs
+are not claimed as visual parity.
+
+M15 `func7022` calls the original shared `func7021`, which reads and changes
+object visibility and plays the matching switch sounds. The acceptance test
+checks all 127 functions, waited/nonwaited counts and both recovered callback
+families while continuing to reject the M14 controller compound.
+
+Executing the original visibility helper also exposed a VM call-frame bug:
+`func7021` takes ten arguments, reads argument zero at the callee's frame
+pointer, and ends in `RET 10` (argument words, not bytes). CALL now establishes
+a separate callee frame; signed frame offsets address the remaining
+arguments, and RET restores the caller's frame and removes its arguments.
+This is separate from CALLSYS, whose handlers still pop their declared
+arguments themselves. All twelve original `func7022` through `func7033`
+callbacks execute to helper completion in the focused original-bytecode test.
+
+Validation: 98 PAL4/VM tests including original assets pass, as does the full
+shared-crate baseline, affected all-target checks, release build and formatting.
+Live mesh boarding at M08/2 `floor01` invokes `func7004` without a main story
+context, reports busy, paints a white frame (RGB mean about 254), and recovers
+to `(510.35,8.04,798.16)`. Excess height does not trigger it; pause freezes it;
+re-entry triggers again; replacing the scene while white removes both the
+outgoing context and overlay. M15/2 `trans22` invokes `func7022` /
+`func7021` and hides `trans24`; stationary contact does not rerun it.
+Waited `trans31` / `func7031` pauses and settles normally. The existing
+`ctrlG_2` manual callback still carries the G4 rider with exact `(40,8,-40)`
+offset through its endpoint. Owned validation games and slots96/97 are
+removed after testing; user slots1-5 and the asset submodule are untouched.
+
+### Stored and sounded linear platforms
+
+Six further complete upright, unclipped manual `(16,0)` programs are enabled:
+M15/1 `JPuzzleB05`, `JPuzzleB06`, `JPuzzleD_1`, `JPuzzleD_9`,
+`JPuzzleE_5`, and M15/2 `JPuzzleF_6`. All except E5 are stored. B5, B6
+and E5 use `wc009`; D1 uses `WE136`; D9 and F6 are silent. Sounds must
+still have the verified `sound_time=-1` loop lifetime; finite-count sounds
+and effects remain rejected. Auto-disappearing A5/B4/C5, clipped G7 and
+automatic H1/H3/H11 programs remain gated even when the same script also
+touches supported objects. Tilted D2 and F1/F2/F5 are covered below.
+
+Stored floating progress now records both task clocks/phases, movement's
+captured start and the complete current transform, in addition to the research
+count and elapsed movement time. Delays, the frame separating task startup
+from movement, and the final busy-settlement frame all survive reload.
+Snapshots preserve scale and any position captured after task 16, rather than
+reconstructing every save from the load-time anchor. The save path refreshes
+stored poses even if simulation is paused. Invalid/nonfinite snapshots are
+rejected before changing the entity. Reset cancels the group and subsequent
+saves retain the reset pose.
+
+Floating audio starts at task 0 startup (`0x0059525f`), not when the containing
+program is activated: B5's authored half-second predecessor-relative delay
+must remain silent. Its owned loop lives through movement completion until
+the group cleanup frame, then stops. Existing reset, disable/resume,
+stop-all and unload ownership rules are retained. Restoring a running
+movement creates one fresh loop, without saving backend handles or playback
+offsets; waiting and fully settled programs restore silently. Ordinary
+machine sound timing is unchanged.
+
+Validation includes 102 PAL4/VM tests with original assets, affected all-target
+checks, release build and formatting. Focused tests round-trip every task
+phase, captured starts, nonuniform scale, settlement and reset, reject malformed
+snapshots, and execute all six original movement definitions to their targets.
+The original-asset selector now accepts exactly sixteen linear/return programs.
+Live original B/D/F callbacks move the new supported objects. B5/B6 restore
+their exact saved midpoints and reproduce the same next eight simulation
+steps; F6 does likewise and retains its completed pose after reload. D9 keeps
+its actual `(40,8,-40)` rider offset through movement and a mid-motion reload.
+Pause freezes poses exactly. Logs verify wc009/WE136 startup, scene-replacement
+cleanup, one fresh loop on unfinished restore and final group cleanup.
+
+### Fixed-pose tilted linear platforms
+
+Twelve further complete manual `(16,0)` programs are enabled: M15/1
+`JPuzzleA01`, `JPuzzleA03`, `JPuzzleD_2`, `JPuzzleE_8`, and M15/2
+`JPuzzleF_1`, `JPuzzleF_2`, `JPuzzleF_5`, `JPuzzleG_2`, `JPuzzleH_8`,
+`JPuzzleI_13`, `JPuzzleI_14`, `JPuzzleI_9`. They retain their full authored
+pitch/roll, including equivalent 180-degree Euler poses and small nonzero
+exported angles. No angle snapping or flattening is applied. Task 16 sets the
+fixed pose; task 0 translates it without interpolating pitch or roll. Only
+this manual linear path loses its earlier zero-pitch/roll restriction;
+rollback and unsupported compound gates are unchanged.
+
+Native floating update `0x0059c430` records the previous position and scalar
+yaw, ticks its machine program, then transports the selected leader when
+translation changes. It does not impose the platform's fixed pitch/roll on
+the actor. The existing rigid dynamic collider already bakes the complete
+world transform and refreshes it when the root moves. New regressions verify
+sloped and flipped mesh hits with nonuniform scale through both native and
+shared script floor queries, and verify that translated riders stay upright.
+At this stage the original-asset selector accepted exactly 28 linear/return
+programs: 23 manual programs plus five return platforms. A5/B4/C5 were initially
+held behind their authored auto-disappearance flags, and automatic H1/H3/H11
+were also deferred. The native-property normalization below resolves those
+gates; clipped G7 remains rejected.
+
+Validation: 26 focused PAL4 mechanism/platform tests with original assets and
+two engine collision tests pass, along with affected all-target checks,
+release build, formatting and diff checks. Original-bytecode A/D/E/F/G/H/I
+callbacks reach all twelve new authored endpoints. A1 carries a rider at
+actual mesh offset `(40,8,-40)` while descending and restores its unexpired
+1.7-second movement delay, subsequent trajectory and riding across save/load.
+Sloped E8 keeps the same selected offset through translation. Flipped F1
+requires a different mesh contact (its anchor is valid; the E8 offset is not);
+its rider and exact in-flight trajectory survive reload. Completed F1/F2/F5/H8
+poses also reload exactly. Pause freezes settled poses, and live checks confirm
+that G7 and H1/H3/H11 remain unmoved. Existing sound ownership covers the new
+A1/F5/H8 `WE136` loops without leaking them on completion or reload.
+Owned validation games are stopped and temporary slots96/97 removed afterward;
+user slots1-5 and the pre-existing dirty asset submodule remain untouched.
+
+### Native floating metadata and automatic activation
+
+The original floating class overrides generic authored properties. Base reader
+`0x00599524` reads `PAL4-GameObject-object-auto-disappear` through the property-name
+pointer at `0x008b86ac` and stores it at object offset `0x190`. Floating reader
+`0x0059ce10` calls machine reader `0x005a1720` (which calls the base reader), then
+explicitly clears `0x190` at `0x0059ce2a` when floating parameters are present.
+It reads floating auto-touch and touch-type into offsets `0x2d4` and `0x2d8`.
+For touch-type 1 it also forces research count `0x198` to `-1` at `0x0059ce9b`.
+Therefore authored disappearance/single-use flags do **not** make these ordinary
+floating motion programs disappear or become exhausted after their first use.
+Non-floating machines retain their previous disappearance gate.
+
+This enables M15/1 manual `(16,0)` programs `JPuzzleA05`, `JPuzzleB04`,
+`JPuzzleC05`, and automatic silent `(16,0,6)` return platform `trans04`.
+A5/B4 retain stored motion phase/pose; C5 and trans04 remain nonstored.
+B4 uses the existing owned `WE136` loop with startup at task-0 activation and
+cleanup only after group settlement. All four keep rendering and actual mesh
+collision participation after completion. Metadata normalization is scoped to
+complete motion programs; the empty-surface and singleton-script gates are not
+broadened. M15/1 trans02/trans03 still lack authored task-16 rotation fields, and
+remain rejected rather than guessing their defaults.
+
+Floating active setter `0x0059ceb0` first calls machine setter `0x005a1990`, which
+clears both running task groups. When floating auto-touch and the passed active
+flag are nonzero, it invokes virtual touch slot `0x50`. Complete M15/2 `(16,0)`
+programs `JPuzzleH_1`, `JPuzzleH_3`, `JPuzzleH_11` now start once on fresh scene
+activation. Startup queues the normal two-task clock without advancing it while
+paused. Restored running clocks/poses replace that fresh startup; completed
+stored programs stay completed instead of replaying on load. Cancellation and
+reset clear pending automatic startup. This does not implement task-15 manager
+unregister/reset/re-register semantics or enable generic automatic/repeating
+machine programs.
+
+Validation: 27 focused PAL4 tests with original assets and two engine collision
+tests pass, with affected all-target checks, release build, formatting and diff
+checks. The exact original-asset census is now **35 linear/return programs**:
+26 manual, three automatic linear and six return programs. Regressions cover
+disabled/zero-time startup, one activation, running/completed/cancelled save
+restoration, original flags, unlimited retriggering and retained visibility.
+Original A/B/C callbacks reach all three new manual endpoints and can be invoked
+again. A5/B4 completed poses reload unchanged; nonstored C5 returns to its entry
+pose. Two B4 movement loops start and clean up without VM or runtime errors.
+
+Live paused-scene startup moves all three H platforms without firing H. Their
+saved midpoints and next four 0.1-second frames reproduce exactly after reload;
+completed saves remain at the endpoints after further steps. Original H callback
+`func7008` also reactivates them. After its reset clears rider ownership, H1
+accepts fresh mesh contact and preserves the selected upright rider's actual
+offset `(-63.2823,0.0003,22.80097)` through translation. Trans04 carries at
+`(40,8,-40)`, completes its return to the exact authored pose and stays visible.
+Clipped G7 and unsupported trans02/trans03 remain unmoved. The owned game is
+stopped and reserved slots96/97 removed; user saves1-5 are verified unchanged.
