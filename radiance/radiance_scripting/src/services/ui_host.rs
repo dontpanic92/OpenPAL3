@@ -1097,6 +1097,7 @@ impl IUiHostImpl for ImguiUiHost {
                 .add_image(texture_id, [x0 * s, y0 * s], [x1 * s, y1 * s])
                 .uv_min([u0, v0])
                 .uv_max([u1, v1])
+                .col([1.0, 1.0, 1.0, unsafe { (*imgui::sys::igGetStyle()).Alpha }])
                 .build();
         });
     }

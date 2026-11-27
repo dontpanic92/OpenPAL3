@@ -28,6 +28,7 @@ const TLI_PATH: &str = "/basedata/basedata/ui/UILib/UI_opt.tli";
 const PLUG_PATH: &str = "/basedata/basedata/ui/UIArtist.plug";
 /// Directory the manifest's atlas-page references resolve against.
 const UILIB_DIR: &str = "/basedata/basedata/ui/UILib/";
+const CREDITS_SPRITE: &str = "ui/uilib/zzq.tga";
 
 /// Which on-disk manifest format backs the atlas. PAL3 ships the text
 /// `UI_opt.tli`; PAL3A ships the `UIArtist.plug` variant instead.
@@ -38,7 +39,7 @@ pub enum AtlasManifest {
 }
 
 pub struct Pal3UiAtlas {
-    sprites: ComRc<ISpriteService>,
+    credits: Option<ComRc<ISprite>>,
     tli: TliDict,
     /// `lib name (lowercase) -> loaded atlas page` (None once a load
     /// attempt has failed, so we don't retry every lookup).
@@ -74,13 +75,21 @@ impl Pal3UiAtlas {
             }
             pages.insert(key, load_page(&sprites, &lib));
         }
+        // The native cover loads this standalone image, absent from UI_opt.tli.
+        let credits = (kind == AtlasManifest::Tli)
+            .then(|| {
+                sprites
+                    .load_atlas_page("/basedata/basedata/ui/UILib/zzq.tga")
+                    .map(|page| page.sprite(0, 0, 366, 1024))
+            })
+            .flatten();
         log::info!(
             "Pal3UiAtlas: loaded atlas manifest ({} entries, {} atlases)",
             tli.len(),
             pages.len()
         );
         ComRc::from_object(Self {
-            sprites,
+            credits,
             tli,
             pages: RefCell::new(pages),
         })
@@ -129,9 +138,16 @@ fn load_page(sprites: &ComRc<ISpriteService>, lib: &str) -> Option<ComRc<IAtlasP
 impl IPal3UiAtlasImpl for Pal3UiAtlas {
     fn has_sprite(&self, name: &str) -> bool {
         self.tli.get(name).is_some()
+            || (name.replace('\\', "/").eq_ignore_ascii_case(CREDITS_SPRITE)
+                && self.credits.is_some())
     }
 
     fn sprite(&self, name: &str) -> Option<ComRc<ISprite>> {
+        if name.replace('\\', "/").eq_ignore_ascii_case(CREDITS_SPRITE) {
+            if let Some(credits) = &self.credits {
+                return Some(credits.clone());
+            }
+        }
         let entry = self.tli.get(name)?;
         let page = self.page_for(&entry.lib)?;
         Some(page.sprite(

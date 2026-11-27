@@ -52,6 +52,80 @@ impl IPal3SaveSlotsImpl for TestSlots {
 
 mod comdef {
     pub use radiance_scripting::comdef::*;
+    pub use yaobow_lib::comdef::yaobow_services;
+}
+
+struct TestHost;
+yaobow_lib::ComObject_YaobowHostContext!(crate::TestHost);
+impl radiance_scripting::comdef::services::IHostContextImpl for TestHost {
+    fn scene_manager(&self) -> ComRc<radiance::comdef::ISceneManager> {
+        unimplemented!()
+    }
+    fn audio(&self) -> ComRc<radiance_scripting::comdef::services::IAudioService> {
+        unimplemented!()
+    }
+    fn textures(&self) -> ComRc<radiance_scripting::comdef::services::ITextureService> {
+        unimplemented!()
+    }
+    fn vfs(&self) -> ComRc<radiance_scripting::comdef::services::IVfsService> {
+        unimplemented!()
+    }
+    fn input(&self) -> ComRc<radiance_scripting::comdef::services::IInputService> {
+        unimplemented!()
+    }
+    fn games(&self) -> ComRc<radiance_scripting::comdef::services::IGameRegistry> {
+        unimplemented!()
+    }
+    fn app(&self) -> ComRc<radiance_scripting::comdef::services::IAppService> {
+        unimplemented!()
+    }
+    fn random(&self) -> ComRc<radiance_scripting::comdef::services::IRandomService> {
+        unimplemented!()
+    }
+    fn config(&self) -> ComRc<radiance_scripting::comdef::services::IConfigService> {
+        unimplemented!()
+    }
+}
+impl yaobow_lib::comdef::yaobow_services::IYaobowHostContextImpl for TestHost {
+    fn pal3(&self) -> ComRc<shared::openpal3::comdef::IPal3Service> {
+        unimplemented!()
+    }
+    fn pal4(&self) -> ComRc<shared::openpal4::comdef::IPal4Service> {
+        unimplemented!()
+    }
+    fn pal5(&self) -> ComRc<shared::openpal5::comdef::IPal5Service> {
+        unimplemented!()
+    }
+    fn swd5(&self) -> ComRc<shared::openswd5::comdef::ISwd5Service> {
+        unimplemented!()
+    }
+}
+
+struct CreditsAtlas {
+    native: bool,
+    credits: bool,
+}
+mod credits_atlas {
+    shared::ComObject_Pal3UiAtlas!(crate::CreditsAtlas);
+}
+impl IPal3UiAtlasImpl for CreditsAtlas {
+    fn has_sprite(&self, name: &str) -> bool {
+        match name {
+            "ui/menu/btn_qianchenyimeng0.tga" => self.native,
+            "ui/uilib/zzq.tga" => self.credits,
+            _ => false,
+        }
+    }
+    fn sprite(&self, name: &str) -> Option<ComRc<radiance_scripting::comdef::services::ISprite>> {
+        (name == "ui/menu/log0.tga" || (name == "ui/uilib/zzq.tga" && self.credits))
+            .then(|| ComRc::from_object(Thumbnail))
+    }
+    fn native_width(&self) -> i32 {
+        800
+    }
+    fn native_height(&self) -> i32 {
+        600
+    }
 }
 struct Thumbnail;
 radiance_scripting::ComObject_Sprite!(crate::Thumbnail);
@@ -76,6 +150,85 @@ impl radiance_scripting::comdef::services::ISpriteImpl for Thumbnail {
     }
     fn v1(&self) -> f32 {
         1.
+    }
+}
+
+struct CreditsPage;
+radiance_scripting::ComObject_AtlasPage!(crate::CreditsPage);
+impl radiance_scripting::comdef::services::IAtlasPageImpl for CreditsPage {
+    fn width(&self) -> i32 {
+        512
+    }
+    fn height(&self) -> i32 {
+        1024
+    }
+    fn sprite(
+        &self,
+        x: i32,
+        y: i32,
+        w: i32,
+        h: i32,
+    ) -> ComRc<radiance_scripting::comdef::services::ISprite> {
+        assert_eq!(
+            (x, y, w, h),
+            (0, 0, 366, 1024),
+            "native credits crop, not a squeezed 512px image"
+        );
+        ComRc::from_object(Thumbnail)
+    }
+    fn whole(&self) -> ComRc<radiance_scripting::comdef::services::ISprite> {
+        panic!("credits use a crop")
+    }
+}
+struct CreditsLoader {
+    loads: std::rc::Rc<std::cell::RefCell<Vec<String>>>,
+    available: bool,
+}
+radiance_scripting::ComObject_SpriteService!(crate::CreditsLoader);
+impl radiance_scripting::comdef::services::ISpriteServiceImpl for CreditsLoader {
+    fn load_sprite(&self, _: &str) -> Option<ComRc<radiance_scripting::comdef::services::ISprite>> {
+        panic!("load the page to preserve native source cropping")
+    }
+    fn load_atlas_page(
+        &self,
+        path: &str,
+    ) -> Option<ComRc<radiance_scripting::comdef::services::IAtlasPage>> {
+        self.loads.borrow_mut().push(path.into());
+        self.available.then(|| ComRc::from_object(CreditsPage))
+    }
+}
+
+#[test]
+fn credits_load_eagerly_outside_manifest_only_for_pal3() {
+    use shared::openpal3::ui_atlas::{AtlasManifest, Pal3UiAtlas};
+    for (kind, available) in [
+        (AtlasManifest::Tli, true),
+        (AtlasManifest::Tli, false),
+        (AtlasManifest::Plug, true),
+    ] {
+        let loads = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let atlas = Pal3UiAtlas::create(
+            ComRc::from_object(CreditsLoader {
+                loads: loads.clone(),
+                available,
+            }),
+            b"",
+            kind,
+        );
+        let expected = kind == AtlasManifest::Tli && available;
+        for _ in 0..2 {
+            assert_eq!(atlas.has_sprite("UI\\UILIB\\ZZQ.TGA"), expected);
+            assert_eq!(atlas.sprite("UI\\UILIB\\ZZQ.TGA").is_some(), expected);
+        }
+        assert_eq!(
+            *loads.borrow(),
+            if kind == AtlasManifest::Tli {
+                vec!["/basedata/basedata/ui/UILib/zzq.tga"]
+            } else {
+                vec![]
+            },
+            "sprite lookups must not upload while a UI frame holds the texture cache"
+        );
     }
 }
 
@@ -141,6 +294,148 @@ fn native_taiji_accelerates_per_frame_clamps_and_reverses() {
     }
     assert_eq!(step(1), Data::Float(0.));
     host.call_void("reset", vec![motion]).unwrap();
+}
+
+#[test]
+fn native_credits_route_scroll_fade_and_dismiss_without_click_through() {
+    let host = ScriptHost::new();
+    host.set_script_assets(install_script_assets());
+    host.load_source(r#"
+        import radiance;
+        import yaobow.yaobow_services;
+        import shared.openpal3;
+        import radiance_scripting.ui as gui;
+        import yaobow.openpal3.start_menu;
+        import yaobow.openpal3.save_load;
+        pub fn make(host: &yaobow_services.IYaobowHostContext, atlas: &openpal3.IPal3UiAtlas)
+            -> &start_menu.Pal3StartMenuDirector {
+            let xs: array<float> = [];
+            let names: array<string> = [];
+            &start_menu.Pal3StartMenuDirector(host, "", atlas, null,
+                start_menu.Intent.None, 0, -1, 0.0, 0.4, false,
+                box(xs), box(xs), box(xs), box(names), null, false,
+                gui.make_ctx(), save_load.make_browser(), false)
+        }
+        pub fn click(d: &start_menu.Pal3StartMenuDirector, wid: int) { d.dispatch_click(wid); }
+        pub fn active(d: &start_menu.Pal3StartMenuDirector) -> bool { d.credits.active }
+        pub fn new_game(d: &start_menu.Pal3StartMenuDirector) -> bool { d.intent == start_menu.Intent.NewGame }
+        pub fn y(d: &start_menu.Pal3StartMenuDirector) -> float { d.credits.y }
+        pub fn alpha(d: &start_menu.Pal3StartMenuDirector) -> float { d.credits.logo_alpha }
+        pub fn step(d: &start_menu.Pal3StartMenuDirector, dt: float) { d.credits.advance(dt, false); }
+        pub fn frame(d: &start_menu.Pal3StartMenuDirector, ui: &radiance.IUiHost) {
+            let xs: array<float> = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+            let names: array<string> = ["", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""];
+            d.cloud_x = box(xs); d.cloud_y = box(xs); d.cloud_speed = box(xs); d.cloud_names = box(names);
+            d.render(ui, 0.0);
+        }
+    "#).unwrap();
+    let host_id = host.intern(ComRc::<
+        yaobow_lib::comdef::yaobow_services::IYaobowHostContext,
+    >::from_object(TestHost));
+    let host_box = host
+        .foreign_box("yaobow.comdef.yaobow_services.IYaobowHostContext", host_id)
+        .unwrap();
+    let (recorder, ui) = RecordingUiHost::create();
+    recorder.set_display_size(1600, 600);
+    let ui_id = host.intern(ui);
+    let ui_box = host.foreign_box("radiance.comdef.IUiHost", ui_id).unwrap();
+    let roots =
+        std::cell::RefCell::new(vec![host.root(host_box.clone()), host.root(ui_box.clone())]);
+    let make = |native, credits| {
+        let atlas_id = host.intern(ComRc::<IPal3UiAtlas>::from_object(CreditsAtlas {
+            native,
+            credits,
+        }));
+        let atlas = host
+            .foreign_box("shared.openpal3.comdef.IPal3UiAtlas", atlas_id)
+            .unwrap();
+        let data = host
+            .call_returning_data("make", vec![host_box.clone(), atlas])
+            .unwrap();
+        roots.borrow_mut().push(host.root(data.clone()));
+        data
+    };
+    let d = make(true, true);
+    let click = |d: &Data, wid| {
+        host.call_void("click", vec![d.clone(), Data::Int(wid)])
+            .unwrap()
+    };
+    let value = |name, d: &Data| host.call_returning_data(name, vec![d.clone()]).unwrap();
+    let step = |dt| {
+        host.call_void("step", vec![d.clone(), Data::Float(dt)])
+            .unwrap()
+    };
+    let frame = || {
+        host.call_void("frame", vec![d.clone(), ui_box.clone()])
+            .unwrap()
+    };
+    click(&d, 5);
+    assert_eq!(value("active", &d), Data::Int(1));
+    frame();
+    assert!(
+        recorder.calls.borrow().iter().any(|c| matches!(c,
+        UiCall::ImageRect { x0, y0, x1, y1, .. }
+        if (*x0,*y0,*x1,*y1) == (620.,518.,986.,1542.))),
+        "credits retain native width, height, start position and letterboxing"
+    );
+    click(&d, 3);
+    assert_eq!(value("new_game", &d), Data::Int(0));
+    // Same sequence executed by the original-binary oracle (0x44c8a0).
+    for (dt, expected) in [
+        (0.1, 515.7319946),
+        (1.0, 493.052002),
+        (0.016, 492.6891174),
+        (60.0, -868.1109009),
+    ] {
+        step(dt);
+        let Data::Float(y) = value("y", &d) else {
+            panic!("expected scroll position")
+        };
+        assert!((y - expected).abs() < 0.001);
+        assert_eq!(value("active", &d), Data::Int(1));
+    }
+    assert_eq!(value("alpha", &d), Data::Float(0.0));
+    step(10.0);
+    assert_eq!(value("active", &d), Data::Int(0));
+    step(1.0);
+    let Data::Float(alpha) = value("alpha", &d) else {
+        panic!("expected opacity")
+    };
+    assert!((alpha - 80.0 / 255.0).abs() < 0.00001);
+    for button in [0, 1] {
+        click(&d, 5);
+        assert_eq!(value("y", &d), Data::Float(518.0));
+        recorder.set_mouse_down(true);
+        recorder.mouse_clicked_buttons.borrow_mut()[button] = true;
+        recorder.press_latch.set(3);
+        frame();
+        assert_eq!(value("active", &d), Data::Int(0));
+        assert_eq!(recorder.press_latch.get(), -1);
+        recorder.mouse_clicked_buttons.borrow_mut()[button] = false;
+        frame();
+        click(&d, 3);
+        assert_eq!(
+            value("new_game", &d),
+            Data::Int(0),
+            "held dismissal cannot activate the cover"
+        );
+        recorder.set_mouse_down(false);
+        frame();
+    }
+    for unavailable in [make(false, true), make(true, false)] {
+        click(&unavailable, 5);
+        assert_eq!(
+            value("active", &unavailable),
+            Data::Int(0),
+            "PAL3A and missing credits stay inert"
+        );
+    }
+    click(&d, 3);
+    assert_eq!(value("new_game", &d), Data::Int(1));
+    for root in roots.into_inner() {
+        host.unroot(root);
+    }
 }
 
 #[test]

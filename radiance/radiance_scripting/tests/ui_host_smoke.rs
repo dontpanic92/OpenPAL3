@@ -367,6 +367,10 @@ fn background_canvas_clipping_does_not_activate_the_implicit_debug_window() {
                     ui.text_at_size(30.0, 40.0, 20.0, 1.0, 1.0, 1.0, 1.0, "dialog");
                 });
             });
+            ui.style_alpha(0.25, () => {
+                ui.image_rect(2, 300.0, 0.0, 310.0, 10.0, 0.0, 0.0, 1.0, 1.0);
+            });
+            ui.image_rect(3, 320.0, 0.0, 330.0, 10.0, 0.0, 0.0, 1.0, 1.0);
         }
         "#,
     )
@@ -401,6 +405,16 @@ fn background_canvas_clipping_does_not_activate_the_implicit_debug_window() {
             }
             let data = context.render();
             assert!(data.total_vtx_count > 0);
+            for (x, alpha) in [(300.0, 64), (320.0, 255)] {
+                assert!(
+                    data.draw_lists().any(|list| {
+                        list.vtx_buffer().iter().any(|vertex| {
+                            vertex.pos == [x * dpi, 0.0] && vertex.col == [255, 255, 255, alpha]
+                        })
+                    }),
+                    "sprite opacity must follow the style scope and restore afterward"
+                );
+            }
             assert!(data.draw_lists().any(|list| {
                 list.commands().any(|command| {
                     matches!(command, imgui::DrawCmd::Elements { cmd_params, .. }

@@ -1,7 +1,7 @@
 // PAL3 cover and standalone load screen. Cover coordinates are reconstructed
 // from the original executable's 0x44c120 constructor; PAL3A keeps its existing
-// layout. New Game, Load, and Exit are functional; the other cover pages
-// remain unavailable.
+// layout. New Game, Load, Credits, and Exit are functional; the other cover
+// pages remain unavailable.
 
 import radiance;
 import scripting_services;
@@ -17,7 +17,7 @@ import yaobow.openpal3.save_load;
 // A typed enum rather than the old untyped `int` codes: `match` on it is
 // exhaustiveness-checked, so adding a variant surfaces every site that has to
 // handle it instead of silently falling through.
-enum Intent(
+pub enum Intent(
     None,
     NewGame,
     Exit,
@@ -38,8 +38,8 @@ let NO_SLOT: int          = -1;
 //   * xindegushi   (top-left)      — New Game ("新的故事" / new story)
 //   * jiudehuiyi   (top-right)     — Load Game ("旧的回忆" / old memories)
 //   * likaiyouxi   (bottom-right)  — Exit
-//   * qianchenyimeng (left scroll), babitongyou (right scroll),
-//     zhizuoqun   (bottom-left)    — render only (inert)
+//   * zhizuoqun (bottom-left)     — scrolling credits (PAL3 only)
+//   * qianchenyimeng (left scroll), babitongyou (right scroll) — inert
 // Button positions, indexed by **sprite name** rather than by role —
 // that mapping (which button is "New Game" etc.) lives only in
 // `dispatch_click`. Sprite dimensions noted for reference.
@@ -86,6 +86,23 @@ pub struct TaijiMotion(pub angle: float = 0.0, pub step: float = 2.8) {
         self.angle = self.angle + if closing { -self.step } else { self.step };
         if self.angle >= 82.0 { self.angle = 82.0; self.step = 2.8; }
         if self.angle <= 0.0 { self.angle = 0.0; self.step = 2.8; }
+    }
+}
+
+// Original cover: open 0x44c840, scroll 0x44c8a0, logo fade 0x44ddd8/0x44da30.
+pub struct CreditsRoll(pub active: bool = false, pub y: float = 518.0, pub logo_alpha: float = 1.0) {
+    pub fn open(self: &Self) { self.y = 518.0; self.active = true; }
+    pub fn advance(self: &Self, dt: float, dismiss: bool) {
+        if self.active {
+            self.y = self.y - dt * 22.68;
+            if self.y + 1024.0 <= 36.0 { self.active = false; return; }
+            self.logo_alpha = self.logo_alpha - dt * 80.0 / 255.0;
+            if self.logo_alpha < 0.0 { self.logo_alpha = 0.0; }
+            if dismiss { self.y = 518.0; self.active = false; }
+        } else {
+            self.logo_alpha = self.logo_alpha + dt * 80.0 / 255.0;
+            if self.logo_alpha > 1.0 { self.logo_alpha = 1.0; }
+        }
     }
 }
 
@@ -229,6 +246,8 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal3StartMenuDirector(
     pub browser: &save_load.Browser,
     pub load_prev_down: bool,
     pub taiji: &TaijiMotion = &TaijiMotion(),
+    pub credits: &CreditsRoll = &CreditsRoll(),
+    pub credits_dismissing: bool = false,
 ) {
     pub fn activate(self: &Self) -> int {
         // When an intro movie is queued we postpone BGM start until
@@ -248,6 +267,9 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal3StartMenuDirector(
         }
         self.closing = false;
         self.taiji.reset();
+        self.credits.active = false;
+        self.credits_dismissing = false;
+        self.credits.logo_alpha = 1.0;
         self.activated = true;
         0
     }
@@ -346,6 +368,12 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal3StartMenuDirector(
             return 0;
         }
 
+        let credits_was_active = self.credits.active;
+        if self.intro == null && self.mode == MODE_MAIN {
+            self.credits.advance(anim_dt, ui.mouse_clicked(0) || ui.mouse_clicked(1));
+        }
+        if credits_was_active && !self.credits.active { self.credits_dismissing = true; }
+
         // Fullscreen imgui window with no background so any 3D scene
         // below shows through. The whole screen is DECLARED by `build()`
         // (a `Stack` of the `Pal3Cover` hosting element + the load
@@ -355,6 +383,11 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal3StartMenuDirector(
             let root = self.build(ui);
             gui.paint_root(root, ui, self.ctx);
         });
+        // Consume the dismissing press, including its later release over a button.
+        if credits_was_active || self.credits_dismissing {
+            ui.set_press_latch(-1);
+            if !ui.mouse_down(0) && !ui.mouse_down(1) { self.credits_dismissing = false; }
+        }
         0
     }
 
@@ -379,7 +412,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal3StartMenuDirector(
 
         let cover = build_cover(
             self.atlas!, self.cloud_x, self.cloud_y, self.cloud_names,
-            ax, bx, self.taiji.angle, (wid: int) => {
+            ax, bx, self.taiji.angle, self.credits, (wid: int) => {
                 if !self.closing { self.dispatch_click(wid); }
             },
         );
@@ -416,11 +449,14 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal3StartMenuDirector(
     // --- Click handlers (mutate intent/mode; drained in `update`) -------
 
     pub fn dispatch_click(self: &Self, wid: int) {
-        // Sprite → role mapping. xindegushi (新的故事) is the New Game
-        // trigger; jiudehuiyi (旧的回忆) opens the load list;
-        // likaiyouxi (离开游戏) exits. The other three sprites
-        // (qianchenyimeng, babitongyou, zhizuoqun) render with
-        // hover/press feedback but are intentionally inert in v1.
+        if self.closing || self.credits.active || self.credits_dismissing || self.mode != MODE_MAIN { return; }
+        if wid == WID_ZHIZUOQUN && self.atlas != null {
+            let atlas = self.atlas!;
+            if atlas.has_sprite(BTN_QIANCHENYIMENG_BASE + "0.tga") && atlas.has_sprite("ui/uilib/zzq.tga") {
+                self.credits.open();
+            }
+            return;
+        }
         if wid == WID_XINDEGUSHI { self.intent = Intent.NewGame; return; }
         if wid == WID_LIKAIYOUXI { self.intent = Intent.Exit;     return; }
         if wid == WID_JIUDEHUIYI {
@@ -512,6 +548,7 @@ fn build_cover(
     taiji_ax: float,
     taiji_bx: float,
     taiji_angle: float,
+    credits: &CreditsRoll,
     on_click: fn(int),
 ) -> box<gui.Element> {
     // PAL3A (问情篇) ships abbreviated cover-button names in UIArtist.plug;
@@ -549,7 +586,12 @@ fn build_cover(
 
     // Background plate + logo over the discs, then the six cover buttons.
     items.push(spr(atlas, SPR_DITU, DITU_X, DITU_Y));
-    items.push(spr(atlas, SPR_LOG0, if a { LOG0_X } else { 200.0 }, if a { LOG0_Y } else { 223.0 }));
+    if !a && credits.active {
+        items.push(gui.NativeRect(NATIVE_CANVAS_W, 220.0, credits.y, 366.0, 1024.0,
+            gui.Sprite(atlas.sprite("ui/uilib/zzq.tga"))));
+    }
+    let logo = spr(atlas, SPR_LOG0, if a { LOG0_X } else { 200.0 }, if a { LOG0_Y } else { 223.0 });
+    if a { items.push(logo); } else { items.push(gui.Opacity(logo, credits.logo_alpha)); }
     items.push(btn(atlas, qcym, WID_QIANCHENYIMENG,
                    if a { BTN_QIANCHENYIMENG_X } else { 59.0 },
                    if a { BTN_QIANCHENYIMENG_Y } else { 175.0 }, on_click));
