@@ -686,6 +686,7 @@ impl VulkanRenderingEngine {
             &allocator,
             descriptor_manager.dub_descriptor_manager(),
             min_uniform_buffer_alignment,
+            &adhoc_command_runner,
         ));
 
         let shadow_map = Rc::new(

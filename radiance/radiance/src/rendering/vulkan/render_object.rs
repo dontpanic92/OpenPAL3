@@ -82,7 +82,7 @@ impl VulkanRenderObject {
         dub_manager: &Arc<DynamicUniformBufferManager>,
         descriptor_manager: &Rc<DescriptorManager>,
     ) -> Result<Self, Box<dyn Error>> {
-        let vertex_buffer = if host_dynamic {
+        let mut vertex_buffer = if host_dynamic {
             Buffer::new_dynamic_buffer_with_data(allocator, BufferType::Vertex, vertices.data())?
         } else {
             Buffer::new_device_buffer_with_data(
@@ -92,6 +92,7 @@ impl VulkanRenderObject {
                 command_runner,
             )?
         };
+        vertex_buffer.guard_shared_writes(command_runner);
 
         let index_buffer = Buffer::new_device_buffer_with_data(
             allocator,
@@ -167,6 +168,7 @@ impl VulkanRenderObject {
 
 impl Drop for VulkanRenderObject {
     fn drop(&mut self) {
+        self.vertex_buffer.borrow().wait_for_gpu();
         self.descriptor_manager
             .free_per_object_descriptor_set(self.per_object_descriptor_set);
         self.dub_manager.deallocate_buffer(self.dub_index);

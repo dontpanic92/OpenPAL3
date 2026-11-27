@@ -1472,6 +1472,21 @@ fn menu_renders_live_party_and_release_latched_inventory_equipment_navigation() 
             .iter()
             .any(|call| matches!(call, UiCall::TextAt { s, .. } if s == text))
     };
+    let assert_header = |role: i32| {
+        let portrait = sprite_id(&format!("ui/GameMainUI/Communal/AttFrameHead{role}.tga"));
+        let calls = recorder.calls.borrow();
+        assert!(calls.iter().any(|call| matches!(call,
+            UiCall::ImageRect { texture_com_id, x0, y0, x1, y1, .. }
+                if *texture_com_id == portrait
+                && (*x0, *y0, *x1, *y1) == (456., 16., 520., 101.))));
+        for other in 0..5 {
+            if other != role {
+                let other = sprite_id(&format!("ui/GameMainUI/Communal/AttFrameHead{other}.tga"));
+                assert!(!calls.iter().any(|call| matches!(call,
+                    UiCall::ImageRect { texture_com_id, .. } if *texture_com_id == other)));
+            }
+        }
+    };
 
     assert_eq!(frame(0.0, 0.0, false, false, false), Data::Int(1));
     assert!(has_text("12/88"));
@@ -1486,6 +1501,7 @@ fn menu_renders_live_party_and_release_latched_inventory_equipment_navigation() 
     frame(580.0, 570.0, false, true, false);
     frame(0.0, 0.0, false, false, false);
     assert!(has_text("Medicine"));
+    assert_header(0);
     assert!(has_text("Description"));
     assert!(has_text("价格 17"));
     assert!(has_text("-2"));
@@ -1505,6 +1521,10 @@ fn menu_renders_live_party_and_release_latched_inventory_equipment_navigation() 
         has_text("Weapon"),
         "equipment selection must read Xuejian's real weapon"
     );
+    assert_header(1);
+    assert!(recorder.calls.borrow().iter().any(|call| matches!(call,
+        UiCall::ImageRect { texture_com_id, .. }
+            if *texture_com_id == sprite_id("ui/GameMainUI/Communal/RoleHead11.tga"))));
     assert_eq!(
         state.borrow().stats().character(0).unwrap().current().hp,
         12
@@ -1560,6 +1580,9 @@ fn menu_renders_live_party_and_release_latched_inventory_equipment_navigation() 
         frame(toolbar_x, 570., true, false, true);
         frame(toolbar_x, 570., false, true, false);
         frame(0., 0., false, false, false);
+        if tab == 3 {
+            assert_header(1);
+        }
         assert!(
             recorder.calls.borrow().iter().any(|call| matches!(call,
             UiCall::ImageRect { texture_com_id, .. }
@@ -1705,6 +1728,13 @@ fn native_item_panels_filter_scroll_and_select_without_changing_gameplay() {
                 0.0,
                 29.0,
                 119.0,
+            ),
+            (
+                "ui/GameMainUI/Communal/AttFrameHead0.tga",
+                56.0,
+                16.0,
+                64.0,
+                85.0,
             ),
         ] {
             assert!(recorder.calls.borrow().iter().any(|call| matches!(call,

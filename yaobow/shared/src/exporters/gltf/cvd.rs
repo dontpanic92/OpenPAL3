@@ -165,20 +165,29 @@ fn build_mesh(
     let uv_acc = b.push_f32_accessor(&flatten_vec2(&uvs), AccType::Vec2, false);
     let nrm_acc = b.push_f32_accessor(&flatten_vec3(&normals), AccType::Vec3, false);
 
-    // Per-frame morph targets (POSITION deltas vs frame 0).
+    // Per-frame morph targets (POSITION and NORMAL deltas vs frame 0).
     let mut morph_targets: Vec<MorphTarget> = Vec::new();
     for k in 1..frame_count {
-        let deltas: Vec<[f32; 3]> = (0..vertex_count)
+        let position_deltas: Vec<[f32; 3]> = (0..vertex_count)
             .map(|i| {
                 let p = &mesh.frames[k][i].position;
                 let b0 = &base_positions[i];
                 [p.x - b0[0], p.y - b0[1], p.z - b0[2]]
             })
             .collect();
-        let acc = b.push_f32_accessor(&flatten_vec3(&deltas), AccType::Vec3, true);
+        let normal_deltas: Vec<[f32; 3]> = (0..vertex_count)
+            .map(|i| {
+                let n = &mesh.frames[k][i].normal;
+                let b0 = &normals[i];
+                [n.x - b0[0], n.y - b0[1], n.z - b0[2]]
+            })
+            .collect();
+        let position_acc =
+            b.push_f32_accessor(&flatten_vec3(&position_deltas), AccType::Vec3, true);
+        let normal_acc = b.push_f32_accessor(&flatten_vec3(&normal_deltas), AccType::Vec3, false);
         morph_targets.push(MorphTarget {
-            positions: Some(acc),
-            normals: None,
+            positions: Some(position_acc),
+            normals: Some(normal_acc),
             tangents: None,
         });
     }

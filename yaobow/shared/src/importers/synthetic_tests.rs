@@ -786,6 +786,117 @@ fn cvd_hierarchy_and_trs_conversion() {
     );
 }
 
+#[test]
+fn cvd_import_encodes_base_and_morph_normals_in_raw_coordinate_basis() {
+    let positions = vec![[0.0, 0.0, 0.0]; 3];
+    let normals = vec![[0.0, 1.0, 0.0]; 3];
+    let uv0 = vec![[0.0, 0.0]; 3];
+    let indices = vec![0, 1, 2];
+    let position_deltas = vec![vec![[0.0, 0.0, 0.0]; 3]];
+    let normal_deltas = vec![vec![[0.0, -1.0, 1.0]; 3]];
+
+    let mut builder = SceneBuilder::new();
+    let mesh = builder.add_triangle_mesh_with_morph_normals(
+        &positions,
+        Some(&normals),
+        &uv0,
+        &indices,
+        None,
+        &position_deltas,
+        &normal_deltas,
+    );
+    let node = builder.add_node(Some(mesh), &[], None, None, None);
+    builder.add_weights_animation(node, &[0.0, 1.0], &[0.0, 1.0]);
+    let gltf = builder.parse(&[node]);
+
+    let (scene, _) = load_gltf_scene_from(&gltf, Path::new(".")).expect("load");
+    let (cvd_file, _) = cvd::convert(&scene, &ImportOptions::default()).expect("convert");
+    let mesh = &cvd_file.models[0].model.as_ref().unwrap().mesh;
+    assert_eq!(mesh.frames[0][0].normal, [0.0, 0.0, 1.0]);
+    assert_eq!(mesh.frames[1][0].normal, [0.0, -1.0, 0.0]);
+
+    let mut bytes = Vec::new();
+    fileformats::pal3::cvd::write_mesh(&mut bytes, mesh, cvd_file.version).expect("write mesh");
+    let decoded = crate::openpal3::loaders::cvd_loader::cvd_load_mesh(
+        &mut Cursor::new(bytes),
+        if cvd_file.version.has_material_extra() {
+            0.5
+        } else {
+            0.4
+        },
+    )
+    .expect("reload mesh");
+    let base_normal = &decoded.frames[0][0].normal;
+    assert_eq!(
+        [base_normal.x, base_normal.y, base_normal.z],
+        [0.0, 1.0, 0.0]
+    );
+    let morph_normal = &decoded.frames[1][0].normal;
+    assert_eq!(
+        [morph_normal.x, morph_normal.y, morph_normal.z],
+        [0.0, 0.0, 1.0]
+    );
+}
+
+#[test]
+fn cvd_export_reloads_animated_normal_morph_targets() {
+    use crate::exporters::gltf::export_cvd_to_glb;
+    use crate::openpal3::loaders::cvd_loader::{
+        CvdFile, CvdMaterial, CvdMesh, CvdModel, CvdModelNode, CvdTriangle, CvdVertex,
+    };
+    use radiance::math::{Vec2, Vec3};
+
+    let vertex = |normal| CvdVertex {
+        position: Vec3::new(0.0, 0.0, 0.0),
+        normal,
+        tex_coord: Vec2::new(0.0, 0.0),
+    };
+    let cvd = CvdFile {
+        magic: *b"cvdf",
+        model_count: 1,
+        models: vec![CvdModelNode {
+            model: Some(CvdModel {
+                unknown_byte: 1,
+                scale_factor: 1.0,
+                position_keyframes: None,
+                rotation_keyframes: None,
+                scale_keyframes: None,
+                mesh: CvdMesh {
+                    frame_count: 2,
+                    vertex_count: 3,
+                    frames: vec![
+                        (0..3).map(|_| vertex(Vec3::new(0.0, 1.0, 0.0))).collect(),
+                        (0..3).map(|_| vertex(Vec3::new(0.0, 0.0, 1.0))).collect(),
+                    ],
+                    unknown_data: vec![0.0, 1.0],
+                    material_count: 1,
+                    materials: vec![CvdMaterial {
+                        unknown_byte: 0,
+                        color1: 0,
+                        color2: 0,
+                        color3: 0,
+                        color4: 0,
+                        texture_name: String::new(),
+                        triangle_count: 1,
+                        triangles: Some(vec![CvdTriangle { indices: [0, 1, 2] }]),
+                    }],
+                },
+            }),
+            children: None,
+        }],
+    };
+
+    let glb = export_cvd_to_glb(&cvd, &MiniFs::new(false), Path::new("/d/x.cvd")).expect("export");
+    let gltf = gltf::Gltf::from_slice(&glb).expect("parse exported glb");
+    let (scene, _) = load_gltf_scene_from(&gltf, Path::new(".")).expect("reload exported glb");
+    let primitive = &scene.nodes[0].mesh.as_ref().unwrap().primitives[0];
+    assert_eq!(primitive.normals, vec![[0.0, 1.0, 0.0]; 3]);
+    assert_eq!(
+        primitive.morph_targets[0].normal_deltas,
+        Some(vec![[0.0, -1.0, 1.0]; 3])
+    );
+}
+
 /// High-level [`convert_gltf_to_bytes`] with a replacement-template
 /// fallback: a plain (no `asset.extras.yaobow`) glTF has no way to
 /// recover an action table or texture reserved fields, so those should

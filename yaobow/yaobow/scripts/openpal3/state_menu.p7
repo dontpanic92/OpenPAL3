@@ -697,7 +697,7 @@ fn paint_item_header(c: &Canvas, game: &openpal3.IPal3MenuState, role: int, equi
         295.0, 0.0, 256.0, 119.0);
     c.blit(top + "TopFrameR.tga", 551.0, 0.0, 32.0, 119.0);
     if role < 0 { return; }
-    c.blit(COMMON + "RoleHead" + int_str(role) + "0.tga", 56.0, 16.0, 64.0, 85.0);
+    c.blit(COMMON + "AttFrameHead" + int_str(role) + ".tga", 56.0, 16.0, 64.0, 85.0);
     c.small_text(118.0, 0.0, role_name(role));
     c.small_text(118.0, 22.0, "等级 " + int_str(game.role_value(role, 0)));
     c.small_text(118.0, 42.0, "经验 " + int_str(game.role_value(role, 1)));

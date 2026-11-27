@@ -63,6 +63,57 @@ mod tests {
     use super::*;
 
     #[test]
+    fn material_cache_separates_straight_and_premultiplied_textures() {
+        use crate::rendering::TextureStore;
+        let name = "test::material-alpha-encoding";
+        let image = || {
+            Some(image::RgbaImage::from_pixel(
+                1,
+                1,
+                image::Rgba([200, 150, 100, 128]),
+            ))
+        };
+        let straight = TextureStore::get_or_update_straight(name, image);
+        let premultiplied = TextureStore::get_or_update(name, image);
+        let material = |texture| {
+            MaterialDef::builder(crate::rendering::ShaderProgram::Pal3Prop)
+                .textures_with_samplers(
+                    vec![texture],
+                    vec![crate::rendering::SamplerDef::default()],
+                )
+                .build()
+        };
+        assert!(
+            MaterialIdentity::from(&material(straight))
+                != MaterialIdentity::from(&material(premultiplied))
+        );
+    }
+
+    #[test]
+    fn cvd_material_preserves_straight_color_for_native_two_pass_shader() {
+        let mut tga = vec![0u8; 18];
+        tga[2] = 2;
+        tga[12] = 1;
+        tga[14] = 1;
+        tga[16] = 32;
+        tga[17] = 0x28;
+        tga.extend([100, 150, 200, 128]);
+        let material =
+            crate::rendering::Pal3PropMaterialDef::create("test::cvd-material-straight", |_| {
+                Some(std::io::Cursor::new(tga))
+            });
+        material.textures()[0].with_image(|image| {
+            let rgba = image.unwrap().get_pixel(0, 0).0;
+            assert_eq!(rgba, [200, 150, 100, 128]);
+            let alpha = rgba[3] as f32 / 255.;
+            let blended = [rgba[0], rgba[1], rgba[2]].map(|c| c as f32 * alpha);
+            for (actual, expected) in blended.iter().zip([100.39216, 75.29412, 50.19608]) {
+                assert!((actual - expected).abs() < 1e-5);
+            }
+        });
+    }
+
+    #[test]
     fn material_cache_separates_native_colors_emission_strength_and_selected_lights() {
         let base = MaterialParams::default();
         let variants = [
@@ -122,7 +173,7 @@ impl MaterialIdentity {
             texture_names: def
                 .textures()
                 .iter()
-                .map(|t| t.name().to_string())
+                .map(|t| t.cache_key().to_string())
                 .collect(),
             params: MaterialParamsBits::from(def.params()),
             unique_nonce: def.unique_nonce(),
@@ -309,7 +360,7 @@ impl VulkanComponentFactory {
     pub fn _create_vulkan_texture(&self, texture_def: &TextureDef) -> Rc<VulkanTexture> {
         self.texture_store
             .borrow_mut()
-            .get_or_update(texture_def.name(), || {
+            .get_or_update(texture_def.cache_key(), || {
                 VulkanTexture::new(
                     texture_def,
                     &self.device,

@@ -50,9 +50,11 @@ impl DynamicUniformBufferManager {
         allocator: &Rc<vk_mem::Allocator>,
         descriptor_manager: &DynamicUniformBufferDescriptorManager,
         min_alignment: u64,
+        command_runner: &Rc<super::adhoc_command_runner::AdhocCommandRunner>,
     ) -> Self {
-        let (alignment, buffer) =
+        let (alignment, mut buffer) =
             Self::allocate_dynamic_buffer(allocator, min_alignment, Self::POOL_SIZE);
+        buffer.guard_shared_writes(command_runner);
         let descriptor_set = descriptor_manager.allocate_descriptor_sets(&buffer);
 
         Self {

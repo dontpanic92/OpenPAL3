@@ -1,4 +1,5 @@
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::rc::Rc;
 
@@ -30,6 +31,7 @@ pub struct Device {
     device: ash::Device,
     pipeline_cache: Cell<PipelineCache>,
     pipeline_cache_path: Option<PathBuf>,
+    pending_queues: RefCell<HashSet<Queue>>,
 }
 
 impl Device {
@@ -76,6 +78,7 @@ impl Device {
             device,
             pipeline_cache: Cell::new(pipeline_cache),
             pipeline_cache_path,
+            pending_queues: RefCell::new(HashSet::new()),
         }
     }
 
@@ -393,11 +396,27 @@ impl Device {
     }
 
     pub fn queue_submit(&self, queue: Queue, submits: &[SubmitInfo], fence: Fence) -> VkResult<()> {
-        unsafe { self.device.queue_submit(queue, submits, fence) }
+        unsafe {
+            self.device.queue_submit(queue, submits, fence)?;
+        }
+        self.pending_queues.borrow_mut().insert(queue);
+        Ok(())
     }
 
     pub fn queue_wait_idle(&self, queue: Queue) -> VkResult<()> {
-        unsafe { self.device.queue_wait_idle(queue) }
+        unsafe {
+            self.device.queue_wait_idle(queue)?;
+        }
+        self.pending_queues.borrow_mut().remove(&queue);
+        Ok(())
+    }
+
+    pub fn wait_for_submissions(&self, queue: Queue) -> VkResult<()> {
+        let pending = self.pending_queues.borrow().contains(&queue);
+        if pending {
+            self.queue_wait_idle(queue)?;
+        }
+        Ok(())
     }
 
     pub fn free_command_buffers(

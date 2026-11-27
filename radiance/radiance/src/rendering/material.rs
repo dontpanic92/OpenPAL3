@@ -830,8 +830,7 @@ impl Pal3GeomMaterialDef {
 }
 
 /// Builds a PAL3 static prop material ([`ShaderProgram::Pal3Prop`]) for CVD
-/// items: ambient-only (texture × scene ambient), no per-vertex directional
-/// term, matching the original `gfxscript/geom.gbf` no-light pass.
+/// geometry, using native material lighting and straight-alpha textures.
 pub struct Pal3PropMaterialDef;
 impl Pal3PropMaterialDef {
     pub fn create<R: Read>(
@@ -839,7 +838,7 @@ impl Pal3PropMaterialDef {
         get_reader: impl FnOnce(&str) -> Option<R>,
     ) -> MaterialDef {
         let texture =
-            TextureStore::get_or_update(texture_name, || match get_reader(texture_name) {
+            TextureStore::get_or_update_straight(texture_name, || match get_reader(texture_name) {
                 Some(mut r) => {
                     let mut buf = Vec::new();
                     r.read_to_end(&mut buf).unwrap();

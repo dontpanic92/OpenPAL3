@@ -420,7 +420,7 @@ impl CvdModelComponent {
             .and_then(|frame| frame.frames.get(0))
             .and_then(|f| Some(f.quaternion))
         {
-            entity.transform().borrow_mut().rotate_quaternion_local(&q);
+            rotate_cvd(&mut entity.transform().borrow_mut(), &q);
         }
 
         if let Some(frame) = self
@@ -433,12 +433,10 @@ impl CvdModelComponent {
             let mut q3 = q2;
             q3.inverse();
 
-            entity
-                .transform()
-                .borrow_mut()
-                .rotate_quaternion_local(&q2)
-                .scale_local(&scale)
-                .rotate_quaternion_local(&q3);
+            let binding = entity.transform();
+            let mut transform = binding.borrow_mut();
+            rotate_cvd(&mut transform, &q2).scale_local(&scale);
+            rotate_cvd(&mut transform, &q3);
         }
     }
 
@@ -474,7 +472,7 @@ impl CvdModelComponent {
         ));
         if let Some(keys) = &self.rotation_keyframes {
             if let Some((a, b, t)) = sample_pair(&keys.frames, time, |k| k.timestamp) {
-                transform.rotate_quaternion_local(&cvd_slerp(&a.quaternion, &b.quaternion, t));
+                rotate_cvd(&mut transform, &cvd_slerp(&a.quaternion, &b.quaternion, t));
             }
         }
         if let Some(keys) = &self.scale_keyframes {
@@ -482,10 +480,8 @@ impl CvdModelComponent {
                 let q = cvd_slerp(&a.quaternion, &b.quaternion, t);
                 let mut inverse = q;
                 inverse.inverse();
-                transform
-                    .rotate_quaternion_local(&q)
-                    .scale_local(&Vec3::lerp(&a.scale, &b.scale, t))
-                    .rotate_quaternion_local(&inverse);
+                rotate_cvd(&mut transform, &q).scale_local(&Vec3::lerp(&a.scale, &b.scale, t));
+                rotate_cvd(&mut transform, &inverse);
             }
         }
         self.entity
@@ -524,6 +520,16 @@ fn sample_mesh_frame(timestamps: &[f32], time: f32) -> (usize, usize, f32) {
         return (a, a, 0.);
     };
     (a, upper, (time - timestamps[a]) / (next - timestamps[a]))
+}
+
+fn rotate_cvd<'a>(transform: &'a mut Transform, q: &Quaternion) -> &'a mut Transform {
+    let mut matrix = q.to_rotate_matrix();
+    // Native GetMatrix (0x10026b60) also accepts unnormalized Slerp outputs.
+    matrix[0][0] = 1. - 2. * (q.y * q.y + q.z * q.z);
+    matrix[1][1] = 1. - 2. * (q.x * q.x + q.z * q.z);
+    matrix[2][2] = 1. - 2. * (q.x * q.x + q.y * q.y);
+    transform.set_matrix(Mat44::multiplied(transform.matrix(), &matrix));
+    transform
 }
 
 fn cvd_slerp(a: &Quaternion, b: &Quaternion, t: f32) -> Quaternion {
@@ -732,6 +738,24 @@ mod animation_tests {
     use super::*;
     use crate::openpal3::loaders::cvd_loader::CvdTriangle;
     use radiance::rendering::{DepthMode, ShaderProgram};
+
+    #[test]
+    fn native_rotation_does_not_shrink_nonunit_or_linear_fallback_quaternions() {
+        let mut transform = Transform::new();
+        rotate_cvd(&mut transform, &Quaternion::new(0., 0., 0., 0.9));
+        let point = Vec3::crossed_mat(&Vec3::new(1., 2., 3.), transform.matrix());
+        assert_eq!([point.x, point.y, point.z], [1., 2., 3.]);
+        let q = cvd_slerp(
+            &Quaternion::new(0., 0., 0., 1.),
+            &Quaternion::new(0.004, 0., 0., 0.999992),
+            0.5,
+        );
+        let mut transform = Transform::new();
+        rotate_cvd(&mut transform, &q);
+        let point = Vec3::crossed_mat(&Vec3::new(0., 1., 0.), transform.matrix());
+        assert!((point.y - 0.999992).abs() < 1e-7);
+        assert!((point.z - 0.003999984).abs() < 1e-7);
+    }
 
     fn animated_mesh() -> CvdMesh {
         animated_mesh_with_colors([0xffffffff, 0xffffffff, 0xff0b0b0b, 0xff000000])

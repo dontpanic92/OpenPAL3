@@ -31,6 +31,8 @@ enum AlphaHandling {
     /// Keep all channels verbatim; classify Opaque (never premultiply). For
     /// textures whose channels are arbitrary data (e.g. weight atlases).
     Raw,
+    /// Classify coverage, but keep straight RGB for shaders that premultiply.
+    Straight,
 }
 
 /// Minimum fraction of mid-range-alpha (`32..=223`) pixels for a texture
@@ -61,6 +63,7 @@ const BLEND_OPAQUE_FRACTION_MAX: f32 = 0.5;
 
 pub struct TextureDef {
     name: String,
+    cache_key: String,
     /// The decoded CPU-side image. Backends consume this exactly once,
     /// at GPU upload time, via [`TextureDef::take_image`]; afterwards
     /// the `RgbaImage` is dropped and the slot returns `None`. PAL3
@@ -73,8 +76,7 @@ pub struct TextureDef {
     /// instead of [`take_image`] so subsequent material creations on
     /// the same `TextureDef` still find the bytes. The Vulkan backend
     /// is safe to drain because `VulkanTextureStore` already caches
-    /// `Rc<VulkanTexture>` by name, so the upload runs at most once
-    /// per `TextureDef`.
+    /// `Rc<VulkanTexture>` by asset name and alpha handling.
     image: Mutex<Option<RgbaImage>>,
     alpha_kind: AlphaKind,
 }
@@ -82,6 +84,10 @@ pub struct TextureDef {
 impl TextureDef {
     pub fn name(&self) -> &str {
         &self.name
+    }
+
+    pub fn cache_key(&self) -> &str {
+        &self.cache_key
     }
 
     /// Run `f` with a borrowed reference to the cached CPU-side
@@ -184,6 +190,13 @@ lazy_static::lazy_static! {
 
 pub struct TextureStore;
 impl TextureStore {
+    pub fn get_or_update_straight(
+        name: &str,
+        update: impl FnOnce() -> Option<RgbaImage>,
+    ) -> Arc<TextureDef> {
+        Self::get_or_update_inner(name, update, AlphaHandling::Straight)
+    }
+
     pub fn get_or_update(
         name: &str,
         update: impl FnOnce() -> Option<RgbaImage>,
@@ -231,14 +244,16 @@ impl TextureStore {
         alpha: AlphaHandling,
     ) -> Arc<TextureDef> {
         let mut store = TEXTURE_STORE.write().unwrap();
+        let cache_key = format!("{}:{name}", alpha as u8);
 
-        if let Some(t) = store.get(name) {
+        if let Some(t) = store.get(&cache_key) {
             t.clone()
         } else {
             let mut image = update();
             let alpha_kind = match alpha {
                 // Keep channels verbatim, classify Opaque (no premultiply).
                 AlphaHandling::Raw => AlphaKind::Opaque,
+                AlphaHandling::Straight => classify_alpha(image.as_ref()),
                 AlphaHandling::ForceOpaque => {
                     if let Some(img) = image.as_mut() {
                         for px in img.pixels_mut() {
@@ -259,10 +274,11 @@ impl TextureStore {
             };
             let t = Arc::new(TextureDef {
                 name: name.to_string(),
+                cache_key: cache_key.clone(),
                 image: Mutex::new(image),
                 alpha_kind,
             });
-            store.put(name.to_string(), t.clone());
+            store.put(cache_key, t.clone());
             t
         }
     }
@@ -272,6 +288,41 @@ impl TextureStore {
 mod tests {
     use super::*;
     use image::Rgba;
+
+    #[test]
+    fn alpha_encodings_do_not_alias_in_either_loading_order() {
+        for (name, straight_first) in [
+            ("test::alpha-order-a", true),
+            ("test::alpha-order-b", false),
+        ] {
+            let image = || Some(RgbaImage::from_pixel(1, 1, Rgba([200, 150, 100, 128])));
+            let (straight, premultiplied) = if straight_first {
+                (
+                    TextureStore::get_or_update_straight(name, image),
+                    TextureStore::get_or_update(name, image),
+                )
+            } else {
+                let premultiplied = TextureStore::get_or_update(name, image);
+                (
+                    TextureStore::get_or_update_straight(name, image),
+                    premultiplied,
+                )
+            };
+            assert_eq!(straight.name(), premultiplied.name());
+            assert_ne!(straight.cache_key(), premultiplied.cache_key());
+            straight
+                .with_image(|img| assert_eq!(img.unwrap().get_pixel(0, 0).0, [200, 150, 100, 128]));
+            premultiplied
+                .with_image(|img| assert_eq!(img.unwrap().get_pixel(0, 0).0, [100, 75, 50, 128]));
+            assert_eq!(straight.alpha_kind(), AlphaKind::Blend);
+            let raw = TextureStore::get_or_update_raw(name, image);
+            let opaque = TextureStore::get_or_update_opaque(name, image);
+            assert_ne!(raw.cache_key(), straight.cache_key());
+            assert_ne!(opaque.cache_key(), straight.cache_key());
+            opaque
+                .with_image(|img| assert_eq!(img.unwrap().get_pixel(0, 0).0, [200, 150, 100, 255]));
+        }
+    }
 
     /// Build a 64x64 RGBA image whose alpha channel matches the requested
     /// pixel fractions: `opaque` pixels at alpha 255, `transparent` at 0,

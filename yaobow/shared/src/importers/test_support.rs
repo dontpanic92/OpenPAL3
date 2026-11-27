@@ -231,6 +231,32 @@ impl SceneBuilder {
         material: Option<usize>,
         morph_position_deltas: &[Vec<[f32; 3]>],
     ) -> usize {
+        self.add_triangle_mesh_with_morph_normals(
+            positions,
+            normals,
+            uv0,
+            indices,
+            material,
+            morph_position_deltas,
+            &[],
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn add_triangle_mesh_with_morph_normals(
+        &mut self,
+        positions: &[[f32; 3]],
+        normals: Option<&[[f32; 3]]>,
+        uv0: &[[f32; 2]],
+        indices: &[u16],
+        material: Option<usize>,
+        morph_position_deltas: &[Vec<[f32; 3]>],
+        morph_normal_deltas: &[Vec<[f32; 3]>],
+    ) -> usize {
+        assert!(
+            morph_normal_deltas.is_empty()
+                || morph_normal_deltas.len() == morph_position_deltas.len()
+        );
         let pos_acc = self.add_vec3(positions, true);
         let uv_acc = self.add_vec2(uv0);
         let idx_acc = self.add_indices_u16(indices);
@@ -252,9 +278,15 @@ impl SceneBuilder {
         if !morph_position_deltas.is_empty() {
             let targets: Vec<Value> = morph_position_deltas
                 .iter()
-                .map(|deltas| {
-                    let acc = self.add_vec3(deltas, false);
-                    json!({ "POSITION": acc })
+                .enumerate()
+                .map(|(i, deltas)| {
+                    let position_acc = self.add_vec3(deltas, false);
+                    let mut target = json!({ "POSITION": position_acc });
+                    if let Some(normal_deltas) = morph_normal_deltas.get(i) {
+                        let normal_acc = self.add_vec3(normal_deltas, false);
+                        target["NORMAL"] = json!(normal_acc);
+                    }
+                    target
                 })
                 .collect();
             primitive["targets"] = json!(targets);

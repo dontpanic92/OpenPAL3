@@ -56,7 +56,7 @@ impl VulkanMaterial {
             .textures()
             .iter()
             .map(|t| {
-                texture_store.get_or_update(t.name(), || {
+                texture_store.get_or_update(t.cache_key(), || {
                     VulkanTexture::new(t, device, allocator, command_runner).unwrap()
                 })
             })
@@ -79,9 +79,10 @@ impl VulkanMaterial {
             .collect();
 
         let gpu_params = MaterialParamsGpu::from_params(def.params());
-        let params_buffer =
+        let mut params_buffer =
             Buffer::new_dynamic_buffer_with_data(allocator, BufferType::Uniform, &[gpu_params])
                 .expect("failed to allocate material params UBO");
+        params_buffer.guard_shared_writes(command_runner);
         let params_descriptor_set = descriptor_manager
             .allocate_material_params_descriptor_set(&params_buffer)
             .expect("failed to allocate material params descriptor set");
@@ -156,6 +157,7 @@ impl VulkanMaterial {
 
 impl Drop for VulkanMaterial {
     fn drop(&mut self) {
+        self.params_buffer.borrow().wait_for_gpu();
         self.descriptor_manager
             .free_material_params_descriptor_set(self.params_descriptor_set);
     }

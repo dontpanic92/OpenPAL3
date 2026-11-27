@@ -29,6 +29,7 @@ pub struct Buffer {
     buffer_size: u64,
     element_size: usize,
     element_count: u32,
+    write_guard: Option<Rc<AdhocCommandRunner>>,
 }
 
 impl Buffer {
@@ -175,7 +176,21 @@ impl Buffer {
             buffer_size,
             element_size,
             element_count: element_count as u32,
+            write_guard: None,
         })
+    }
+
+    pub fn guard_shared_writes(&mut self, runner: &Rc<AdhocCommandRunner>) {
+        self.write_guard = Some(runner.clone());
+    }
+
+    pub fn wait_for_gpu(&self) {
+        if let Some(runner) = &self.write_guard {
+            runner
+                .device()
+                .wait_for_submissions(runner.queue())
+                .expect("shared buffer synchronization");
+        }
     }
 
     pub fn copy_from(
@@ -207,6 +222,8 @@ impl Buffer {
     }
 
     pub fn map_memory_do<F: FnMut(*mut u8)>(&mut self, mut action: F) {
+        // Shared mapped buffers must not be rewritten while an earlier draw reads them.
+        self.wait_for_gpu();
         let dst = unsafe { self.allocator.map_memory(&mut self.allocation).unwrap() };
 
         if dst == std::ptr::null_mut() {
@@ -215,6 +232,9 @@ impl Buffer {
 
         action(dst);
 
+        self.allocator
+            .flush_allocation(&self.allocation, 0, self.buffer_size)
+            .expect("flush mapped buffer");
         unsafe {
             self.allocator.unmap_memory(&mut self.allocation);
         }
@@ -226,16 +246,24 @@ impl Buffer {
     /// by routing through `AdhocCommandRunner` or waiting on the
     /// device) before calling.
     pub fn read_into_vec(&mut self, size: usize) -> Vec<u8> {
+        self.wait_for_gpu();
+        let src = unsafe { self.allocator.map_memory(&mut self.allocation).unwrap() };
+        assert!(!src.is_null());
+        self.allocator
+            .invalidate_allocation(&self.allocation, 0, self.buffer_size)
+            .expect("invalidate readback buffer");
         let mut out = vec![0u8; size];
-        self.map_memory_do(|src| unsafe {
+        unsafe {
             std::ptr::copy_nonoverlapping(src, out.as_mut_ptr(), size);
-        });
+            self.allocator.unmap_memory(&mut self.allocation);
+        }
         out
     }
 }
 
 impl Drop for Buffer {
     fn drop(&mut self) {
+        self.wait_for_gpu();
         unsafe {
             self.allocator
                 .destroy_buffer(self.buffer, &mut self.allocation);

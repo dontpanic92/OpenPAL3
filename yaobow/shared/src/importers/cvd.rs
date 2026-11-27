@@ -33,8 +33,9 @@
 //! layout each version family supports) using the *inverse* of that
 //! module's documented decode formulas:
 //! * vertex position: raw `(px, py, pz)` decodes to `(px, pz, -py)`, so
-//!   encoding `(X, Y, Z)` writes `(X, -Z, Y)`. Normals and UVs pass
-//!   through unchanged (no axis swap at all).
+//!   encoding `(X, Y, Z)` writes `(X, -Z, Y)`;
+//! * vertex normal: raw `(nx, ny, nz)` decodes to `(nx, nz, -ny)`, so
+//!   encoding `(X, Y, Z)` writes `(X, -Z, Y)`. UVs pass through unchanged.
 //! * position keyframe (v3): decode is `(u1, u3, -u2)`, so encoding
 //!   `(X, Y, Z)` writes `u1=X, u2=-Z, u3=Y`.
 //! * rotation keyframe (v2/v3): decode is
@@ -500,7 +501,7 @@ fn build_mesh(
                     u: pooled_uvs[i][0],
                     v: pooled_uvs[i][1],
                 },
-                normal: n,
+                normal: encode_vertex_normal(n),
                 position: encode_vertex_position(p),
             });
         }
@@ -526,6 +527,12 @@ fn build_mesh(
 /// `Vec3::new(px, pz, -py)` decode.
 fn encode_vertex_position(p: [f32; 3]) -> [f32; 3] {
     [p[0], -p[2], p[1]]
+}
+
+/// Raw vertex normal encode: inverse of `cvd_loader::convert_vertex`'s
+/// `Vec3::new(nx, nz, -ny)` decode.
+fn encode_vertex_normal(n: [f32; 3]) -> [f32; 3] {
+    [n[0], -n[2], n[1]]
 }
 
 fn find_trs_channel<'a>(
