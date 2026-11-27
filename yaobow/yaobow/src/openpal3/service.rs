@@ -630,9 +630,15 @@ impl IPal3ServiceImpl for Pal3Service {
     }
 
     fn save_slots(&self) -> ComRc<shared::openpal3::comdef::IPal3SaveSlots> {
+        let scene_names = self
+            .last_asset_path
+            .borrow()
+            .as_ref()
+            .map(|path| self.asset_manager_for(path).scene_names());
         Pal3SaveSlots::snapshot_with_thumbnails(
             self.last_game.get().app_name(),
             self.thumbnail_uploader.borrow().as_ref(),
+            scene_names.as_deref(),
         )
     }
 

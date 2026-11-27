@@ -1,6 +1,7 @@
 use std::path::Path;
 
 use crosscom::ComRc;
+use fileformats::pal3::scene_names::SceneNames;
 use radiance_scripting::{comdef::services::ISprite, services::sprite::SpriteUploader};
 
 use super::{
@@ -29,29 +30,32 @@ ComObject_Pal3SaveSlots!(super::Pal3SaveSlots);
 
 impl Pal3SaveSlots {
     pub fn snapshot(app_name: &str) -> ComRc<IPal3SaveSlots> {
-        Self::snapshot_with_thumbnails(app_name, None)
+        Self::snapshot_with_thumbnails(app_name, None, None)
     }
 
     pub fn snapshot_with_thumbnails(
         app_name: &str,
         uploader: Option<&SpriteUploader>,
+        scene_names: Option<&SceneNames>,
     ) -> ComRc<IPal3SaveSlots> {
         Self::snapshot_in_with_thumbnails(
             app_name,
             &crate::ydirs::save_dir().join(app_name).join("Save"),
             uploader,
+            scene_names,
         )
     }
 
     #[cfg(test)]
     fn snapshot_in(app_name: &str, directory: &Path) -> ComRc<IPal3SaveSlots> {
-        Self::snapshot_in_with_thumbnails(app_name, directory, None)
+        Self::snapshot_in_with_thumbnails(app_name, directory, None, None)
     }
 
     fn snapshot_in_with_thumbnails(
         app_name: &str,
         directory: &Path,
         uploader: Option<&SpriteUploader>,
+        scene_names: Option<&SceneNames>,
     ) -> ComRc<IPal3SaveSlots> {
         let slots = (1..=SAVE_SLOT_COUNT)
             .map(|index| {
@@ -59,11 +63,14 @@ impl Pal3SaveSlots {
                 match PersistentState::load_from_path(app_name, &path) {
                     Ok(state) => Slot {
                         status: 1,
-                        scene: format!(
-                            "{} / {}",
-                            state.scene_name().unwrap(),
-                            state.sub_scene_name().unwrap()
-                        ),
+                        scene: {
+                            let scene = state.scene_name().unwrap();
+                            let block = state.sub_scene_name().unwrap();
+                            scene_names
+                                .and_then(|names| names.lookup(&scene, &block))
+                                .map(str::to_string)
+                                .unwrap_or_else(|| format!("{scene} / {block}"))
+                        },
                         seconds: state.play_seconds(),
                         money: state.money(),
                         members: state.party().members().collect(),
@@ -252,6 +259,20 @@ mod tests {
         assert_eq!(snapshot.status(3), 0);
         assert_eq!(snapshot.status(36), 1);
         assert_eq!(snapshot.scene(36), "YZZ / AN");
+        let names = SceneNames::parse("BEGIN,YZZ\ndefault $Town&\nan $Market&\nEND");
+        let localized =
+            Pal3SaveSlots::snapshot_in_with_thumbnails("test", &directory, None, Some(&names));
+        assert_eq!(localized.scene(36), "Market");
+        assert_eq!(localized.status(1), 2);
+        assert_eq!(localized.scene(1), "");
+        assert_eq!(
+            PersistentState::load_from_path("test", &path)
+                .unwrap()
+                .scene_name()
+                .as_deref(),
+            Some("YZZ"),
+            "display names must not replace saved scene identifiers"
+        );
         assert_eq!(snapshot.play_seconds(36), 3661);
         assert_eq!(snapshot.member_role(36, 1), 1);
         assert_eq!(snapshot.member_role(36, -1), -1);

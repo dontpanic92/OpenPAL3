@@ -14,5 +14,6 @@
 pub mod cvd;
 pub mod gdb;
 pub mod lgt;
+pub mod scene_names;
 // pub mod dkl;  // added in the static-scenery baked-lighting phase
 // pub mod dkm;  // added in the static-scenery baked-lighting phase

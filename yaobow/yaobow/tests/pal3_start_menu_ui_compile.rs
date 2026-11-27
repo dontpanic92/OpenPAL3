@@ -34,7 +34,7 @@ impl IPal3SaveSlotsImpl for TestSlots {
         }
     }
     fn scene(&self, _: i32) -> &str {
-        "YZZ / AN"
+        "\u{74a7}\u{5c71}\u{5c71}\u{6d1e}\u{58f9}"
     }
     fn play_seconds(&self, _: i32) -> i32 {
         3661
@@ -208,6 +208,11 @@ fn save_browser_pages_to_slot_36_rejects_bad_loads_and_confirms_overwrites() {
         frame(standalone, x, y, false, true, false)
     };
     frame(true, 0.0, 0.0, false, false, false);
+    assert!(
+        recorder.calls.borrow().iter().any(|call| matches!(call,
+            UiCall::TextAt { s, .. } if s == "\u{74a7}\u{5c71}\u{5c71}\u{6d1e}\u{58f9}")),
+        "the shared browser must display localized slot metadata"
+    );
     assert!(
         recorder
             .calls

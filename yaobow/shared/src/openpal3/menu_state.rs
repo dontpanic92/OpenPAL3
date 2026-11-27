@@ -7,6 +7,7 @@ use std::{
 };
 
 use crosscom::ComRc;
+use fileformats::pal3::scene_names::SceneNames;
 
 use super::audio_mix::Pal3AudioMix;
 use super::{
@@ -20,6 +21,7 @@ pub(crate) const EARTH_PEARL_PROC: u32 = 2101;
 pub struct Pal3MenuState {
     state: Rc<RefCell<PersistentState>>,
     data: Option<Rc<StatsData>>,
+    scene_names: Rc<SceneNames>,
     descriptions: HashMap<u32, String>,
     pending_load: Cell<Option<i32>>,
     pending_return_to_menu: Cell<bool>,
@@ -51,6 +53,7 @@ impl Pal3MenuState {
         Self::create_internal(
             state,
             data,
+            Rc::default(),
             Arc::new(Pal3AudioMix::default()),
             AudioPersistence::Disabled,
         )
@@ -61,7 +64,13 @@ impl Pal3MenuState {
         data: Option<Rc<StatsData>>,
         audio_mix: Arc<Pal3AudioMix>,
     ) -> ComRc<IPal3MenuState> {
-        Self::create_internal(state, data, audio_mix, AudioPersistence::Disabled)
+        Self::create_internal(
+            state,
+            data,
+            Rc::default(),
+            audio_mix,
+            AudioPersistence::Disabled,
+        )
     }
 
     pub fn create_with_audio_config_path(
@@ -70,20 +79,34 @@ impl Pal3MenuState {
         audio_mix: Arc<Pal3AudioMix>,
         config_path: PathBuf,
     ) -> ComRc<IPal3MenuState> {
-        Self::create_internal(state, data, audio_mix, AudioPersistence::Path(config_path))
+        Self::create_internal(
+            state,
+            data,
+            Rc::default(),
+            audio_mix,
+            AudioPersistence::Path(config_path),
+        )
     }
 
     pub(crate) fn create_with_persisted_audio(
         state: Rc<RefCell<PersistentState>>,
         data: Option<Rc<StatsData>>,
         audio_mix: Arc<Pal3AudioMix>,
+        scene_names: Rc<SceneNames>,
     ) -> ComRc<IPal3MenuState> {
-        Self::create_internal(state, data, audio_mix, AudioPersistence::UserConfig)
+        Self::create_internal(
+            state,
+            data,
+            scene_names,
+            audio_mix,
+            AudioPersistence::UserConfig,
+        )
     }
 
     fn create_internal(
         state: Rc<RefCell<PersistentState>>,
         data: Option<Rc<StatsData>>,
+        scene_names: Rc<SceneNames>,
         audio_mix: Arc<Pal3AudioMix>,
         audio_persistence: AudioPersistence,
     ) -> ComRc<IPal3MenuState> {
@@ -96,6 +119,7 @@ impl Pal3MenuState {
         ComRc::from_object(Self {
             state,
             data,
+            scene_names,
             descriptions,
             pending_load: Cell::new(None),
             pending_return_to_menu: Cell::new(false),
@@ -412,6 +436,7 @@ impl IPal3MenuStateImpl for Pal3MenuState {
         super::save_slots::Pal3SaveSlots::snapshot_with_thumbnails(
             self.state.borrow().app_name(),
             self.thumbnail_uploader.borrow().as_ref(),
+            Some(&self.scene_names),
         )
     }
 

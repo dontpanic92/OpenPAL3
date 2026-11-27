@@ -1,6 +1,7 @@
 use common::store_ext::StoreExt2;
 use crosscom::ComRc;
 use encoding::{DecoderTrap, types::Encoding};
+use fileformats::pal3::scene_names::SceneNames;
 use ini::Ini;
 use mini_fs::MiniFs;
 use mini_fs::prelude::*;
@@ -40,6 +41,7 @@ pub struct AssetManager {
     basedata_path: PathBuf,
     vfs: Rc<MiniFs>,
     stats_data: OnceCell<Rc<StatsData>>,
+    scene_names: OnceCell<Rc<SceneNames>>,
 }
 
 impl AssetManager {
@@ -67,6 +69,7 @@ impl AssetManager {
             snd_path: PathBuf::from("/snd"),
             vfs,
             stats_data: OnceCell::new(),
+            scene_names: OnceCell::new(),
         }
     }
 
@@ -76,6 +79,28 @@ impl AssetManager {
 
     pub fn game(&self) -> GameType {
         self.game
+    }
+
+    pub fn scene_names(&self) -> Rc<SceneNames> {
+        self.scene_names
+            .get_or_init(|| {
+                let names = if self.game == GameType::PAL3 {
+                    match self
+                        .vfs
+                        .read_to_end_from_gbk(self.basedata_path.join("datascript/SceneName.txt"))
+                    {
+                        Ok(text) => SceneNames::parse(&text),
+                        Err(error) => {
+                            log::warn!("Cannot read PAL3 scene names: {error}");
+                            SceneNames::default()
+                        }
+                    }
+                } else {
+                    SceneNames::default()
+                };
+                Rc::new(names)
+            })
+            .clone()
     }
 
     pub fn stats_data(&self) -> Rc<StatsData> {

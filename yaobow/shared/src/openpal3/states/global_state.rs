@@ -162,6 +162,7 @@ impl GlobalState {
             self.persistent_state.clone(),
             (self.asset_mgr.game() == crate::GameType::PAL3).then(|| self.asset_mgr.stats_data()),
             self.audio_mix.clone(),
+            self.asset_mgr.scene_names(),
         )
     }
 
