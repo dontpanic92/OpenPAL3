@@ -1750,6 +1750,171 @@ fn native_item_panels_filter_scroll_and_select_without_changing_gameplay() {
 }
 
 #[test]
+fn magic_catalog_selects_and_filters_without_casting_or_consuming_books() {
+    let mut database = vec![0u8; 0xa0 + 4 * 760 + 800];
+    let header = b"__PAL(Softstar_Ltd: Cool_J)_GameDataBase_OutFile__";
+    database[..header.len()].copy_from_slice(header);
+    database[0x88..0x8c].copy_from_slice(&0xa0u32.to_le_bytes());
+    database[0x8c..0x90].copy_from_slice(&4u32.to_le_bytes());
+    database[0x90..0x94].copy_from_slice(&(0xa0u32 + 4 * 760).to_le_bytes());
+    database[0x94..0x98].copy_from_slice(&1u32.to_le_bytes());
+    for (i, (id, name, kind, element, roles, description)) in [
+        (
+            301u32,
+            "Wind",
+            2,
+            Some(2),
+            [1, 0, 1, 1, 1],
+            "$Wind description",
+        ),
+        (
+            302,
+            "Heal",
+            3,
+            Some(2),
+            [1; 5],
+            "$Healing detail\nsecond\nthird\nfourth\nfifth\nsixth\nlast",
+        ),
+        (
+            316,
+            "Water",
+            2,
+            Some(0),
+            [1, 1, 1, 1, 0],
+            "$Water description",
+        ),
+        (
+            4101,
+            "Steal",
+            0,
+            None,
+            [1, 0, 0, 0, 0],
+            "$Skill description",
+        ),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let record = &mut database[0xa0 + i * 760..0xa0 + (i + 1) * 760];
+        record[..4].copy_from_slice(&id.to_le_bytes());
+        record[4] = kind;
+        if let Some(element) = element {
+            record[8 + element * 4..12 + element * 4].copy_from_slice(&1u32.to_le_bytes());
+        }
+        record[0x1c..0x1c + name.len()].copy_from_slice(name.as_bytes());
+        record[0x3c..0x3c + description.len()].copy_from_slice(description.as_bytes());
+        record[0x23c..0x241].copy_from_slice(&roles);
+    }
+    let book = &mut database[0xa0 + 4 * 760..];
+    book[..4].copy_from_slice(&6409u32.to_le_bytes());
+    book[4..8].copy_from_slice(b"Book");
+    book[0x264] = 3;
+    book[0x274..0x277].copy_from_slice(&[7, 1, 2]);
+    let combat = format!(
+        "[Level]\n{}",
+        (1..=99)
+            .map(|level| format!("{level}={}\n", (level - 1) * 100))
+            .collect::<String>()
+    );
+    let data = Rc::new(StatsData::load(&database, &combat).unwrap());
+    let state = Rc::new(RefCell::new(PersistentState::new("test".into())));
+    state.borrow_mut().party_mut().set_in_team(1, true);
+    state.borrow_mut().grant_world_item(6409, &data);
+    assert!(state.borrow_mut().magic_mut().learn(0, 4101, &data));
+    let before = serde_json::to_string(&*state.borrow()).unwrap();
+    let service = Pal3MenuState::create(state.clone(), Some(data));
+    let host = ScriptHost::new();
+    host.set_script_assets(install_script_assets());
+    host.load_source(
+        r#"
+        import radiance;
+        import shared.openpal3;
+        import yaobow.openpal3.state_menu;
+        pub fn make() -> &state_menu.MenuState { state_menu.make_menu() }
+        pub fn frame(menu: &state_menu.MenuState, ui: &radiance.IUiHost,
+            atlas: &openpal3.IPal3UiAtlas, game: &openpal3.IPal3MenuState,
+            x: float, y: float, press: bool, release: bool, down: bool) {
+            menu.paint(ui, atlas, game, x, y, press, release, down);
+        }
+    "#,
+    )
+    .unwrap();
+    let (recorder, ui) = RecordingUiHost::create();
+    let ui_id = host.intern(ui);
+    let atlas_id = host.intern(ComRc::<IPal3UiAtlas>::from_object(TestAtlas));
+    let game_id = host.intern(service.clone());
+    let ui = host.foreign_box("radiance.comdef.IUiHost", ui_id).unwrap();
+    let atlas = host
+        .foreign_box("shared.openpal3.comdef.IPal3UiAtlas", atlas_id)
+        .unwrap();
+    let game = host
+        .foreign_box("shared.openpal3.comdef.IPal3MenuState", game_id)
+        .unwrap();
+    for (width, height, scale, ox) in [(800, 600, 1.0, 0.0), (1600, 600, 1.0, 400.0)] {
+        recorder.set_display_size(width, height);
+        let menu = host.call_returning_data("make", vec![]).unwrap();
+        let frame = |x: f64, y: f64, press: bool, release: bool, down: bool| {
+            recorder.calls.borrow_mut().clear();
+            host.call_void(
+                "frame",
+                vec![
+                    menu.clone(),
+                    ui.clone(),
+                    atlas.clone(),
+                    game.clone(),
+                    Data::Float(ox + x * scale),
+                    Data::Float(y * scale),
+                    Data::Int(press as i64),
+                    Data::Int(release as i64),
+                    Data::Int(down as i64),
+                ],
+            )
+            .unwrap();
+        };
+        let click = |x, y| {
+            frame(x, y, true, false, true);
+            frame(x, y, false, true, false);
+            frame(0.0, 0.0, false, false, false);
+        };
+        let has = |text: &str| {
+            recorder
+                .calls
+                .borrow()
+                .iter()
+                .any(|call| matches!(call, UiCall::TextAt { s, .. } if s == text))
+        };
+        click(350.0, 570.0);
+        assert!(has("Steal") && has("已习得") && has("Skill description"));
+        click(420.0, 147.0);
+        assert!(has("Wind") && has("Heal") && has("等级1") && has("未习得"));
+        assert!(has("Wind description"));
+        frame(300.0, 250.0, true, false, true);
+        frame(0.0, 0.0, false, true, false);
+        assert!(
+            has("Wind description"),
+            "dragging off must cancel selection"
+        );
+        click(300.0, 250.0);
+        assert!(has("Healing detail") && has("施放尚未接入（只读）"));
+        assert!(!has("last"));
+        recorder.set_mouse_wheel(-1.0);
+        frame(100.0, 450.0, false, false, false);
+        recorder.set_mouse_wheel(0.0);
+        assert!(has("last") && !has("Healing detail"));
+        click(640.0, 220.0);
+        assert!(has("Heal") && !has("Wind") && has("Healing detail"));
+        click(280.0, 147.0);
+        assert!(has("Water") && has("Water description") && !has("Healing detail"));
+        click(545.0, 147.0);
+        assert!(has("合击数据尚未接入") && !has("Water description"));
+    }
+    assert!(!service.can_use_item(0, 6409));
+    assert!(!service.use_item(0, 6409));
+    assert_eq!(state.borrow().inventory().quantity(6409), 1);
+    assert_eq!(serde_json::to_string(&*state.borrow()).unwrap(), before);
+}
+
+#[test]
 fn item_descriptions_wrap_for_the_narrow_native_panel_without_splitting_unicode() {
     let host = ScriptHost::new();
     host.set_script_assets(install_script_assets());

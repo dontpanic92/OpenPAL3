@@ -556,7 +556,7 @@ impl SceProcContext {
             }
             51 => {
                 // AddSkill
-                nop_command!(self, AddSkill, i32, i32)
+                command!(self, SceCommandAddSkill, role_id: i32, skill_id: i32)
             }
             52 => {
                 // GetFavorite
@@ -1032,6 +1032,11 @@ mod gameplay_tests {
             inst.extend_from_slice(&value.to_le_bytes());
         }
         inst.extend_from_slice(&4i32.to_le_bytes());
+        for value in [51u16, 0] {
+            inst.extend_from_slice(&value.to_le_bytes());
+        }
+        inst.extend_from_slice(&4101i32.to_le_bytes());
+        inst.extend_from_slice(&0i32.to_le_bytes());
         for value in [48u16, 0] {
             inst.extend_from_slice(&value.to_le_bytes());
         }
@@ -1092,6 +1097,7 @@ mod gameplay_tests {
         for expected in [
             "SceCommandInTeam { role_id: 4, enabled: -7 }",
             "SceCommandIfInTeam { role_id: 4 }",
+            "SceCommandAddSkill { role_id: 0, skill_id: 4101 }",
             "SceCommandAddMoney { amount: -25 }",
             "SceCommandGetMoney { var: -10 }",
             "SceCommandFullRoleAtt { role_id: 6, attribute: 2 }",

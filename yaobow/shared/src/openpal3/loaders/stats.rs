@@ -1,12 +1,13 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use anyhow::{Context, Result, bail};
-use fileformats::pal3::gdb::{ItemDefinition, read_items};
+use fileformats::pal3::gdb::{ItemDefinition, MagicDefinition, read_items, read_magic};
 use ini::Ini;
 
 pub struct StatsData {
     experience: [i32; 100],
     items: HashMap<u32, ItemDefinition>,
+    magic: BTreeMap<u32, MagicDefinition>,
 }
 
 impl StatsData {
@@ -32,7 +33,15 @@ impl StatsData {
         for item in read_items(database)? {
             items.entry(item.id).or_insert(item);
         }
-        Ok(Self { experience, items })
+        let mut magic = BTreeMap::new();
+        for definition in read_magic(database)? {
+            magic.entry(definition.id).or_insert(definition);
+        }
+        Ok(Self {
+            experience,
+            items,
+            magic,
+        })
     }
 
     pub fn experience_threshold(&self, level: i32) -> i32 {
@@ -52,6 +61,14 @@ impl StatsData {
 
     pub fn items(&self) -> impl Iterator<Item = &ItemDefinition> {
         self.items.values()
+    }
+
+    pub fn magic(&self, id: u32) -> Option<&MagicDefinition> {
+        self.magic.get(&id)
+    }
+
+    pub fn magics(&self) -> impl Iterator<Item = &MagicDefinition> {
+        self.magic.values()
     }
 }
 
@@ -108,12 +125,82 @@ pub(crate) fn test_data() -> StatsData {
             },
         );
     }
-    StatsData { experience, items }
+    StatsData {
+        experience,
+        items,
+        magic: BTreeMap::new(),
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn test_data_with_magic(definitions: &[MagicDefinition]) -> StatsData {
+    let mut data = test_data();
+    for definition in definitions {
+        data.magic.insert(definition.id, definition.clone());
+    }
+    data
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[ignore = "requires original game assets via PAL3_ASSET_PATH"]
+    fn original_magic_catalog_preserves_names_roles_and_spell_book_mapping() {
+        use common::store_ext::StoreExt2;
+        let path = std::env::var("PAL3_ASSET_PATH").expect("PAL3_ASSET_PATH");
+        let vfs = packfs::init_virtual_fs(path, None);
+        let database = vfs
+            .read_to_end("/basedata/basedata/cbdata/PAL3_Softstar.gdb")
+            .unwrap();
+        let combat = vfs
+            .read_to_end_from_gbk("/basedata/basedata/datascript/combat.ini")
+            .unwrap();
+        let data = StatsData::load(&database, &combat).unwrap();
+        assert_eq!(data.magics().count(), 187);
+        assert_eq!(
+            data.magics()
+                .filter(|m| matches!(m.kind, 1..=3) && m.usable_by.contains(&true))
+                .count(),
+            33
+        );
+        assert_eq!(
+            data.magics()
+                .filter(|m| m.kind == 0 && m.usable_by.contains(&true))
+                .count(),
+            26
+        );
+        for (book, spell, excluded_role, element) in [
+            (6409, 306, 2, 1),
+            (6410, 311, 0, 3),
+            (6411, 301, 1, 2),
+            (6412, 316, 4, 0),
+            (6413, 321, 3, 4),
+        ] {
+            let magic = data.magic(spell).unwrap();
+            assert_eq!(magic.kind, 2);
+            assert!(!magic.name.is_empty() && !magic.description.is_empty());
+            assert_eq!(magic.elements, std::array::from_fn(|i| i == element));
+            assert_eq!(magic.usable_by, std::array::from_fn(|i| i != excluded_role));
+            let item = data.item(book).unwrap();
+            assert_eq!(item.use_kind, (book - 6402) as u8);
+            assert_eq!(item.usable_by, [false; 5]);
+        }
+        for (role, skill) in [
+            (0, 4101),
+            (0, 4103),
+            (0, 4104),
+            (0, 4106),
+            (1, 4201),
+            (2, 4305),
+            (3, 4402),
+        ] {
+            let magic = data.magic(skill).unwrap();
+            assert_eq!(magic.kind, 0);
+            assert!(magic.usable_by[role]);
+        }
+    }
 
     #[test]
     fn loads_exp_thresholds_and_preserves_level_100_sentinel() {

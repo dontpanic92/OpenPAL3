@@ -7,6 +7,7 @@ use std::{
 };
 
 use crosscom::ComRc;
+use fileformats::pal3::gdb::MagicDefinition;
 use fileformats::pal3::scene_names::SceneNames;
 
 use super::audio_mix::Pal3AudioMix;
@@ -23,6 +24,7 @@ pub struct Pal3MenuState {
     data: Option<Rc<StatsData>>,
     scene_names: Rc<SceneNames>,
     descriptions: HashMap<u32, String>,
+    magic_descriptions: HashMap<u32, String>,
     pending_load: Cell<Option<i32>>,
     pending_return_to_menu: Cell<bool>,
     earth_pearl_available: Cell<bool>,
@@ -120,11 +122,17 @@ impl Pal3MenuState {
             .flat_map(|data| data.items())
             .map(|item| (item.id, clean_description(&item.description)))
             .collect();
+        let magic_descriptions = data
+            .iter()
+            .flat_map(|data| data.magics())
+            .map(|magic| (magic.id, clean_description(&magic.description)))
+            .collect();
         ComRc::from_object(Self {
             state,
             data,
             scene_names,
             descriptions,
+            magic_descriptions,
             pending_load: Cell::new(None),
             pending_return_to_menu: Cell::new(false),
             earth_pearl_available: Cell::new(false),
@@ -146,6 +154,36 @@ impl Pal3MenuState {
 
     pub fn take_requested_load(&self) -> Option<i32> {
         self.pending_load.take()
+    }
+
+    fn spells(&self, role: i32, category: i32) -> impl Iterator<Item = &MagicDefinition> {
+        self.data
+            .iter()
+            .flat_map(|data| data.magics())
+            .filter(move |magic| {
+                if !usize::try_from(role)
+                    .ok()
+                    .and_then(|role| magic.usable_by.get(role))
+                    .copied()
+                    .unwrap_or(false)
+                {
+                    return false;
+                }
+                if category == 0 {
+                    return magic.kind == 0;
+                }
+                if !matches!(magic.kind, 1..=3) {
+                    return false;
+                }
+                let elements = magic.elements.iter().filter(|&&present| present).count();
+                match category {
+                    1..=5 => {
+                        elements == 1 && magic.elements[[0, 1, 3, 2, 4][category as usize - 1]]
+                    }
+                    6 => elements > 1,
+                    _ => false,
+                }
+            })
     }
 
     pub(crate) fn set_earth_pearl_context(
@@ -662,6 +700,47 @@ impl IPal3MenuStateImpl for Pal3MenuState {
             .and_then(|data| data.item(id as u32))
             .map_or(0, |item| item.category as i32)
     }
+
+    fn magic_count(&self, role: i32, category: i32) -> i32 {
+        self.spells(role, category).count() as i32
+    }
+
+    fn magic_item(&self, role: i32, category: i32, index: i32) -> i32 {
+        usize::try_from(index)
+            .ok()
+            .and_then(|index| self.spells(role, category).nth(index))
+            .map_or(0, |magic| magic.id as i32)
+    }
+
+    fn magic_name(&self, id: i32) -> &str {
+        self.data
+            .as_ref()
+            .and_then(|data| data.magic(id as u32))
+            .map_or("", |magic| magic.name.as_str())
+    }
+
+    fn magic_description(&self, id: i32) -> &str {
+        self.magic_descriptions
+            .get(&(id as u32))
+            .map_or("", String::as_str)
+    }
+
+    fn magic_level(&self, role: i32, id: i32) -> i32 {
+        let Some(definition) = self.data.as_ref().and_then(|data| data.magic(id as u32)) else {
+            return 0;
+        };
+        self.state
+            .borrow()
+            .magic()
+            .progress(role, id as u32)
+            .map_or(0, |progress| {
+                if definition.kind == 0 {
+                    1
+                } else {
+                    i32::from(progress.level.min(3)) + 1
+                }
+            })
+    }
 }
 
 fn clean_description(text: &str) -> String {
@@ -672,12 +751,91 @@ fn clean_description(text: &str) -> String {
 mod tests {
     use super::*;
     use crate::openpal3::{
-        loaders::stats::{test_data, test_data_with_items},
+        loaders::stats::{test_data, test_data_with_items, test_data_with_magic},
         states::stats::Resource,
     };
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     static TEST_PATH_ID: AtomicUsize = AtomicUsize::new(0);
+
+    #[test]
+    fn native_skill_catalog_filters_roles_schools_and_remains_read_only() {
+        let mut spells = vec![];
+        for (id, kind, elements) in [
+            (302, 3, [false, false, true, false, false]),
+            (301, 2, [false, false, true, false, false]),
+            (316, 2, [true, false, false, false, false]),
+            (311, 2, [false, false, false, true, false]),
+            (330, 1, [true, true, false, false, false]),
+            (4101, 0, [false; 5]),
+            (2209, 4, [false; 5]),
+        ] {
+            spells.push(MagicDefinition {
+                id,
+                kind,
+                elements,
+                name: format!("Name{id}"),
+                description: "$Detail".into(),
+                usable_by: [true, id != 301 && id != 4101, true, true, true],
+            });
+        }
+        let data = Rc::new(test_data_with_magic(&spells));
+        let state = Rc::new(RefCell::new(PersistentState::new("test".into())));
+        assert!(state.borrow_mut().magic_mut().learn(0, 4101, &data));
+        let books: Vec<_> = (6409..=6413)
+            .map(|id| fileformats::pal3::gdb::ItemDefinition {
+                id,
+                category: 3,
+                use_kind: (id - 6402) as u8,
+                use_scope: 1,
+                use_context: 2,
+                usable_by: [true; 5],
+                ..Default::default()
+            })
+            .collect();
+        let book_data = Rc::new(test_data_with_items(&books));
+        for book in &books {
+            state
+                .borrow_mut()
+                .grant_world_item(book.id as i32, &book_data);
+        }
+        let before = serde_json::to_string(&*state.borrow()).unwrap();
+        let ui = Pal3MenuState::create(state.clone(), Some(data));
+        assert_eq!(ui.magic_count(0, 4), 2);
+        assert_eq!(ui.magic_item(0, 4, 0), 301);
+        assert_eq!(ui.magic_item(0, 4, 1), 302);
+        assert_eq!(ui.magic_item(1, 4, 0), 302);
+        assert_eq!(ui.magic_item(0, 1, 0), 316);
+        assert_eq!(ui.magic_item(0, 3, 0), 311);
+        assert_eq!(ui.magic_item(0, 6, 0), 330);
+        assert_eq!(ui.magic_item(0, 0, 0), 4101);
+        assert_eq!(ui.magic_count(1, 0), 0);
+        assert_eq!(ui.magic_count(0, 7), 0);
+        assert_eq!(ui.magic_name(301), "Name301");
+        assert_eq!(ui.magic_description(301), "Detail");
+        assert_eq!(ui.magic_level(0, 301), 1);
+        assert_eq!(ui.magic_level(0, 302), 0);
+        assert_eq!(ui.magic_level(0, 4101), 1);
+        for (role, category, index) in [
+            (-1, 4, 0),
+            (5, 4, 0),
+            (0, -1, 0),
+            (0, 8, 0),
+            (0, 4, -1),
+            (0, 4, 2),
+        ] {
+            assert_eq!(ui.magic_item(role, category, index), 0);
+        }
+        assert_eq!(ui.magic_level(-1, 301), 0);
+        assert_eq!(ui.magic_name(-1), "");
+        let book_ui = Pal3MenuState::create(state.clone(), Some(book_data));
+        for book in &books {
+            assert!(!book_ui.can_use_item(0, book.id as i32));
+            assert!(!book_ui.use_item(0, book.id as i32));
+            assert_eq!(state.borrow().inventory().quantity(book.id), 1);
+        }
+        assert_eq!(serde_json::to_string(&*state.borrow()).unwrap(), before);
+    }
 
     fn isolated_config_path(name: &str) -> PathBuf {
         let id = TEST_PATH_ID.fetch_add(1, Ordering::Relaxed);

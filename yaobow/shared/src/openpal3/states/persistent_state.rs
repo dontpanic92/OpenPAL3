@@ -8,6 +8,7 @@ use crate::openpal3::scene::MechanismState;
 use crate::ydirs;
 
 use super::inventory::{InventoryState, linked_items};
+use super::magic::MagicState;
 use super::party::PartyState;
 use super::stats::{Resource, StatsState};
 
@@ -31,6 +32,8 @@ pub struct PersistentState {
     thumbnail_png: Option<Vec<u8>>,
     stats: StatsState,
     inventory: InventoryState,
+    #[serde(default)]
+    magic: MagicState,
     scene: Option<String>,
     sub_scene: Option<String>,
     #[serde(default)]
@@ -54,6 +57,7 @@ impl PersistentState {
             thumbnail_png: None,
             stats: StatsState::default(),
             inventory: InventoryState::default(),
+            magic: MagicState::default(),
             scene: None,
             sub_scene: None,
             scene_mechanisms: HashMap::new(),
@@ -196,6 +200,14 @@ impl PersistentState {
 
     pub fn stats(&self) -> &StatsState {
         &self.stats
+    }
+
+    pub fn magic(&self) -> &MagicState {
+        &self.magic
+    }
+
+    pub fn magic_mut(&mut self) -> &mut MagicState {
+        &mut self.magic
     }
 
     pub fn stats_mut(&mut self) -> &mut StatsState {

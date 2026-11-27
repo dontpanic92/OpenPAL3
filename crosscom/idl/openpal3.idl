@@ -225,6 +225,13 @@ interface IPal3MenuState: IUnknown {
     int item_price(int id);
     // Original GDB category; zero if metadata is missing.
     int item_category(int id);
+    // Read-only catalog: 0 special skills, 1..6 elemental/mixed spells.
+    int magic_count(int role, int category);
+    int magic_item(int role, int category, int index);
+    &str magic_name(int id);
+    &str magic_description(int id);
+    // 0 means unlearned; spells display levels 1..4, learned special skills return 1.
+    int magic_level(int role, int id);
     // Queues offscreen work; zero until this exact selection is ready.
     int item_preview_texture(int id, bool equipment);
     int native_page_preview_texture(int page);

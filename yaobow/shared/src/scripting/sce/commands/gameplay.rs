@@ -7,6 +7,45 @@ use imgui::Ui;
 use radiance::comdef::ISceneManager;
 
 #[derive(Debug, Clone)]
+pub struct SceCommandAddSkill {
+    role_id: i32,
+    skill_id: i32,
+}
+
+impl SceCommandAddSkill {
+    pub fn new(role_id: i32, skill_id: i32) -> Self {
+        Self { role_id, skill_id }
+    }
+}
+
+impl SceCommand for SceCommandAddSkill {
+    fn update(
+        &mut self,
+        _scene_manager: ComRc<ISceneManager>,
+        _ui: &Ui,
+        state: &mut SceState,
+        _delta_sec: f32,
+    ) -> bool {
+        if state.asset_mgr().game() == GameType::PAL3 {
+            let data = state.asset_mgr().stats_data();
+            if !state
+                .global_state_mut()
+                .persistent_state_mut()
+                .magic_mut()
+                .learn(self.role_id, self.skill_id as u32, &data)
+            {
+                log::warn!(
+                    "AddSkill: unsupported PAL3 role/skill {}/{}",
+                    self.role_id,
+                    self.skill_id
+                );
+            }
+        }
+        true
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct SceCommandInTeam {
     role_id: i32,
     enabled: i32,

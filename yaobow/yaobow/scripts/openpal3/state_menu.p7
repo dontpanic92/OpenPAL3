@@ -52,7 +52,7 @@ pub struct MenuState(
     click_cycle: int = 0, was_down: bool = false, second_click: bool = false,
     target_hint: int = -1,
     arrow_y: int = 6, arrow_back: bool = false, arrow_time: int = -1,
-    magic_category: int = 0, sword_element: int = 0, book_category: int = 0,
+    magic_category: int = 0, magic_index: int = 0, sword_element: int = 0, book_category: int = 0,
 ) {
     // Original 0x402a90: release-idle >100ms resets the cycle, not press duration.
     pub fn tick(self: &Self, now: int, down: bool) -> bool {
@@ -159,6 +159,7 @@ pub struct MenuState(
             }
             if !selected_present {
                 self.role = game.member_role(0);
+                if self.tab == 3 { self.magic_index = 0; self.description_first = 0; }
                 if self.held == 300 { self.held = -1; }
             }
             for i in Range(0, if self.tab <= 3 { 4 } else { 0 }) {
@@ -185,6 +186,7 @@ pub struct MenuState(
                             else { self.use_on(game, role); }
                         } else {
                             self.role = role; self.from_bag = false; self.page = 0;
+                            if self.tab == 3 { self.magic_index = 0; self.description_first = 0; }
                             self.feedback = "";
                         }
                     }
@@ -314,12 +316,50 @@ pub struct MenuState(
             let over = inside(nx, ny, x, 124.0, 42.0, 50.0);
             let variant = if self.magic_category == i { "2" } else { if over { "1" } else { "0" } };
             c.blit(ROOT + "Magic/" + tabs[i] + variant + ".tga", x, 124.0, 42.0, 50.0);
-            if self.button(400 + i, over, press, release) { self.magic_category = i; }
+            if self.button(400 + i, over, press, release) {
+                self.magic_category = i; self.magic_index = 0; self.description_first = 0;
+            }
         }
+        let count = game.magic_count(self.role, self.magic_category);
+        self.magic_index = clamp(self.magic_index, count - 1);
         for i in Range(0, 10) {
-            c.blit(ROOT + "Magic/Skill_Grid.tga", 232.0, 207.0 + (i as float) * 29.0, 333.0, 29.0);
+            let y = 207.0 + (i as float) * 29.0;
+            c.blit(ROOT + "Magic/Skill_Grid.tga", 232.0, y, 333.0, 29.0);
+            if i < count {
+                let id = game.magic_item(self.role, self.magic_category, i);
+                let level = game.magic_level(self.role, id);
+                c.text(240.0, y + 5.0, game.magic_name(id), level > 0 || i == self.magic_index);
+                let status = if level == 0 { "未习得" } else if self.magic_category == 0 {
+                    "已习得"
+                } else { "等级" + int_str(level) };
+                c.text(475.0, y + 5.0, status, level > 0);
+                if self.button(450 + i, inside(nx, ny, 232.0, y, 333.0, 29.0), press, release) {
+                    self.magic_index = i; self.description_first = 0;
+                }
+            }
         }
-        c.text(240.0, 486.0, "仙术数据与施放尚未接入", false);
+        if count > 0 {
+            let id = game.magic_item(self.role, self.magic_category, self.magic_index);
+            c.text(26.0, 377.0, game.magic_name(id), true);
+            let lines = magic_description_lines(game.magic_description(id));
+            let maximum = if lines.len() > 6 { lines.len() - 6 } else { 0 };
+            let wheel = if inside(nx, ny, 26.0, 400.0, 162.0, 128.0) { c.ui.mouse_wheel() } else { 0.0 };
+            if wheel > 0.0 { self.description_first = self.description_first - 1; }
+            if wheel < 0.0 { self.description_first = self.description_first + 1; }
+            self.description_first = clamp(self.description_first, maximum);
+            c.ui.clip_rect(c.x + 26.0 * c.scale, c.y + 400.0 * c.scale,
+                c.x + 190.0 * c.scale, c.y + 528.0 * c.scale, () => {
+                    for row in Range(0, 6) {
+                        let index = self.description_first + row;
+                        if index < lines.len() { c.small_text(26.0, 404.0 + (row as float) * 20.0, lines[index]); }
+                    }
+                });
+            c.text(240.0, 486.0, "施放尚未接入（只读）", false);
+        } else {
+            c.text(240.0, 486.0, if self.magic_category == 7 {
+                "合击数据尚未接入"
+            } else { "没有可显示的仙术" }, false);
+        }
     }
 
     fn paint_formation(self: &Self, c: &Canvas, game: &openpal3.IPal3MenuState,
@@ -670,7 +710,11 @@ fn paint_item_header(c: &Canvas, game: &openpal3.IPal3MenuState, role: int, equi
     }
 }
 
-pub fn description_lines(text: string) -> array<string> {
+pub fn description_lines(text: string) -> array<string> { wrap_description(text, 26) }
+
+pub fn magic_description_lines(text: string) -> array<string> { wrap_description(text, 18) }
+
+fn wrap_description(text: string, maximum: int) -> array<string> {
     let mut lines: array<string> = [];
     let mut line = "";
     let mut width = 0;
@@ -678,7 +722,7 @@ pub fn description_lines(text: string) -> array<string> {
         let ch = text.char_at(i)!;
         if ch == "\n" { lines.push(line); line = ""; width = 0; continue; }
         let advance = if ch.len_bytes() == 1 { 1 } else { 2 };
-        if width + advance > 26 { lines.push(line); line = ""; width = 0; }
+        if width + advance > maximum { lines.push(line); line = ""; width = 0; }
         line = line + ch; width = width + advance;
     }
     if line != "" { lines.push(line); }
