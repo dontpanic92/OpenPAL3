@@ -18,7 +18,7 @@ use radiance::comdef::{
 };
 use radiance::components::mesh::StaticMeshComponent;
 use radiance::math::Vec3;
-use std::cell::{Cell, RefCell};
+use std::cell::{Cell, OnceCell, RefCell};
 use std::collections::{BTreeMap, HashSet};
 use std::rc::Rc;
 use std::time::{Duration, Instant};
@@ -46,6 +46,8 @@ pub struct ScnScene {
     mechanism_sounds: RefCell<Vec<String>>,
     hazard_bounds: RefCell<BTreeMap<u16, (Vec3, Vec3)>>,
     loading_cursor: Cell<Option<usize>>,
+    bee: OnceCell<Option<RefCell<super::bee::BeeGuide>>>,
+    mouse: OnceCell<Option<RefCell<super::treasure_mouse::TreasureMouse>>>,
 }
 
 enum PickupWalk {
@@ -110,6 +112,8 @@ impl ScnScene {
             mechanism_sounds: RefCell::new(vec![]),
             hazard_bounds: RefCell::new(BTreeMap::new()),
             loading_cursor: Cell::new(None),
+            bee: OnceCell::new(),
+            mouse: OnceCell::new(),
         }
     }
 
@@ -833,6 +837,9 @@ impl ScnScene {
     }
 
     pub fn update_mechanisms(&self, delta_sec: f32) -> Vec<u32> {
+        if let Some(Some(bee)) = self.bee.get() {
+            bee.borrow_mut().update(delta_sec);
+        }
         let mut procs = self.take_mechanism_procs();
         let mut links = vec![];
         for mechanism in self.mechanisms.borrow_mut().iter_mut() {
@@ -1792,8 +1799,109 @@ impl ScnScene {
         &self.scn_name
     }
 
+    pub(crate) fn prepare_bee(&self) -> bool {
+        if self.asset_mgr.game() != crate::GameType::PAL3 {
+            return false;
+        }
+        self.bee
+            .get_or_init(|| {
+                let bee = super::bee::BeeGuide::load(&self.asset_mgr)?;
+                self.scene.add_entity(bee.entity.clone());
+                Some(RefCell::new(bee))
+            })
+            .is_some()
+    }
+
+    pub(crate) fn launch_bee(&self, origin: Vec3, layer: i32, x: i32, z: i32) -> bool {
+        let layer = (layer & 1) as usize;
+        if layer >= self.nav.nav_file.maps.len() || !self.prepare_bee() {
+            return false;
+        }
+        let min = self.nav_min_coord(layer);
+        // Native 0x434b60 initializes opcode 154's grid unit independently of map extents.
+        const GRID_UNIT: f32 = 12.;
+        let target = Vec3::new(
+            min.x + (x as f32 + 0.5) * GRID_UNIT,
+            self.nav.get(layer, x, z).map_or(0., |point| point.height),
+            min.z + (z as f32 + 0.5) * GRID_UNIT,
+        );
+        let Some(Some(bee)) = self.bee.get() else {
+            return false;
+        };
+        bee.borrow_mut().launch(origin, target);
+        true
+    }
+
     pub(crate) fn scene_type(&self) -> u32 {
         self.scn_file.scene_type
+    }
+
+    fn treasure_mouse_target(&self) -> Option<(Vec3, usize)> {
+        // Native 0x421ea0 chooses the first active type24 with parameter1 == 1.
+        self.mechanisms
+            .borrow()
+            .iter()
+            .find(|m| m.mouse_searchable())
+            .map(|m| (m.position, m.layer as usize))
+    }
+
+    pub(crate) fn prepare_treasure_mouse(&self) -> bool {
+        if self.asset_mgr.game() != crate::GameType::PAL3 {
+            return false;
+        }
+        let Some((_, layer)) = self.treasure_mouse_target() else {
+            return true;
+        };
+        if layer >= self.nav.nav_file.maps.len() {
+            return false;
+        }
+        self.mouse
+            .get_or_init(|| {
+                let mouse = super::treasure_mouse::TreasureMouse::load(&self.asset_mgr)?;
+                self.scene.add_entity(mouse.entity.clone());
+                Some(RefCell::new(mouse))
+            })
+            .is_some()
+    }
+
+    pub(crate) fn launch_treasure_mouse(&self, leader: Vec3) {
+        let Some((target, layer)) = self.treasure_mouse_target() else {
+            self.mechanism_notices
+                .borrow_mut()
+                .push("没有找到宝物".into());
+            return;
+        };
+        if !self.prepare_treasure_mouse() {
+            return;
+        }
+        if let Some(Some(mouse)) = self.mouse.get() {
+            let eye = self.scene.camera().transform().position();
+            // Native 0x416490 -> 0x412230 snaps the rat to its navigation layer + 1.
+            // The camera still targets the treasure's authored position.
+            let draw_position = Vec3::new(
+                target.x,
+                self.get_height(layer, self.scene_coord_to_nav_coord(layer, &target)) + 1.,
+                target.z,
+            );
+            mouse
+                .borrow_mut()
+                .launch(eye, leader, target, draw_position);
+        }
+    }
+
+    pub(crate) fn treasure_mouse_active(&self) -> bool {
+        self.mouse
+            .get()
+            .and_then(Option::as_ref)
+            .is_some_and(|mouse| mouse.borrow().active())
+    }
+
+    pub(crate) fn update_treasure_mouse(&self, delta_sec: f32) {
+        if let Some(Some(mouse)) = self.mouse.get() {
+            if let Some(eye) = mouse.borrow_mut().update(delta_sec) {
+                self.scene.camera_mut().transform_mut().set_position(&eye);
+            }
+        }
     }
 
     pub fn nav(&self) -> &Nav {

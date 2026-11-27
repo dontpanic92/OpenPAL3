@@ -349,6 +349,9 @@ impl SceState {
         let renderer = self.status_renderer.clone();
         let menu = self.menu_state.clone();
         let menu = menu.inner::<crate::openpal3::menu_state::Pal3MenuState>();
+        let role_position = scene_manager
+            .get_resolved_role(self, -1)
+            .map(|role| role.transform().borrow().position());
         let return_proc = crate::openpal3::menu_state::EARTH_PEARL_PROC;
         let can_call_return = self.asset_mgr.game() == crate::GameType::PAL3
             && !self.context.is_running()
@@ -356,12 +359,24 @@ impl SceState {
         if let Some(scene) = scene_manager.scn_scene() {
             let scene = scene.inner::<crate::openpal3::scene::ScnScene>();
             menu.set_earth_pearl_context(scene.scene_type(), scene.name(), can_call_return);
+            let bee_proc = if !self.context.is_running() {
+                self.context
+                    .proc_id_by_name(&format!("_ylf_{}_{}", scene.name(), scene.sub_name()))
+            } else {
+                None
+            };
+            let has_bee = scene.scene_type() == 2 && bee_proc.is_some() && scene.prepare_bee();
+            menu.set_bee_context(scene.scene_type(), bee_proc, has_bee);
+            menu.set_treasure_mouse_context(
+                !self.context.is_running()
+                    && role_position.is_some()
+                    && scene.prepare_treasure_mouse(),
+            );
         } else {
             menu.set_earth_pearl_context(0, "", false);
+            menu.set_bee_context(0, None, false);
+            menu.set_treasure_mouse_context(false);
         }
-        let role_position = scene_manager
-            .get_resolved_role(self, -1)
-            .map(|role| role.transform().borrow().position());
         let view_projection = scene_manager.scene().map(|scene| {
             let camera = scene.camera();
             Mat44::multiplied(
@@ -410,6 +425,19 @@ impl SceState {
         if menu.take_earth_pearl_request() {
             self.call_proc(return_proc);
             self.global_state.set_adv_input_enabled(false);
+            renderer.set_menu_open(false);
+        }
+        if let Some(proc_id) = menu.take_bee_request() {
+            self.call_proc(proc_id);
+            self.global_state.set_adv_input_enabled(false);
+            renderer.set_menu_open(false);
+        }
+        if menu.take_treasure_mouse_request() {
+            if let (Some(scene), Some(position)) = (scene_manager.scn_scene(), role_position) {
+                scene
+                    .inner::<crate::openpal3::scene::ScnScene>()
+                    .launch_treasure_mouse(position);
+            }
             renderer.set_menu_open(false);
         }
         let sounds = self

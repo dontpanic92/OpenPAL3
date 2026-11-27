@@ -38,6 +38,190 @@ fn deferred_scene_loading_installs_triggers_only_when_their_work_completes() {
 
 #[test]
 #[ignore = "requires original game assets via PAL3_ASSET_PATH"]
+fn shipped_treasure_mouse_search_uses_authored_order_without_claiming_or_moving_items() {
+    use radiance::comdef::ISceneExt;
+
+    let path = std::env::var("PAL3_ASSET_PATH").expect("PAL3_ASSET_PATH");
+    let assets = Rc::new(AssetManager::new(
+        Rc::new(UnusedFactory),
+        Rc::new(packfs::init_virtual_fs(std::path::Path::new(&path), None)),
+    ));
+    let mut inactive = node(7, 24, 0);
+    inactive.active = 0;
+    inactive.ladder_nav_coord1.1 = 1;
+    let ordinary = node(8, 24, 0);
+    let mut first = node(50, 24, 0);
+    first.ladder_nav_coord1 = (6201, 1);
+    first.position = Vec3::new(200., 10., 0.);
+    let mut near = node(2, 24, 0);
+    near.ladder_nav_coord1 = (6112, 1);
+    near.position = Vec3::new(20., 10., 0.);
+    let nodes = vec![inactive, ordinary, first, near];
+    let core = CoreScene::create();
+    for node in &nodes {
+        let entity = CoreEntity::create(format!("OBJECT_{}", node.index), node.active != 0);
+        entity.transform().borrow_mut().set_position(&node.position);
+        core.add_entity(entity);
+    }
+    let scene = ScnScene::new(
+        core.clone(),
+        &assets,
+        "m01",
+        "1",
+        ScnFile {
+            cpk_name: "m01".into(),
+            scn_name: "1".into(),
+            scn_base_name: "1".into(),
+            scene_type: 2,
+            is_night: false,
+            skybox_id: 0,
+            roles: vec![],
+            nodes,
+        },
+        NavFile {
+            version: 1,
+            maps: vec![NavMap {
+                layer_triggers: None,
+                min_coord: Vec3::new(0., 0., 0.),
+                max_coord: Vec3::new(240., 0., 12.),
+                width: 20,
+                height: 1,
+                map: vec![vec![
+                    NavMapPoint {
+                        height: 100.,
+                        distance_to_border: 0x0200
+                    };
+                    20
+                ]],
+            }],
+            unknown2: vec![],
+        },
+    );
+    let eye = Vec3::new(400., 410., 400.);
+    core.camera_mut().transform_mut().set_position(&eye);
+    assert!(scene.prepare_treasure_mouse());
+    assert!(scene.prepare_treasure_mouse());
+    let mice: Vec<_> = core
+        .entities()
+        .into_iter()
+        .filter(|entity| entity.name() == "TREASURE_MOUSE")
+        .collect();
+    assert_eq!(mice.len(), 1);
+    let mouse = &mice[0];
+    mouse.load();
+    assert!(
+        mouse
+            .get_component(IAnimatedMeshComponent::uuid())
+            .is_some()
+    );
+    assert!(mouse.get_rendering_component().is_some());
+    let mut saved = PersistentState::new("test".into());
+    scene.snapshot_mechanisms(&mut saved);
+    let before = serde_json::to_value(&saved).unwrap();
+    scene.launch_treasure_mouse(Vec3::new(0., 10., 0.));
+    assert_eq!(mouse.transform().borrow().position().x, 200.);
+    assert_eq!(mouse.transform().borrow().position().y, 101.);
+    scene.update_treasure_mouse(1.);
+    assert!((core.camera().transform().position().x - 429.2893).abs() < 0.0001);
+    assert_eq!(mouse.transform().borrow().position().x, 200.);
+    assert!(mouse.visible());
+    scene.update_treasure_mouse(3.);
+    assert!(!mouse.visible());
+    assert!(!scene.treasure_mouse_active());
+    assert_eq!(core.camera().transform().position().x, eye.x);
+    assert!(scene.take_pickup_rewards().is_empty());
+    scene.snapshot_mechanisms(&mut saved);
+    assert_eq!(serde_json::to_value(&saved).unwrap(), before);
+    mouse.unload();
+}
+
+#[test]
+fn mouse_search_handles_empty_scenes_and_missing_target_navigation() {
+    let empty = scene(vec![node(7, 24, 0)]);
+    assert!(empty.prepare_treasure_mouse());
+    empty.launch_treasure_mouse(Vec3::new(0., 10., 0.));
+    assert!(!empty.treasure_mouse_active());
+    assert_eq!(empty.take_mechanism_notices(), vec!["没有找到宝物"]);
+    assert!(empty.take_pickup_rewards().is_empty());
+    let mut target = node(7, 24, 0);
+    target.ladder_nav_coord1.1 = 1;
+    target.nav_layer = 1;
+    let invalid = scene(vec![target]);
+    assert!(!invalid.prepare_treasure_mouse());
+    invalid.launch_treasure_mouse(Vec3::new(0., 10., 0.));
+    assert!(!invalid.treasure_mouse_active());
+    assert!(invalid.take_mechanism_notices().is_empty());
+}
+
+#[test]
+#[ignore = "requires original game assets via PAL3_ASSET_PATH"]
+fn shipped_bee_loads_its_actor_and_flies_to_centered_masked_nav_coordinates() {
+    use crate::openpal3::comdef::IScnSceneComponent;
+    use radiance::comdef::ISceneExt;
+
+    let path = std::env::var("PAL3_ASSET_PATH").expect("PAL3_ASSET_PATH");
+    let assets = Rc::new(AssetManager::new(
+        Rc::new(UnusedFactory),
+        Rc::new(packfs::init_virtual_fs(std::path::Path::new(&path), None)),
+    ));
+    let core = assets.load_scn("m01", "1");
+    let component = core
+        .get_component(IScnSceneComponent::uuid())
+        .unwrap()
+        .query_interface::<IScnSceneComponent>()
+        .unwrap();
+    let scene = component.inner::<ScnScene>();
+    assert!(scene.prepare_bee());
+    assert!(scene.prepare_bee());
+    let bees: Vec<_> = core
+        .entities()
+        .into_iter()
+        .filter(|e| e.name() == "GUIDE_BEE")
+        .collect();
+    assert_eq!(bees.len(), 1);
+    let bee = &bees[0];
+    bee.load();
+    assert!(bee.get_component(IAnimatedMeshComponent::uuid()).is_some());
+    assert!(bee.get_rendering_component().is_some());
+    assert!(!bee.visible());
+    let leader = CoreEntity::create("ROLE_0".into(), true);
+    let origin = Vec3::new(500., 10., -1100.);
+    leader.transform().borrow_mut().set_position(&origin);
+    assert!(!scene.launch_bee(origin, 3, 3, 5));
+    assert!(scene.launch_bee(origin, 2, 3, 5));
+    assert_eq!(bee.transform().borrow().position().x, origin.x);
+    scene.update_mechanisms(1000.);
+    let position = bee.transform().borrow().position();
+    let min = scene.nav_min_coord(0);
+    assert_eq!(position.x, min.x + 42.);
+    assert_eq!(position.z, min.z + 66.);
+    assert_eq!(
+        position.y,
+        scene.nav().get(0, 3, 5).map_or(0., |p| p.height) + 80.
+    );
+    assert!(bee.visible());
+    assert_eq!(
+        Vec3::sub(&leader.transform().borrow().position(), &origin).norm2(),
+        0.
+    );
+    scene.update_mechanisms(0.001);
+    assert!(!bee.visible());
+    bee.update(0.1);
+    assert!(!bee.visible());
+    assert!(scene.launch_bee(origin, 2, -1, -1));
+    scene.update_mechanisms(1000.);
+    let position = bee.transform().borrow().position();
+    assert_eq!(position.x, min.x - 6.);
+    assert_eq!(position.z, min.z - 6.);
+    assert_eq!(position.y, 80.);
+    let reloaded = assets.load_scn("m01", "1");
+    let reloaded = reloaded.get_component(IScnSceneComponent::uuid()).unwrap();
+    assert!(reloaded.inner::<ScnScene>().prepare_bee());
+    bee.unload();
+}
+
+#[test]
+#[ignore = "requires original game assets via PAL3_ASSET_PATH"]
 fn shipped_item_previews_load_variant_textures_and_reject_missing_assets() {
     use crate::openpal3::loaders::pol::create_menu_preview;
     let path = std::env::var("PAL3_ASSET_PATH").expect("PAL3_ASSET_PATH");

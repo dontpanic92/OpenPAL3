@@ -252,6 +252,42 @@ pub struct SceProcContext {
     dlgsel: i32,
 }
 
+#[cfg(test)]
+mod guide_tests {
+    use super::*;
+    use crate::openpal3::loaders::sce_loader::{SceProc, SceProcHeader};
+
+    #[test]
+    fn shipped_guide_opcode_reads_three_reversed_operands_and_finishes() {
+        let name = "_YLF_m01_1".to_string();
+        let sce = Rc::new(SceFile {
+            proc_num: 1,
+            proc_headers: vec![SceProcHeader {
+                id: 2102,
+                offset: 0,
+                name: name.clone(),
+            }],
+            procs: HashMap::from([(
+                2102,
+                SceProc {
+                    id: 2102,
+                    name,
+                    local_vars: vec![],
+                    inst: vec![154, 0, 0, 0, 19, 1, 0, 0, 193, 0, 0, 0, 0, 0, 0, 0],
+                },
+            )]),
+        });
+        let mut context = SceProcContext::new_from_id(sce, 2102);
+        let command = context.get_next_cmd().unwrap();
+        assert_eq!(
+            command.debug(),
+            "SceCommandGuideBee { layer: 0, x: 193, z: 275 }"
+        );
+        assert_eq!(context.program_counter, 16);
+        assert!(context.get_next_cmd().is_none());
+    }
+}
+
 impl SceProcContext {
     pub fn new_from_id(sce: Rc<SceFile>, proc_id: u32) -> Self {
         let index = sce
@@ -800,6 +836,9 @@ impl SceProcContext {
                 // FullTeamAtt
                 command!(self, SceCommandFullTeamAtt)
             }
+            154 => {
+                command!(self, SceCommandGuideBee, layer: i32, x: i32, z: i32)
+            }
             155 => {
                 // CameraYaw
                 nop_command!(self, CameraYaw, f32)
@@ -1145,6 +1184,16 @@ impl SceExecutionContext {
                 .proc_headers
                 .iter()
                 .any(|header| header.id == proc_id)
+    }
+
+    pub(crate) fn proc_id_by_name(&self, name: &str) -> Option<u32> {
+        self.sce
+            .proc_headers
+            .iter()
+            .find(|header| {
+                header.name.eq_ignore_ascii_case(name) && self.sce.procs.contains_key(&header.id)
+            })
+            .map(|header| header.id)
     }
 
     pub fn call_proc(&mut self, proc_id: u32, global_state: &mut GlobalState) {

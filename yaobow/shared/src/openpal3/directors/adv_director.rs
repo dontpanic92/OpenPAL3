@@ -530,13 +530,18 @@ impl AdventureDirectorProps {
 
         {
             let scene = scene_manager.scene().unwrap();
-            scene
-                .camera_mut()
-                .transform_mut()
-                .set_position(&Vec3::new(400., 400., 400.))
-                .rotate_axis_angle(&Vec3::UP, self.camera_rotation)
-                .translate(&position)
-                .look_at(&position);
+            if !scene_manager.scn_scene().is_some_and(|scn| {
+                scn.inner::<crate::openpal3::scene::ScnScene>()
+                    .treasure_mouse_active()
+            }) {
+                scene
+                    .camera_mut()
+                    .transform_mut()
+                    .set_position(&Vec3::new(400., 400., 400.))
+                    .rotate_axis_angle(&Vec3::UP, self.camera_rotation)
+                    .translate(&position)
+                    .look_at(&position);
+            }
         }
     }
 
@@ -582,6 +587,7 @@ impl AdventureDirectorProps {
                     .count(),
             );
             let procs = scene.update_mechanisms(delta_sec);
+            scene.update_treasure_mouse(delta_sec);
             let hazard = scene.update_hazard_damage(delta_sec, &mut self.hazard_cooldown);
             let native_pal3 = self.sce_vm.state().asset_mgr().game() == crate::GameType::PAL3;
             let rewards = scene.take_pickup_rewards();

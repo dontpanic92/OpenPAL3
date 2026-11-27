@@ -866,6 +866,10 @@ impl Mechanism {
         true
     }
 
+    pub(super) fn mouse_searchable(&self) -> bool {
+        self.kind == 24 && self.active && self.mode == 1 && !self.pickup_claimed()
+    }
+
     pub fn pickup_claimed(&self) -> bool {
         self.state
             .platform

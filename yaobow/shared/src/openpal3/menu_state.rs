@@ -27,6 +27,10 @@ pub struct Pal3MenuState {
     pending_return_to_menu: Cell<bool>,
     earth_pearl_available: Cell<bool>,
     pending_earth_pearl: Cell<bool>,
+    bee_proc: Cell<Option<u32>>,
+    pending_bee: Cell<bool>,
+    mouse_available: Cell<bool>,
+    pending_mouse: Cell<bool>,
     load_failed: Cell<bool>,
     audio_mix: Arc<Pal3AudioMix>,
     audio_persistence: AudioPersistence,
@@ -125,6 +129,10 @@ impl Pal3MenuState {
             pending_return_to_menu: Cell::new(false),
             earth_pearl_available: Cell::new(false),
             pending_earth_pearl: Cell::new(false),
+            bee_proc: Cell::new(None),
+            pending_bee: Cell::new(false),
+            mouse_available: Cell::new(false),
+            pending_mouse: Cell::new(false),
             load_failed: Cell::new(false),
             audio_mix,
             audio_persistence,
@@ -155,6 +163,33 @@ impl Pal3MenuState {
         self.pending_earth_pearl.take()
             && self.earth_pearl_available.get()
             && self.state.borrow().inventory().contains(6427)
+    }
+
+    pub(crate) fn set_bee_context(&self, scene_type: u32, proc_id: Option<u32>, has_model: bool) {
+        self.bee_proc.set(if scene_type == 2 && has_model {
+            proc_id
+        } else {
+            None
+        });
+    }
+
+    pub(crate) fn take_bee_request(&self) -> Option<u32> {
+        if !self.pending_bee.take() {
+            return None;
+        }
+        let proc_id = self.bee_proc.get()?;
+        let mut state = self.state.borrow_mut();
+        state.consume_world_item(6401).then_some(proc_id)
+    }
+
+    pub(crate) fn set_treasure_mouse_context(&self, available: bool) {
+        self.mouse_available.set(available);
+    }
+
+    pub(crate) fn take_treasure_mouse_request(&self) -> bool {
+        self.pending_mouse.take()
+            && self.mouse_available.get()
+            && self.state.borrow_mut().consume_world_item(6407)
     }
 
     pub(crate) fn capture_save_thumbnail(
@@ -277,11 +312,11 @@ impl IPal3MenuStateImpl for Pal3MenuState {
     }
 
     fn item_use_scope(&self, id: i32) -> i32 {
-        if id == 6427 {
+        if matches!(id, 6401 | 6407 | 6427) {
             return self.data.as_ref().map_or(0, |data| {
-                data.item(6427).map_or(0, |item| {
+                data.item(id as u32).map_or(0, |item| {
                     if item.category == 3
-                        && item.use_kind == 3
+                        && item.use_kind == if id == 6407 { 5 } else { 3 }
                         && item.use_context & 2 != 0
                         && item.use_scope == 2
                     {
@@ -298,11 +333,31 @@ impl IPal3MenuStateImpl for Pal3MenuState {
     }
 
     fn can_use_item(&self, role: i32, id: i32) -> bool {
+        if id == 6401 {
+            return role == -1
+                && self.item_use_scope(id) == 2
+                && self.bee_proc.get().is_some()
+                && !self.pending_bee.get()
+                && !self.pending_earth_pearl.get()
+                && !self.pending_mouse.get()
+                && self.state.borrow().inventory().contains(6401);
+        }
+        if id == 6407 {
+            return role == -1
+                && self.item_use_scope(id) == 2
+                && self.mouse_available.get()
+                && !self.pending_mouse.get()
+                && !self.pending_bee.get()
+                && !self.pending_earth_pearl.get()
+                && self.state.borrow().inventory().contains(6407);
+        }
         if id == 6427 {
             return role == -1
                 && self.item_use_scope(id) == 2
                 && self.earth_pearl_available.get()
                 && !self.pending_earth_pearl.get()
+                && !self.pending_bee.get()
+                && !self.pending_mouse.get()
                 && self.state.borrow().inventory().contains(6427);
         }
         self.data
@@ -311,6 +366,20 @@ impl IPal3MenuStateImpl for Pal3MenuState {
     }
 
     fn use_item(&self, role: i32, id: i32) -> bool {
+        if id == 6401 {
+            if !self.can_use_item(role, id) {
+                return false;
+            }
+            self.pending_bee.set(true);
+            return true;
+        }
+        if id == 6407 {
+            if !self.can_use_item(role, id) {
+                return false;
+            }
+            self.pending_mouse.set(true);
+            return true;
+        }
         if id == 6427 {
             if !self.can_use_item(role, id) {
                 return false;
@@ -655,6 +724,119 @@ mod tests {
                 ..Default::default()
             },
         ]))
+    }
+
+    #[test]
+    fn mouse_search_consumes_only_on_dispatch_and_drops_stale_requests() {
+        let data = Rc::new(test_data_with_items(&[
+            fileformats::pal3::gdb::ItemDefinition {
+                id: 6407,
+                category: 3,
+                use_kind: 5,
+                use_scope: 2,
+                use_context: 2,
+                ..Default::default()
+            },
+        ]));
+        let state = Rc::new(RefCell::new(PersistentState::new("test".into())));
+        state.borrow_mut().grant_world_item(6407, &data);
+        state.borrow_mut().grant_world_item(6407, &data);
+        let ui = Pal3MenuState::create(state.clone(), Some(data.clone()));
+        let menu = ui.inner::<Pal3MenuState>();
+        assert!(!ui.use_item(-1, 6407));
+        menu.set_treasure_mouse_context(true);
+        assert!(!ui.use_item(0, 6407));
+        assert!(ui.use_item(-1, 6407));
+        assert!(!ui.use_item(-1, 6407));
+        assert_eq!(state.borrow().inventory().quantity(6407), 2);
+        menu.set_treasure_mouse_context(false);
+        assert!(!menu.take_treasure_mouse_request());
+        assert_eq!(state.borrow().inventory().quantity(6407), 2);
+        menu.set_treasure_mouse_context(true);
+        assert!(ui.use_item(-1, 6407));
+        let stats_before = serde_json::to_value(state.borrow().stats()).unwrap();
+        assert!(menu.take_treasure_mouse_request());
+        assert!(!menu.take_treasure_mouse_request());
+        assert_eq!(state.borrow().inventory().quantity(6407), 1);
+        assert_eq!(
+            serde_json::to_value(state.borrow().stats()).unwrap(),
+            stats_before
+        );
+        let restored: PersistentState =
+            serde_json::from_str(&serde_json::to_string(&*state.borrow()).unwrap()).unwrap();
+        assert_eq!(restored.inventory().quantity(6407), 1);
+        assert!(ui.use_item(-1, 6407));
+        state.borrow_mut().remove_item(6407, &data);
+        assert!(!menu.take_treasure_mouse_request());
+    }
+
+    #[test]
+    fn bee_requires_a_usable_scene_route_and_consumes_only_when_dispatched() {
+        let data = Rc::new(test_data_with_items(&[
+            fileformats::pal3::gdb::ItemDefinition {
+                id: 6401,
+                category: 3,
+                use_kind: 3,
+                use_scope: 2,
+                use_context: 2,
+                ..Default::default()
+            },
+            fileformats::pal3::gdb::ItemDefinition {
+                id: 6427,
+                category: 3,
+                use_kind: 3,
+                use_scope: 2,
+                use_context: 2,
+                ..Default::default()
+            },
+        ]));
+        let state = Rc::new(RefCell::new(PersistentState::new("test".into())));
+        let ui = Pal3MenuState::create(state.clone(), Some(data.clone()));
+        let menu = ui.inner::<Pal3MenuState>();
+        menu.set_bee_context(2, Some(2102), true);
+        assert!(!ui.use_item(-1, 6401));
+        state.borrow_mut().grant_world_item(6401, &data);
+        state.borrow_mut().grant_world_item(6427, &data);
+        for (category, proc, model) in [
+            (1, Some(2102), true),
+            (2, None, true),
+            (2, Some(2102), false),
+        ] {
+            menu.set_bee_context(category, proc, model);
+            assert!(!ui.use_item(-1, 6401));
+            assert_eq!(menu.take_bee_request(), None);
+            assert_eq!(state.borrow().inventory().quantity(6401), 1);
+        }
+        menu.set_bee_context(2, Some(2102), true);
+        menu.set_earth_pearl_context(2, "m01", true);
+        assert!(!ui.use_item(0, 6401));
+        assert!(ui.use_item(-1, 6401));
+        assert!(!ui.use_item(-1, 6401));
+        assert!(!ui.use_item(-1, 6427));
+        assert_eq!(state.borrow().inventory().quantity(6401), 1);
+        let before = state.borrow().stats().clone();
+        assert_eq!(menu.take_bee_request(), Some(2102));
+        assert_eq!(menu.take_bee_request(), None);
+        assert!(!state.borrow().inventory().contains(6401));
+        assert_eq!(
+            serde_json::to_value(state.borrow().stats()).unwrap(),
+            serde_json::to_value(&before).unwrap()
+        );
+        let restored: PersistentState =
+            serde_json::from_str(&serde_json::to_string(&*state.borrow()).unwrap()).unwrap();
+        assert!(!restored.inventory().contains(6401));
+        assert!(restored.inventory().contains(6427));
+
+        state.borrow_mut().grant_world_item(6401, &data);
+        assert!(ui.use_item(-1, 6401));
+        menu.set_bee_context(2, None, true);
+        assert_eq!(menu.take_bee_request(), None);
+        assert_eq!(state.borrow().inventory().quantity(6401), 1);
+        menu.set_bee_context(2, Some(2102), true);
+        assert_eq!(menu.take_bee_request(), None);
+        assert!(ui.use_item(-1, 6401));
+        state.borrow_mut().remove_item(6401, &data);
+        assert_eq!(menu.take_bee_request(), None);
     }
 
     #[test]

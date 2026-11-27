@@ -206,6 +206,14 @@ impl PersistentState {
         &self.inventory
     }
 
+    pub(crate) fn consume_world_item(&mut self, id: u32) -> bool {
+        if !self.inventory.contains(id) {
+            return false;
+        }
+        self.inventory.remove_one(id);
+        true
+    }
+
     pub fn can_equip_item(&self, role: i32, slot: i32, id: i32, data: &StatsData) -> bool {
         if !self.party.contains(role) || !(0..6).contains(&slot) {
             return false;

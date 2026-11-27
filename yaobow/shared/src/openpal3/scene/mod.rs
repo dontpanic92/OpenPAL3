@@ -1,3 +1,4 @@
+mod bee;
 mod collision;
 mod cvd_entity;
 mod effect;
@@ -9,6 +10,7 @@ mod path;
 mod role_controller;
 mod scene;
 mod shadow;
+mod treasure_mouse;
 
 pub use cvd_entity::create_entity_from_cvd_model;
 pub use effect::build_effect;
