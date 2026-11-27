@@ -44,6 +44,26 @@ pub struct ScnNode {
 }
 
 impl ScnNode {
+    /// Authored local X-axis angle in degrees: SCN +0x184, native object +0x230.
+    pub(crate) fn pitch(&self) -> f32 {
+        self.dw184
+            .first()
+            .copied()
+            .map(f32::from_bits)
+            .unwrap_or(0.)
+    }
+
+    pub(crate) fn rendered_pitch(&self) -> f32 {
+        // Native 0x42474b/0x4248ca/0x424918 omit pitch in these draw paths.
+        if matches!(self.node_type, 13 | 28)
+            || (self.node_type == 24 && self.ladder_nav_coord1.1 == 1)
+        {
+            0.
+        } else {
+            self.pitch()
+        }
+    }
+
     pub(crate) fn chest_items(&self) -> [i32; 6] {
         [
             self.ladder_nav_coord1.0,

@@ -580,6 +580,157 @@ fn shipped_mover_removes_and_rebuilds_its_navigation_footprint() {
 }
 
 #[test]
+fn native_hazard_collision_uses_pol_header_bounds_not_rendered_vertices() {
+    let mut hammer = node(2, 28, u16::MAX);
+    hammer.ladder_nav_coord1.0 = 1;
+
+    let mut data = b"POLY".to_vec();
+    for value in [100u32, 1] {
+        data.extend(value.to_le_bytes());
+    }
+    data.extend([0; 52]);
+    for value in [-1f32, 0., -1., 1., 100., 1.] {
+        data.extend(value.to_le_bytes());
+    }
+    for value in [17u32, 3] {
+        data.extend(value.to_le_bytes());
+    }
+    for vertex in [
+        [-0.5f32, 0., -0.5, 0., 0.],
+        [0.5, 0., -0.5, 0., 0.],
+        [0., 1., 0.5, 0., 0.],
+    ] {
+        for value in vertex {
+            data.extend(value.to_le_bytes());
+        }
+    }
+    data.extend(1u32.to_le_bytes());
+    data.extend([0; 72]);
+    data.extend(1u32.to_le_bytes());
+    let mut texture = [0; 64];
+    texture[..10].copy_from_slice(b"unused.tga");
+    data.extend(texture);
+    data.extend([0; 12]);
+    data.extend(1u32.to_le_bytes());
+    for index in [0u16, 1, 2] {
+        data.extend(index.to_le_bytes());
+    }
+
+    let unique = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let folder =
+        std::env::temp_dir().join(format!("yaobow-pol-bounds-{}-{unique}", std::process::id()));
+    std::fs::create_dir(&folder).unwrap();
+    std::fs::write(folder.join("test.pol"), data).unwrap();
+    let vfs = packfs::init_virtual_fs(&folder, None);
+    let factory: Rc<dyn ComponentFactory> = Rc::new(UnusedFactory);
+    let entity = crate::openpal3::loaders::pol::create_entity_from_pol_model(
+        &factory,
+        &vfs,
+        "/test.pol",
+        "OBJECT_2".into(),
+        true,
+    );
+    std::fs::remove_file(folder.join("test.pol")).unwrap();
+    std::fs::remove_dir(folder).unwrap();
+    let core = CoreScene::create();
+    core.add_entity(CoreEntity::create("ROLE_0".into(), true));
+    core.add_entity(entity);
+    let assets = Rc::new(AssetManager::new(factory, Rc::new(vfs)));
+    let scene = ScnScene::new(
+        core,
+        &assets,
+        "m17",
+        "7",
+        ScnFile {
+            cpk_name: "m17".into(),
+            scn_name: "7".into(),
+            scn_base_name: "7".into(),
+            scene_type: 0,
+            is_night: false,
+            skybox_id: 0,
+            roles: vec![],
+            nodes: vec![hammer],
+        },
+        NavFile {
+            version: 1,
+            maps: vec![],
+            unknown2: vec![],
+        },
+    );
+    cache_player(&scene, Vec3::new(0., 60., 0.));
+    attach_bounds(
+        &scene.get_role_entity(0).unwrap(),
+        Vec3::new(-0.1, -0.1, -0.1),
+        Vec3::new(0.1, 0.1, 0.1),
+    );
+    scene.trigger_mechanism(2);
+    assert_eq!(scene.update_hazard_damage(0., &mut 2.), Some(0.15));
+    cache_player(&scene, Vec3::new(0., 120., 0.));
+    assert_eq!(scene.update_hazard_damage(0., &mut 2.), None);
+}
+
+#[test]
+fn native_hazard_pitch_changes_collision_without_rotating_its_drawn_pose() {
+    let mut hazard = node(2, 28, u16::MAX);
+    hazard.position = Vec3::new(100., 123., 200.);
+    hazard.rotation = 35.;
+    hazard.ladder_nav_coord1.0 = 0;
+    hazard.dw184 = vec![(-23f32).to_bits()];
+    let scene = scene(vec![hazard]);
+    // Original 0x429ee0 + gbOBBox::IsColOBB: hit with pitch, miss without.
+    cache_player(&scene, Vec3::new(308.2461, 202.3186, 14.4087));
+    attach_bounds(
+        &scene.get_role_entity(0).unwrap(),
+        Vec3::new(-0.1, -0.1, -0.1),
+        Vec3::new(0.1, 0.1, 0.1),
+    );
+    let entity = scene.get_root_object(2).unwrap();
+    attach_bounds(&entity, Vec3::new(-100., -3., -4.), Vec3::new(300., 5., 6.));
+    scene.update_mechanisms((17f32 / 24.).asin());
+    let before = entity.transform().borrow().matrix().clone();
+    assert_eq!(
+        before[1][2], 0.,
+        "native swinging-hazard drawing omits pitch"
+    );
+    assert_eq!(scene.update_hazard_damage(0., &mut 2.), Some(0.1));
+    assert_eq!(entity.transform().borrow().matrix()[1][2], before[1][2]);
+}
+
+#[test]
+#[ignore = "requires original game assets via PAL3_ASSET_PATH"]
+fn shipped_pickup_roots_use_authored_pitch() {
+    use crate::openpal3::comdef::IScnSceneComponent;
+    let path = std::env::var("PAL3_ASSET_PATH").expect("PAL3_ASSET_PATH");
+    let assets = Rc::new(AssetManager::new(
+        Rc::new(UnusedFactory),
+        Rc::new(packfs::init_virtual_fs(std::path::Path::new(&path), None)),
+    ));
+    let root = assets.load_scn("m05", "2");
+    let component = root
+        .get_component(IScnSceneComponent::uuid())
+        .unwrap()
+        .query_interface::<IScnSceneComponent>()
+        .unwrap();
+    let scene = component.inner::<ScnScene>();
+    scene.load_objects_for_test();
+    // Native matrix columns from original gbengine rotation routines.
+    for (id, expected) in [
+        (7, [0.038276095, 0.9986295, 0.035693035]),
+        (12, [0.017899951, 0.9986295, -0.04917971]),
+    ] {
+        let entity = scene.get_root_object(id).unwrap();
+        let transform = entity.transform();
+        let transform = transform.borrow();
+        for axis in 0..3 {
+            assert!((transform.matrix()[axis][1] - expected[axis]).abs() < 0.00001);
+        }
+    }
+}
+
+#[test]
 fn plate_checks_party_and_horizontal_range_then_links_once_and_restores_lowered_pose() {
     let mut plate = node(10, 29, 11);
     plate.position.y = 123.;

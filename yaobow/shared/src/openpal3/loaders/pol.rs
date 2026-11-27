@@ -24,9 +24,12 @@ pub fn create_entity_from_pol_model<P: AsRef<Path>>(
     visible: bool,
 ) -> ComRc<IEntity> {
     let entity = CoreEntity::create(name, visible);
-    let geometries = load_pol_model(vfs, path);
+    let (geometries, bounds) = load_pol_model(vfs, path);
     let mesh_component =
         StaticMeshComponent::new(entity.clone(), geometries, component_factory.clone());
+    if let Some(bounds) = bounds {
+        mesh_component.set_model_bounds(bounds);
+    }
     entity.add_component(
         IStaticMeshComponent::uuid(),
         crosscom::ComRc::from_object(mesh_component),
@@ -85,9 +88,25 @@ pub(crate) fn create_menu_preview(
     Ok(entity)
 }
 
-fn load_pol_model<P: AsRef<Path>>(vfs: &MiniFs, path: P) -> Vec<Geometry> {
+fn load_pol_model<P: AsRef<Path>>(vfs: &MiniFs, path: P) -> (Vec<Geometry>, Option<(Vec3, Vec3)>) {
     let mut reader = BufReader::new(vfs.open(&path).unwrap());
     let pol = read_pol(&mut reader).unwrap();
+    // Original 0x10015ed9 loads these bounds; 0x429c5d caches GetTotalOBBox.
+    let bounds = pol
+        .meshes
+        .iter()
+        .map(|mesh| {
+            (
+                Vec3::new(mesh.aabb_min.x, mesh.aabb_min.y, mesh.aabb_min.z),
+                Vec3::new(mesh.aabb_max.x, mesh.aabb_max.y, mesh.aabb_max.z),
+            )
+        })
+        .reduce(|(a, b), (c, d)| {
+            (
+                Vec3::new(a.x.min(c.x), a.y.min(c.y), a.z.min(c.z)),
+                Vec3::new(b.x.max(d.x), b.y.max(d.y), b.z.max(d.z)),
+            )
+        });
     let mut geometries = vec![];
     for mesh in &pol.meshes {
         for material in &mesh.material_info {
@@ -109,7 +128,7 @@ fn load_pol_model<P: AsRef<Path>>(vfs: &MiniFs, path: P) -> Vec<Geometry> {
         }
     }
 
-    geometries
+    (geometries, bounds)
 }
 
 fn load_material<P: AsRef<Path>>(material: &PolMaterialInfo, vfs: &MiniFs, path: P) -> MaterialDef {

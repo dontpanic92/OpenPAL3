@@ -1,10 +1,11 @@
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use crosscom::ComRc;
 
 use crate::{
     comdef::{IComponentImpl, IEntity},
+    math::Vec3,
     rendering::{ComponentFactory, MaterialDef},
 };
 
@@ -14,6 +15,7 @@ use crate::comdef::IEntityExt;
 pub struct StaticMeshComponent {
     entity: ComRc<IEntity>,
     geometries: RefCell<Vec<Geometry>>,
+    model_bounds: Cell<Option<(Vec3, Vec3)>>,
     component_factory: Rc<dyn ComponentFactory>,
 }
 
@@ -28,6 +30,7 @@ impl StaticMeshComponent {
         Self {
             entity,
             geometries: RefCell::new(geometries),
+            model_bounds: Cell::new(None),
             component_factory,
         }
     }
@@ -37,6 +40,14 @@ impl StaticMeshComponent {
     /// into [`replace_material`].
     pub fn get_geometries(&self) -> std::cell::Ref<'_, [Geometry]> {
         std::cell::Ref::map(self.geometries.borrow(), |v| v.as_slice())
+    }
+
+    pub fn model_bounds(&self) -> Option<(Vec3, Vec3)> {
+        self.model_bounds.get()
+    }
+
+    pub fn set_model_bounds(&self, bounds: (Vec3, Vec3)) {
+        self.model_bounds.set(Some(bounds));
     }
 
     /// Replace the material on geometry `idx`. Must be called before

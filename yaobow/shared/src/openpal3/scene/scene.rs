@@ -468,6 +468,9 @@ impl ScnScene {
     fn mechanism_bounds(entity: &ComRc<IEntity>) -> Option<(Vec3, Vec3)> {
         let component = entity.get_component(IStaticMeshComponent::uuid())?;
         let mesh = component.query_interface::<IStaticMeshComponent>()?;
+        if let Some(bounds) = mesh.inner::<StaticMeshComponent>().model_bounds() {
+            return Some(bounds);
+        }
         let mut min = Vec3::new(f32::INFINITY, f32::INFINITY, f32::INFINITY);
         let mut max = Vec3::new(f32::NEG_INFINITY, f32::NEG_INFINITY, f32::NEG_INFINITY);
         let mut found = false;
@@ -1022,8 +1025,27 @@ impl ScnScene {
                 }
             };
             let Some((min, max)) = bounds else { continue };
-            let hazard =
-                OrientedBox::from_bounds(min, max, entity.transform().borrow().matrix(), 1.);
+            let mut transform = entity.transform().borrow().clone();
+            if let Some(node) = self.scn_file.nodes.iter().find(|n| n.index == mechanism.id) {
+                if node.pitch() != 0. {
+                    // Native 0x429ee0: collision uses pitch even when drawing omits it.
+                    transform
+                        .clear_rotation()
+                        .rotate_axis_angle_local(&Vec3::UP, node.rotation.to_radians())
+                        .rotate_axis_angle_local(&Vec3::new(1., 0., 0.), node.pitch().to_radians())
+                        .rotate_axis_angle_local(
+                            &Vec3::new(0., 0., 1.),
+                            mechanism
+                                .state
+                                .hazard
+                                .as_ref()
+                                .map(|h| h.swing)
+                                .unwrap_or(0.)
+                                .to_radians(),
+                        );
+                }
+            }
+            let hazard = OrientedBox::from_bounds(min, max, transform.matrix(), 1.);
             if actor.intersects(&hazard) {
                 *cooldown = 0.;
                 return Some(fraction);
@@ -1303,7 +1325,12 @@ impl ScnScene {
         ) else {
             return;
         };
-        Self::apply_position_rotation(entity.clone(), &node.position, node.rotation.to_radians());
+        Self::apply_position_rotation(
+            entity.clone(),
+            &node.position,
+            node.rotation.to_radians(),
+            node.rendered_pitch().to_radians(),
+        );
         cvd_entity::configure_scene_materials(
             &entity,
             &self.scene.lighting(),
@@ -2184,7 +2211,7 @@ impl ScnScene {
         );
 
         if let Some(scn_object) = &scn_object {
-            Self::apply_position_rotation(scn_object.clone(), &Vec3::new(0., 0., 0.), 0.);
+            Self::apply_position_rotation(scn_object.clone(), &Vec3::new(0., 0., 0.), 0., 0.);
         }
         scn_object
     }
@@ -2297,7 +2324,12 @@ impl ScnScene {
         }
 
         if let Some(p) = &entity {
-            Self::apply_position_rotation(p.clone(), &obj.position, obj.rotation.to_radians());
+            Self::apply_position_rotation(
+                p.clone(),
+                &obj.position,
+                obj.rotation.to_radians(),
+                obj.rendered_pitch().to_radians(),
+            );
             cvd_entity::configure_scene_playback(p, obj.node_type, obj.ladder_nav_coord1.1);
             cvd_entity::configure_scene_materials(
                 p,
@@ -2335,12 +2367,13 @@ impl ScnScene {
         self.asset_mgr.load_scene_effect(effect_id, obj.index)
     }
 
-    fn apply_position_rotation(entity: ComRc<IEntity>, position: &Vec3, rotation: f32) {
+    fn apply_position_rotation(entity: ComRc<IEntity>, position: &Vec3, rotation: f32, pitch: f32) {
         entity
             .transform()
             .borrow_mut()
             .set_position(position)
-            .rotate_axis_angle_local(&Vec3::UP, rotation);
+            .rotate_axis_angle_local(&Vec3::UP, rotation)
+            .rotate_axis_angle_local(&Vec3::new(1., 0., 0.), pitch);
     }
 
     fn map_role_id(role_id: i32) -> i32 {
