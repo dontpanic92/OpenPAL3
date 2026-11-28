@@ -1,3 +1,4 @@
+pub mod resources;
 pub mod timeline;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
