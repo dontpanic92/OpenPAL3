@@ -1,6 +1,6 @@
 //! Pure-Rust decoders for PAL3 game assets.
 //!
-//! [`gdb`] reads item definitions from the compiled gameplay database.
+//! [`gdb`] reads role, spell and item definitions from the compiled gameplay database.
 //! [`msh`] reads alternate skinned actors: MSH geometry/skeletons, MOV bone
 //! motion (not video), and MTL materials.
 //!

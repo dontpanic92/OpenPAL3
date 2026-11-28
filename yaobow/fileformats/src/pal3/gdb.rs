@@ -1,8 +1,79 @@
 use std::io::{self, ErrorKind};
 
 const MAGIC: &[u8] = b"__PAL(Softstar_Ltd: Cool_J)_GameDataBase_OutFile__";
+const ROLE_SIZE: usize = 852;
 const ITEM_SIZE: usize = 800;
 const MAGIC_SIZE: usize = 760;
+
+#[derive(Debug, Default, Clone)]
+pub struct RoleDefinition {
+    pub id: u32,
+    pub kind: u8,
+    pub description: String,
+    pub model: String,
+    pub image: String,
+    pub name: String,
+    pub level: i32,
+    /// HP/Qi/MP/attack/defense/speed/luck, then water/fire/wind/thunder/earth.
+    pub attributes: [i32; 12],
+    pub attack_elements: [i32; 5],
+    pub experience: i32,
+    pub normal_attack: u32,
+    pub spells: [u32; 4],
+    pub spell_levels: [u8; 4],
+    pub qi_gain: i32,
+    pub money: i16,
+}
+
+/// Native 0x478fd0 indexes 852-byte records; 0x4ed47d initializes enemy stats.
+/// This block also contains the authored party-role definitions.
+pub fn read_roles(bytes: &[u8]) -> io::Result<Vec<RoleDefinition>> {
+    let invalid = || io::Error::new(ErrorKind::InvalidData, "Invalid PAL3 GDB role block");
+    if bytes.len() < 0xa0 || !bytes.starts_with(MAGIC) {
+        return Err(invalid());
+    }
+    let offset = u32::from_le_bytes(bytes[0x80..0x84].try_into().unwrap()) as usize;
+    let count = u32::from_le_bytes(bytes[0x84..0x88].try_into().unwrap()) as usize;
+    if count == 0 && offset == 0 {
+        return Ok(vec![]);
+    }
+    let end = offset
+        .checked_add(count.checked_mul(ROLE_SIZE).ok_or_else(invalid)?)
+        .ok_or_else(invalid)?;
+    if offset < 0xa0 {
+        return Err(invalid());
+    }
+    let records = bytes.get(offset..end).ok_or_else(invalid)?;
+    let text = |bytes: &[u8]| {
+        let end = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
+        crate::utils::to_gbk_string(&bytes[..end]).map_err(|_| invalid())
+    };
+    records
+        .chunks_exact(ROLE_SIZE)
+        .map(|record| {
+            let integer =
+                |offset| i32::from_le_bytes(record[offset..offset + 4].try_into().unwrap());
+            Ok(RoleDefinition {
+                id: u32::from_le_bytes(record[..4].try_into().unwrap()),
+                kind: record[4],
+                description: text(&record[6..0x206])?,
+                model: text(&record[0x206..0x224])?,
+                image: text(&record[0x224..0x244])?,
+                name: text(&record[0x258..0x278])?,
+                level: integer(0x278),
+                attributes: std::array::from_fn(|i| integer(0x27c + i * 4)),
+                attack_elements: std::array::from_fn(|i| integer(0x244 + i * 4)),
+                experience: integer(0x2e4),
+                normal_attack: integer(0x2ec) as u32,
+                spells: std::array::from_fn(|i| integer(0x2f8 + i * 4) as u32),
+                spell_levels: record[0x308..0x30c].try_into().unwrap(),
+                qi_gain: integer(0x30c),
+                // Native settlement 0x4fb3f0 sign-extends this field.
+                money: i16::from_le_bytes(record[0x352..0x354].try_into().unwrap()),
+            })
+        })
+        .collect()
+}
 
 #[derive(Debug, Default, Clone)]
 pub struct MagicDefinition {
@@ -161,6 +232,77 @@ pub fn read_items(bytes: &[u8]) -> io::Result<Vec<ItemDefinition>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reads_role_combat_metadata_and_signed_values_in_native_order() {
+        let mut bytes = vec![0; 0xa0 + ROLE_SIZE];
+        bytes[..MAGIC.len()].copy_from_slice(MAGIC);
+        bytes[0x80..0x84].copy_from_slice(&0xa0u32.to_le_bytes());
+        bytes[0x84..0x88].copy_from_slice(&1u32.to_le_bytes());
+        let record = &mut bytes[0xa0..];
+        record[..4].copy_from_slice(&701u32.to_le_bytes());
+        record[4] = 1;
+        record[6..10].copy_from_slice(b"desc");
+        record[0x206..0x209].copy_from_slice(b"B01");
+        record[0x224] = b'1';
+        record[0x258..0x25c].copy_from_slice(&[0xb2, 0xe2, 0xca, 0xd4]);
+        record[0x278..0x27c].copy_from_slice(&2i32.to_le_bytes());
+        let attributes = [350i32, 0, 26, 60, 8, 3, 10, -1, 1, 2, 3, 4];
+        for (i, value) in attributes.iter().enumerate() {
+            record[0x27c + i * 4..0x280 + i * 4].copy_from_slice(&value.to_le_bytes());
+        }
+        for (i, value) in [5i32, 4, 3, 2, 1].iter().enumerate() {
+            record[0x244 + i * 4..0x248 + i * 4].copy_from_slice(&value.to_le_bytes());
+        }
+        record[0x2e4..0x2e8].copy_from_slice(&36i32.to_le_bytes());
+        record[0x2ec..0x2f0].copy_from_slice(&924u32.to_le_bytes());
+        for (i, value) in [210u32, 206, 0, 0].iter().enumerate() {
+            record[0x2f8 + i * 4..0x2fc + i * 4].copy_from_slice(&value.to_le_bytes());
+        }
+        record[0x308..0x30c].copy_from_slice(&[1, 3, 0, 0]);
+        record[0x30c..0x310].copy_from_slice(&8i32.to_le_bytes());
+        record[0x350..0x352].copy_from_slice(&123i16.to_le_bytes());
+        record[0x352..0x354].copy_from_slice(&(-30i16).to_le_bytes());
+        let roles = read_roles(&bytes).unwrap();
+        let role = &roles[0];
+        assert_eq!((role.id, role.kind, role.level), (701, 1, 2));
+        assert_eq!(role.name, "测试");
+        assert_eq!(
+            (&*role.description, &*role.model, &*role.image),
+            ("desc", "B01", "1")
+        );
+        assert_eq!(role.attributes, attributes);
+        assert_eq!(role.attack_elements, [5, 4, 3, 2, 1]);
+        assert_eq!(
+            (
+                role.experience,
+                role.normal_attack,
+                role.qi_gain,
+                role.money
+            ),
+            (36, 924, 8, -30)
+        );
+        assert_eq!(role.spells, [210, 206, 0, 0]);
+        assert_eq!(role.spell_levels, [1, 3, 0, 0]);
+    }
+
+    #[test]
+    fn rejects_invalid_role_blocks_and_accepts_absent_fixture_data() {
+        let mut bytes = vec![0; 0xa0];
+        bytes[..MAGIC.len()].copy_from_slice(MAGIC);
+        assert!(read_roles(&bytes).unwrap().is_empty());
+        bytes[0x84..0x88].copy_from_slice(&1u32.to_le_bytes());
+        assert!(read_roles(&bytes).is_err());
+        bytes[0x80..0x84].copy_from_slice(&0xa0u32.to_le_bytes());
+        bytes.resize(0xa0 + ROLE_SIZE - 1, 0);
+        assert!(read_roles(&bytes).is_err());
+        bytes[0x80..0x84].copy_from_slice(&u32::MAX.to_le_bytes());
+        bytes[0x84..0x88].copy_from_slice(&u32::MAX.to_le_bytes());
+        assert!(read_roles(&bytes).is_err());
+        bytes[0] = 0;
+        assert!(read_roles(&bytes).is_err());
+        assert!(read_roles(&[]).is_err());
+    }
 
     #[test]
     fn reads_magic_records_without_reordering_role_or_element_flags() {

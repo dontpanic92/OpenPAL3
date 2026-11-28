@@ -1,13 +1,16 @@
 use std::collections::{BTreeMap, HashMap};
 
 use anyhow::{Context, Result, bail};
-use fileformats::pal3::gdb::{ItemDefinition, MagicDefinition, read_items, read_magic};
+use fileformats::pal3::gdb::{
+    ItemDefinition, MagicDefinition, RoleDefinition, read_items, read_magic, read_roles,
+};
 use ini::Ini;
 
 pub struct StatsData {
     experience: [i32; 100],
     items: HashMap<u32, ItemDefinition>,
     magic: BTreeMap<u32, MagicDefinition>,
+    combat_roles: BTreeMap<u32, RoleDefinition>,
 }
 
 impl StatsData {
@@ -37,10 +40,15 @@ impl StatsData {
         for definition in read_magic(database)? {
             magic.entry(definition.id).or_insert(definition);
         }
+        let mut combat_roles = BTreeMap::new();
+        for definition in read_roles(database)? {
+            combat_roles.entry(definition.id).or_insert(definition);
+        }
         Ok(Self {
             experience,
             items,
             magic,
+            combat_roles,
         })
     }
 
@@ -69,6 +77,10 @@ impl StatsData {
 
     pub fn magics(&self) -> impl Iterator<Item = &MagicDefinition> {
         self.magic.values()
+    }
+
+    pub fn combat_role(&self, id: u32) -> Option<&RoleDefinition> {
+        self.combat_roles.get(&id)
     }
 }
 
@@ -129,6 +141,7 @@ pub(crate) fn test_data() -> StatsData {
         experience,
         items,
         magic: BTreeMap::new(),
+        combat_roles: BTreeMap::new(),
     }
 }
 
