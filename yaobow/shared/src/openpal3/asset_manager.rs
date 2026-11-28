@@ -362,7 +362,18 @@ impl AssetManager {
             .join(action_name)
             .with_extension("mv3");
 
-        create_animated_mesh_from_mv3(entity, &self.component_factory(), &self.vfs, &path).ok()
+        if self.vfs.open(&path).is_ok() {
+            create_animated_mesh_from_mv3(entity, &self.component_factory(), &self.vfs, &path).ok()
+        } else {
+            super::scene::create_animation_from_msh(
+                entity,
+                &self.component_factory(),
+                &self.vfs,
+                path.parent()?,
+                action_name,
+            )
+            .ok()
+        }
     }
 
     pub fn mv3_path(&self, role_name: &str, action_name: &str) -> PathBuf {

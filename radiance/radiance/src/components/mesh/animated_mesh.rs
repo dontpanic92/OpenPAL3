@@ -13,6 +13,8 @@ use crate::{
 
 use super::{Geometry, TexCoord, morph_target::MorphTarget};
 
+type VertexSampler = dyn Fn(f32, bool, usize, &mut VertexBuffer);
+
 pub struct AnimatedMeshComponent {
     entity: ComRc<IEntity>,
     component_factory: Rc<dyn ComponentFactory>,
@@ -36,6 +38,7 @@ struct AnimatedMeshComponentProps {
     hold: bool,
     hold_enabled: bool,
     loop_playback: bool,
+    vertex_sampler: Option<Rc<VertexSampler>>,
 }
 
 ComObject_AnimatedMeshComponent!(super::AnimatedMeshComponent);
@@ -54,6 +57,7 @@ impl AnimatedMeshComponent {
                 hold: false,
                 hold_enabled: true,
                 loop_playback: false,
+                vertex_sampler: None,
             }),
         }
     }
@@ -79,6 +83,12 @@ impl AnimatedMeshComponent {
 
     pub fn set_model_bounds(&self, bounds: (Vec3, Vec3)) {
         self.props_mut().model_bounds = Some(bounds);
+    }
+
+    /// Share the animation clock with procedural deformation, without baking
+    /// intermediate poses into morph targets.
+    pub fn set_vertex_sampler(&self, sampler: Rc<VertexSampler>) {
+        self.props_mut().vertex_sampler = Some(sampler);
     }
 
     pub fn add_morph_last_time(&self, time: f32) {
@@ -338,11 +348,17 @@ impl AnimatedMeshComponent {
 
         let rc = self.entity.get_rendering_component().unwrap();
         let objects = rc.render_objects();
+        let sampler = self.props().vertex_sampler.clone();
+        let looping = self.props().loop_playback;
 
         for i in 0..objects.len() {
             let ro = objects[i].as_dyn();
-            ro.update_vertices(&|vb: RefMut<VertexBuffer>| {
-                self.update_morph_target(timestamp, i, vb);
+            ro.update_vertices(&|mut vb: RefMut<VertexBuffer>| {
+                if let Some(sampler) = &sampler {
+                    sampler(timestamp, looping, i, &mut vb);
+                } else {
+                    self.update_morph_target(timestamp, i, vb);
+                }
             });
         }
     }

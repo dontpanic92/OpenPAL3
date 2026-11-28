@@ -1,6 +1,8 @@
 //! Pure-Rust decoders for PAL3 game assets.
 //!
 //! [`gdb`] reads item definitions from the compiled gameplay database.
+//! [`msh`] reads alternate skinned actors: MSH geometry/skeletons, MOV bone
+//! motion (not video), and MTL materials.
 //!
 //! Each PAL3 scene block ships a `<index>.lgt` / `<index>.dkl` / `<index>.DKM`
 //! triple alongside its `.scn` / `.pol` data:
@@ -14,6 +16,7 @@
 pub mod cvd;
 pub mod gdb;
 pub mod lgt;
+pub mod msh;
 pub mod scene_names;
 // pub mod dkl;  // added in the static-scenery baked-lighting phase
 // pub mod dkm;  // added in the static-scenery baked-lighting phase

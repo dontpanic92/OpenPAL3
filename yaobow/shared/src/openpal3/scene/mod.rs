@@ -6,6 +6,7 @@ mod error;
 mod mechanism;
 #[cfg(test)]
 mod mechanism_tests;
+mod msh_actor;
 mod path;
 mod role_controller;
 mod scene;
@@ -15,6 +16,7 @@ mod treasure_mouse;
 pub use cvd_entity::create_entity_from_cvd_model;
 pub use effect::build_effect;
 pub use mechanism::MechanismState;
+pub(crate) use msh_actor::create_animation_from_msh;
 pub use role_controller::{
     RoleAnimationRepeatMode, RoleController, RoleState, create_animated_mesh_from_mv3,
     create_mv3_entity,
