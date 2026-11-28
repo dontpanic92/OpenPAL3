@@ -338,21 +338,30 @@ mod tests {
     }
 
     #[test]
-    fn headless_host_exchanges_timed_turns_without_bypassing_readiness() {
+    fn headless_host_exchanges_timed_turns_with_a_critically_wounded_enemy_ai() {
         let mut actor = battle().actor(0).unwrap().clone();
-        actor.vitals.current.hp = 800;
+        actor.vitals.current.hp = 1200;
         let mut actors = std::array::from_fn(|_| None);
         actors[0] = Some(actor.clone());
         actors[5] = Some(actor);
         let mut commands = BattleCommands::new(BattleState::new(actors, Opening::PartyReady, 1, 0));
         commands.set_running(true);
+        let profile = EnemyAiProfile {
+            role_id: 701,
+            spells: [0; 4],
+            uses_items: false,
+        };
         let mut hits = 0;
         for frame in 1..=2000 {
             let ready: Vec<_> = commands.ready_actors().collect();
             for source in ready {
                 let target = if source == 0 { 5 } else { 0 };
                 if commands.battle().actor(target).unwrap().vitals.current.hp > 0 {
-                    commands.queue_attack(source, target).unwrap();
+                    if source < 5 {
+                        commands.queue_attack(source, target).unwrap();
+                    } else {
+                        commands.queue_enemy_physical(source, &profile).unwrap();
+                    }
                 }
             }
             let events = commands.advance_to(frame as f32 / 60.0).unwrap();
@@ -377,7 +386,7 @@ mod tests {
         assert!(
             [0, 5]
                 .iter()
-                .all(|&slot| commands.battle().actor(slot).unwrap().vitals.current.hp < 800)
+                .all(|&slot| commands.battle().actor(slot).unwrap().vitals.current.hp < 1200)
         );
         assert!(
             [0, 5]

@@ -2,7 +2,7 @@ use crate::openpal3::states::stats::{Attributes, Resources};
 
 use super::{
     CombatRng,
-    ai::{AiError, EnemyAiProfile, choose_healthy_physical},
+    ai::{AiError, EnemyAiProfile, choose_noncasting_physical},
     native_integer, physical_base_delta,
     resources::CombatVitals,
     timeline::{ACTOR_SLOTS, InitiativeTimeline, Opening, READY_THRESHOLD},
@@ -130,7 +130,7 @@ impl BattleState {
         source: usize,
         profile: &EnemyAiProfile,
     ) -> Result<Option<usize>, AiError> {
-        choose_healthy_physical(&self.actors, source, profile, &mut self.rng)
+        choose_noncasting_physical(&self.actors, source, profile, &mut self.rng)
     }
 
     /// Resolves effects after preparation, not player-command submission.
