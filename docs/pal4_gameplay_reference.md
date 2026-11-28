@@ -1187,7 +1187,7 @@ automatic repetition or manual player interaction.
 Eligible empty-task surfaces, including M08/2 `floor02`, also participate
 in collision and rider selection. M08/2 `floor01` remains excluded because
 its waited script task has no complete implementation. Stored/clipped,
-disappearing, hidden, tilted, condition-dependent, sounded, curved and
+disappearing, hidden, tilted, condition-dependent, sounded, combined-motion and
 controller-based programs remain gated. A complete program must also have
 actual rigid mesh geometry before any authored floating motion is enabled.
 
@@ -1213,8 +1213,10 @@ queries, including script ray casters created before GOB loading. Root-pose
 changes rebuild the cached world-space triangles; disabled dynamic entities
 do not collide. Static floor/wall behavior stays unchanged. Rider selection
 requires actual downward mesh contact within the native height tolerance,
-rejects a platform below a nearer static floor, and carries only the selected
-leader. Reset clears ownership. Gameplay menus freeze authored world motions
+independently of the static floor, and carries only the selected leader.
+The former static-floor veto was removed after rechecking native selection;
+see the sequential-return section below. Reset clears ownership.
+Gameplay menus freeze authored world motions
 and linked switches rather than allowing platforms to move during menu-only
 updates. Camera ownership remains with the existing party/cutscene controller.
 
@@ -1285,13 +1287,14 @@ the owned validation game are removed/stopped after testing.
 
 The full 588-record census distinguishes empty floating programs (146)
 and single-script floating programs (127) from ordinary machine tasks.
-Eligible empty surfaces, six linear return platforms, twenty-six manual linear
-platforms, three automatic linear platforms and complete single-script boarding
-programs are enabled. Floating auto-disappearance is overridden by the native
+Eligible empty surfaces, eight translation-only return platforms, eight combined
+translation/yaw return platforms, twenty-six manual linear platforms, three
+automatic linear platforms and complete single-script boarding programs are
+enabled. Floating auto-disappearance is overridden by the native
 class, as detailed below; it is not a missing disappearance lifecycle for these
-platforms. Clipped variants, task-16 programs missing authored rotation fields,
-curves, controller lifecycles, native minimap/floor-attribute refresh and wider
-original-route checks remain incomplete.
+platforms. Clipped combined-motion variants, stored rollback programs,
+controller lifecycles, native
+minimap/floor-attribute refresh and wider original-route checks remain incomplete.
 
 The native evidence distinguishes controllers from rollback scheduling:
 
@@ -1315,7 +1318,7 @@ The native evidence distinguishes controllers from rollback scheduling:
 
 The corpus has 19 `(16,0,6)` entries, including floating transitions and
 automatic M13/M17 machines with authored start/rollback delays. Wider
-task 10 curves, task 11-14 controllers, task 19 timers, task 20/21 quake
+task 10 variants, task 11-14 controllers, task 19 timers, task 20/21 quake
 lifecycle, inventory conditions and task 2 within larger compound programs remain
 completion prerequisites. No unsupported compound or platform program
 has been partially enabled.
@@ -1499,8 +1502,8 @@ B4 uses the existing owned `WE136` loop with startup at task-0 activation and
 cleanup only after group settlement. All four keep rendering and actual mesh
 collision participation after completion. Metadata normalization is scoped to
 complete motion programs; the empty-surface and singleton-script gates are not
-broadened. M15/1 trans02/trans03 still lack authored task-16 rotation fields, and
-remain rejected rather than guessing their defaults.
+broadened. M15/1 trans02/trans03 were deferred until their omitted task-16
+rotation fields could be verified against native parsing, as detailed below.
 
 Floating active setter `0x0059ceb0` first calls machine setter `0x005a1990`, which
 clears both running task groups. When floating auto-touch and the passed active
@@ -1513,9 +1516,9 @@ reset clear pending automatic startup. This does not implement task-15 manager
 unregister/reset/re-register semantics or enable generic automatic/repeating
 machine programs.
 
-Validation: 27 focused PAL4 tests with original assets and two engine collision
-tests pass, with affected all-target checks, release build, formatting and diff
-checks. The exact original-asset census is now **35 linear/return programs**:
+Validation at this stage: 27 focused PAL4 tests with original assets and two
+engine collision tests passed, with affected all-target checks, release build,
+formatting and diff checks. The exact original-asset census was 35 linear/return programs:
 26 manual, three automatic linear and six return programs. Regressions cover
 disabled/zero-time startup, one activation, running/completed/cancelled save
 restoration, original flags, unlimited retriggering and retained visibility.
@@ -1530,5 +1533,355 @@ completed saves remain at the endpoints after further steps. Original H callback
 accepts fresh mesh contact and preserves the selected upright rider's actual
 offset `(-63.2823,0.0003,22.80097)` through translation. Trans04 carries at
 `(40,8,-40)`, completes its return to the exact authored pose and stays visible.
-Clipped G7 and unsupported trans02/trans03 remain unmoved. The owned game is
-stopped and reserved slots96/97 removed; user saves1-5 are verified unchanged.
+Clipped G7 and the then-unsupported trans02/trans03 were verified unmoved.
+The owned game is stopped and reserved slots96/97 removed; user saves1-5 are
+verified unchanged.
+
+### Omitted task-16 start-pose components
+
+Native task-16 dispatch `0x005a0443` through `0x005a057a` independently initializes
+all six start-position/rotation components to `0.0` before reading each property.
+The property-name pointers at `0x008b874c` through `0x008b8760` identify
+`PAL4_GOMTask_start_posX/Y/Z` and `PAL4_GOMTask_start_rotX/Y/Z`. A missing field
+keeps that zero; it does not inherit the GOB entry's rotation or invalidate the
+whole program.
+
+The floating motion parser now applies these defaults only to absent components,
+while retaining rejection of nonfinite or incorrectly typed present values.
+Non-floating parser eligibility and all other complete-program gates are
+unchanged. This enables M15/1 `trans02` and `trans03`, whose task-16 rotation
+fields are omitted. Both are silent, nonstored, automatic `(16,0,6)` programs
+with a one-second initial delay, one-second travel and a 0.2-second rollback
+delay. Their authored disappearance/single-use flags are overridden by the native
+floating rules above. At this stage the corpus accepted **37 linear/return programs**:
+26 manual, three automatic linear and all eight `(16,0,6)` floating returns.
+Clipped G7 and all task-10/controller compound families were still gated.
+
+Validation after rebasing onto remote master `9e44d71a`: 28 focused PAL4 tests
+with original assets and two engine collision tests pass. The full ordinary
+shared/engine library baselines pass (369 shared and 68 engine tests), together
+with affected all-target checks, release build, formatting and diff checks.
+Regressions exercise omitted position and rotation defaults, reject invalid
+present fields, run repeated complete returns and retain the exact supported
+platform census.
+
+Live trans02 moves through `(-4680.1914,169.974,818.66565)` and trans03 through
+`(-4585.165,132.9949,1081.1165)`. Each carries a real-mesh-selected leader at
+offset `(40,8,-40)`, freezes while paused and returns to its exact visible initial
+pose. Saving during movement and reloading restarts both nonstored programs
+from their original poses and initial delays, rather than restoring an
+unsupported partial rollback cursor. They do not repeat without an authored
+repeat request. The rebased renderer also successfully returns a 1258x909 PNG
+through frame readback. No VM/runtime errors occur; the owned game and slot96
+are removed afterward, and user saves1-5 are verified unchanged.
+
+### Combined translation/yaw return platforms
+
+Native task 10 is **linear XYZ translation plus shortest-arc yaw**, not a curved
+spatial path. Dispatcher `0x0059fe2d` through `0x005a012a` reads the literally
+misspelled `PAL4_GOMTask_movment_*` properties. Startup `0x005966d0` captures
+the object's actual position and Euler rotation, then chooses a yaw delta within
+180 degrees. Update `0x005969c0` uses `0x00661bf0` mode 0 for linear position
+interpolation and changes only yaw, retaining captured pitch/roll despite the
+presence of target X/Z rotation properties. Rollback `0x00596ac0` schedules
+the same task toward its captured start position/yaw with the same duration,
+before rolling back the preceding task-16 pose.
+
+The first complete silent, nonstored, upright, unclipped `(16,10,6)` subset enabled
+M15/1 `trans06` and M15/2 `trans07`, `trans11`, `trans12`, `trans17`. Each leg
+captures its actual starting yaw independently; movement preserves current scale
+and carries the selected leader around the moving mesh pivot while keeping the
+leader upright. Cancellation clears both yaw captures. Initial delay, outbound
+travel, rollback delay, return travel and final authored-pose reset retain their
+separate native frame gates.
+
+At this stage the original corpus accepted **42 motion programs**: 26 manual linear,
+three automatic linear, eight translation-only returns and five combined
+translation/yaw returns. Of the 18 original `(16,10,6)` programs, the remaining
+13 were still gated: ten use clipping and three have tilted/flipped poses.
+Larger task-10 compounds, stored rollback cursors, clipped linear G7 and full
+controller lifecycles also remain unsupported.
+
+Validation: 30 focused PAL4 tests with original assets and two engine collision
+tests pass, together with affected all-target checks, release build, formatting
+and diff checks. Regressions cover yaw wrapping, independently captured starts,
+nonuniform scale, pause/cancellation, authored reset and three complete cycles
+on each newly supported original program.
+
+Live checks on all five original meshes verify outbound and return rider orbits,
+target endpoints, exact pause retention and settlement without an unauthored
+repeat. Starting rider offset `(40,8,-40)` rotates by the platform's shortest
+yaw delta with errors below 0.03 world units, including `trans11` crossing zero
+degrees and `trans17` rotating in the opposite direction. Saving `trans06`
+during return and reloading correctly restarts its nonstored initial pose and
+1.5-second delay. No VM/runtime errors occur; the owned game and slots96/97 are
+removed afterward, and user saves1-5 are verified unchanged.
+
+### Tilted/flipped combined-motion returns
+
+The remaining three unclipped `(16,10,6)` programs now have complete support:
+M15/1 `trans10`, M15/2 `trans18` and M15/2 `trans21`. The first has tiny nonzero
+pitch/roll, the second has pitch `359.999695` degrees and the third is flipped
+with pitch `180.004074` degrees. Do not round these authored values to zero.
+At this stage the exact original-asset census was **45 motion programs**: 26 manual
+linear, three automatic linear, eight translation-only returns and eight
+combined translation/yaw returns. The ten remaining simple `(16,10,6)` programs
+use clipping and were still gated, as were larger task-10 compounds, stored
+rollback cursors, clipped linear G7 and complete controller lifecycles.
+
+Native startup `0x00596708` through `0x0059673c` copies actual position and all
+three Euler components. Update `0x00596a6d` through `0x00596aa6` passes captured
+X/Z plus interpolated Y to the object's rotation setter. Therefore a world-up
+matrix rotation or projected forward heading is not sufficient for arbitrary
+pitch/roll: the Euler yaw changes while the captured X/Z values remain fixed.
+On return, newly captured pitch/roll are retained even if they differ from the
+outbound capture; the earlier task-16 rollback finally restores the authored pose.
+
+The task-10 runtime now captures full rotation separately for each leg. It removes
+scale before decomposing the existing `Rz * Ry * Rx` matrix and selects the
+equivalent Euler branch nearest the authored pitch/roll, preserving flipped
+orientation and correct yaw travel across 90 degrees. At the Euler pole it
+retains the reference roll. Per-frame pose construction keeps captured X/Z,
+interpolates only Y and reapplies current scale. Rider transport uses this
+task-10 Euler yaw rather than projected heading, so the selected leader rotates
+around the moving mesh pivot without inheriting platform pitch/roll. Ordinary
+linear platforms and the engine's general Euler helper are unchanged.
+
+Validation: 30 focused PAL4 tests with original assets and two engine collision
+tests pass, along with affected all-target checks, release build, formatting and
+diff checks. Expanded regressions cover substantial pitch/roll, flipped poses,
+90-degree travel, positive/negative zero-degree wrapping, nonuniform scale and
+independently changed return-leg rotations. All eight original combined programs
+reach their full target matrices and complete three repeatable returns.
+
+Live all three new original meshes carry a leader initially at `(40,8,-40)`.
+Outbound, endpoint, return and settled offsets match the authored shortest-yaw
+orbit within 0.03 world units; pause holds both poses exactly. `trans10` traverses
+74.10186 to 112.13210 degrees, while flipped `trans21` takes the negative arc
+from 45.92898 to 354.41348 degrees. Each returns to its exact visible initial
+position and does not repeat without a request. Saving `trans21` during return
+and reloading restarts its nonstored flipped pose and 1.5-second initial delay.
+No VM/runtime errors occur; the owned game and slots96/97 are removed, and user
+saves1-5 are verified unchanged.
+
+### Native camera-clipped platforms
+
+Five further complete programs are enabled: M15/2 `trans01`, `trans02`,
+`trans03`, `trans04` and `JPuzzleG_7`. The first four are silent, nonstored
+combined translation/yaw returns; G7 is a silent manual linear platform.
+At this stage the exact original-asset census was **50 motion programs**: 27 manual
+linear, three automatic linear, eight translation-only returns and twelve
+combined returns. Six clipped M14/3 combined returns still required stored
+rollback cursors. Larger compounds and controller lifecycles remain incomplete;
+support is never granted to only part of a program.
+
+The native `PAL4-GameObject-object-clip` property is **camera-distance rendering
+clipping**, not collision clipping. The reader stores it at object+`0x1a8`.
+Registration at `0x0051c48f` calls `0x00662610`, installing atomic callback
+`0x00662720`; unregistration calls `0x006628c0`. Distance helper `0x00662840`
+transforms the atomic's local bounding-sphere center by its complete world
+matrix and measures its Euclidean distance from the camera. World initialization
+at `0x005b5417` supplies a 1200-unit cutoff. Geometry below it is suppressed;
+the next 50 units ramp alpha from zero to 255 with native 8-bit rounding.
+At full opacity the normal render callback is restored. Entity visibility,
+actual-mesh collision, leader selection and movement remain independent.
+The separate mode-dependent 1800-unit cutoff is not implemented by this slice;
+absent-property defaults and clipped empty/script-only surfaces are unchanged.
+
+The DFF loader preserves each static atomic's native sphere center. Clipping
+registration must happen before scene publication, when render objects do not
+yet exist: static meshes retain a pending cutoff and apply it during loading.
+Registration rejects unsupported backends, missing sphere metadata and material
+programs other than `TexturedNoLight`. Faded materials are private per render
+object, preserve alpha-test coverage and never modify cached sibling materials.
+Full opacity restores the original material and depth/blend pipeline. Camera
+updates precede frame-owned material snapshots in both main and offscreen
+rendering, so queued GPU frames retain their own parameter buffers.
+
+Validation: 30 focused PAL4 tests with original assets and five engine tests
+pass, along with affected all-target checks and the release build. Regressions
+cover deferred loading, disable/re-enable, quantized fading, transformed sphere
+centers, material isolation, original-pipeline restoration and queued snapshots.
+All twelve original combined programs complete their full matrices and returns.
+
+Live all four new return platforms carry a leader at initial mesh offset
+`(40,8,-40)`, maintaining the shortest-yaw orbit within 0.03 world units through
+outbound, endpoint, return and settlement. Pause holds both poses; settlement
+does not repeat without a request. Saving `trans02` during return and reloading
+restarts its nonstored initial pose and 1.5-second delay. G7 is activated by the
+original `trans19` examine callback `func7007`, not by examining G7 itself
+(it has no examine handler). Its rider, pause, endpoint and manual settlement
+also pass.
+
+Saved-camera inspection of G7's original `2\C.dff` sphere center shows no
+platform at distance 1180, partial transparency at 1225 and full geometry at
+1270, while sibling platforms remain opaque. This uses owned save fixtures;
+PAL4 does not implement the PAL5-only camera-control endpoints. No runtime/VM
+errors occur. Owned validation processes and slots96/97 are cleaned up without
+writing user saves1-5 or changing the pre-existing dirty asset submodule.
+
+### Stored combined-motion returns
+
+M14/3 `trans01`, `trans03`, `trans04`, `trans05`, `trans06` and `trans07` now
+support their complete stored `(16,10,6)` programs. This slice brought the
+original-asset census to **56 motion programs**: 27 manual linear, three
+automatic linear, eight translation-only returns and eighteen combined returns. This completes
+all eighteen simple combined-return definitions. The larger M14 `trans02` and
+`trans08` programs are covered by the sequential-return slice below; incomplete
+controllers and other unsupported task families remain gated.
+
+Saved return state contains the primary/secondary task-group phase, all task
+clocks, both captured translation starts, both captured Euler rotations,
+pending automatic activation and the exact current mesh matrix. Authored waits
+and durations still come from the original program, not from the save. Restore
+does not synthesize an outbound phase or reconstruct yaw from a single elapsed
+time: a returning platform continues its existing reverse task group. Fresh
+startup remains pending, but a settled or cancelled saved program does not
+restart merely because its authored auto-touch flag is set. Cancellation clears
+both position and rotation captures together.
+
+Restore validates finite poses/captures, task-time bounds, sequential predecessor
+completion and phase-required captures before mutating either the runtime or
+entity. A missing/invalid cursor is rejected, rather than accepting a partially
+restored program. Existing nonstored programs and stored manual linear programs
+retain their previous behavior.
+
+Validation: 32 focused PAL4 tests with original assets pass, along with affected
+all-target checks and the release build. All six original stored programs
+round-trip through persistent-state JSON at every tick, from pre-start automatic
+activation through outbound delays/movement, reverse movement, start-pose reset,
+cleanup and settlement; resumed matrices and cursors match uninterrupted
+execution exactly. Invalid cursor/capture tests verify rejection without mutation.
+
+M14's `3\A.dff` is a different mesh from the M15 platforms: `(40,8,-40)` is
+not a valid boarding point. Live checks use its actual-mesh contact at
+`(10,14,10)` relative to the GOB pivot, preserving the leader's upright height
+and shortest-yaw orbit. Outbound and returning saves retain the rider position
+and reproduce the next four simulation frames instead of resetting to the
+initial pose or reversing direction. All six platforms pass both saved-leg
+checks, endpoints and settled reloads; pause holds both poses. Runtime logs
+contain no VM/runtime errors. Owned game/slots96/97 are cleaned up and user
+saves1-5 retain their original hashes. The broader compound/controller and
+world-route work is still unfinished.
+
+### Sequential floating-platform returns
+
+The initial sequential slice added six complete silent programs, bringing the
+original-asset census to **62 motion programs**:
+
+| Scene/block | Platforms | Program | Stored |
+| --- | --- | --- | --- |
+| M14/3 | `trans02` | `(16,0,0,10,6)` | Yes |
+| M14/3 | `trans08` | `(16,0,0,6)` | Yes |
+| M15/1 | `trans07` | `(16,0,0,0,6)` | Yes |
+| M15/1 | `trans12` | `(16,0,0,0,6)` | No |
+| M15/2 | `trans15` | `(16,0,0,0,6)` | No |
+| M15/2 | `trans34` | `(16,0,0,6)` | No |
+
+Each leg captures its actual start independently. Native task6 rolls movement
+predecessors back in reverse order, returning through every captured waypoint
+with each leg's original duration, rather than taking a shortcut from the final
+target to the authored initial pose. The final combined leg additionally captures
+full Euler rotation and interpolates shortest-arc yaw while preserving pitch,
+roll and scale. Fixed flipped/tilted poses remain intact throughout translation.
+The shared task-clock helper preserves strict predecessor-relative waits and
+separate start/update/finish ticks without adding artificial leg-transition ticks.
+
+Stored state includes both groups' per-leg position/rotation captures, phase,
+task clocks, pending automatic activation and exact current pose. Every cursor
+is validated before mutation. Restoring a settled or cancelled program does not
+rearm automatic startup; nonstored scene reloads retain fresh initial-pose/delay
+behavior. Scripts, movement sounds/effects, parallel wait modes, controllers and
+larger unsupported programs remain gated as whole programs. In particular,
+M15/2 `trans19` is not accepted as a silent sequential return: its independent
+examine callback `func7007` still requires complete lifecycle support.
+
+Native floating selection at `0x004290d0` queries visible floating atomics and
+their actual mesh geometry, choosing the highest valid floating contact. It
+does **not** compare that contact with the static scene floor. The former Rust
+nearest-static-floor veto has therefore been removed. A valid higher floating
+contact transfers ownership; no-hit does not by itself discard the old owner.
+Do not force the rider to stay on the first moving platform through a legitimate
+landing handoff.
+
+Validation: 35 focused motion/platform tests with original assets, affected
+all-target checks, release build, formatting and diff checks pass. All six
+sequences reach every forward/reverse waypoint; stored cursors JSON-round-trip
+at every simulation tick and reject malformed state without mutation. A focused
+actual-mesh regression verifies that a nearer static floor cannot veto floating
+boarding or leader transport.
+
+Final-build live checks cover all six routes, pause, full outbound/return
+waypoints and settlement. M14 `trans02`/`trans08` and flipped M15 `trans07` save
+and resume both moving directions with identical next-frame rider trajectories,
+then retain settled state after reload. Tilted M15 `trans34` carries the upright
+leader through both elevated legs and their reverse path. All three nonstored
+programs reload their original pose and startup delay.
+
+M15 `trans12` hands the leader onto overlapping E-puzzle geometry near E8;
+`trans15` similarly lands in the G-puzzle region. The leader remains on the
+landing while the transport returns. The exact receiving G atomic has not been
+identified: G9/G5/G1 are nearby, and region-level live evidence must not be
+reported as proof of a particular mesh. Final runtime logs have no runtime/VM
+faults; owned game/temporary slots96/97 are cleaned up and user saves1-5 are
+unchanged. Controllers, scripted/parallel compounds, navigation and wider
+world routes remain unfinished.
+
+### Mixed-yaw and longer sequential paths
+
+The sequential runner now accepts multiple combined-motion legs, combined legs
+followed by linear legs, and longer complete silent paths. Seven additional
+original programs bring the exact supported census to **69 motion programs**:
+
+| Scene/block | Platform | Program | Stored |
+| --- | --- | --- | --- |
+| M15/1 | `trans01` | `(16,10,10,0,10,0,6)` | Yes |
+| M15/1 | `trans05` | `(16,10,10,6)` | No |
+| M15/1 | `trans09` | `(16,0,10,0,6)` | No |
+| M15/1 | `trans11` | `(16,0,0,0,0,0,0,10,10,6)` | No |
+| M15/2 | `trans14` | `(16,10,10,10,10,10,6)` | No |
+| M15/2 | `trans16` | `(16,0,0,0,0,10,6)` | No |
+| M15/2 | `trans20` | `(16,0,10,10,6)` | No |
+
+This removes the former two/three-movement and final-combined-leg restrictions,
+without changing the verified task-clock or rollback scheduler. Every combined
+leg captures its own actual XYZ and full Euler start, uses shortest-arc yaw and
+preserves captured pitch/roll and current scale. Subsequent linear legs retain
+the preceding leg's rotation. Reverse motion restores each individual captured
+start in reverse order, including each intermediate yaw, rather than treating
+the whole path as one yaw interpolation.
+
+Stored `trans01` retains all five movements' captures and both groups' clocks,
+including all three combined legs. Snapshot validation remains sized to the
+actual program; no authored duration or wait is read from the save. Scripts,
+parallel waits, movement sounds/effects, independent examine handlers and
+controller/task15 lifecycles remain excluded as complete-program gates.
+
+Original-asset tests now cover all thirteen sequential programs. They check
+every forward/reverse waypoint's position and yaw, JSON round-trip and resume
+the exact matrix/cursor at every tick, and retain cancellation/settlement and
+invalid-state rejection. Mutated script-task, parallel-wait and sounded movement
+variants remain rejected rather than partially enabling a path. All 35 focused
+motion/platform tests and affected all-target checks pass.
+
+`trans05` has no task16 start-rotation fields: extra movement-rotation fields on
+that task do not substitute for them. Native omitted-component defaults remain
+zero, and the path starts/returns at yaw0 rather than the unrelated movement
+target yaw28.16756.
+
+Final-release live checks pass for all seven routes using actual-mesh boarding
+at `(40,8,-40)`, validating the leader's upright height and yaw orbit on every
+simulation step and every forward/reverse waypoint. `trans11` completes all
+eight movement legs, including its long ascent and both final yaw changes;
+`trans14` completes five consecutive combined legs and their individual yaw
+returns. No landing handoff was needed for these tested contacts.
+
+Stored `trans01` saves and resumes during each of its three combined legs in
+both directions; all six reloads reproduce the next three rider/platform frames.
+Pause holds both positions, and settled reload does not restart the program.
+All six nonstored routes reload their original pose with fresh startup state.
+The release build, formatting and whitespace checks pass. Runtime logs have no
+runtime/VM faults; the owned game, listener and temporary slots96/97 are cleaned
+up, and user saves1-5 match their pre-validation hashes. Independent examine
+integration (`trans19`), scripted/parallel compounds, controllers and navigation
+remain unfinished.

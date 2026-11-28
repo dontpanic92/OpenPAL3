@@ -1,11 +1,12 @@
 use super::buffer::{Buffer, BufferType};
 use super::material::VulkanMaterial;
 use super::uniform_buffers::DynamicUniformBufferManager;
+use crate::math::{Mat44, Vec3};
 use crate::rendering::vulkan::adhoc_command_runner::AdhocCommandRunner;
 use crate::rendering::vulkan::descriptor_managers::DescriptorManager;
-use crate::rendering::{RenderObject, VertexBuffer};
+use crate::rendering::{RenderObject, ShaderProgram, VertexBuffer};
 use ash::vk;
-use std::cell::{Cell, Ref, RefCell, RefMut};
+use std::cell::{Cell, OnceCell, Ref, RefCell, RefMut};
 use std::error::Error;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -21,6 +22,7 @@ pub struct VulkanRenderObject {
     vertex_buffer: Option<Buffer>,
     index_buffer: Buffer,
     material: Rc<VulkanMaterial>,
+    camera_clip: OnceCell<CameraClip>,
     per_object_descriptor_set: vk::DescriptorSet,
     dub_index: usize,
     /// Second dynamic-UBO slot holding this object's *shadow* model matrix.
@@ -38,7 +40,49 @@ pub struct VulkanRenderObject {
     local_aabb: Cell<Option<([f32; 3], [f32; 3])>>,
 }
 
+struct CameraClip {
+    center: [f32; 3],
+    distance: f32,
+    opacity: Cell<f32>,
+    enabled: Cell<bool>,
+    material: Rc<VulkanMaterial>,
+}
+
 impl RenderObject for VulkanRenderObject {
+    fn set_camera_clip(&self, clip: Option<([f32; 3], f32)>) -> bool {
+        let Some((center, distance)) = clip else {
+            if let Some(clip) = self.camera_clip.get() {
+                clip.enabled.set(false);
+                clip.opacity.set(1.);
+            }
+            return true;
+        };
+        if !center.iter().all(|v| v.is_finite())
+            || !distance.is_finite()
+            || distance < 0.
+            || self.material.key().program != ShaderProgram::TexturedNoLight
+        {
+            log::debug!(
+                "Camera clipping rejected for material {} ({:?})",
+                self.material.debug_name(),
+                self.material.key()
+            );
+            return false;
+        }
+        let clip = self.camera_clip.get_or_init(|| CameraClip {
+            center,
+            distance,
+            opacity: Cell::new(1.),
+            enabled: Cell::new(true),
+            material: Rc::new(self.material.camera_clip_variant()),
+        });
+        if clip.center != center || clip.distance != distance {
+            return false;
+        }
+        clip.enabled.set(true);
+        true
+    }
+
     fn update_vertices(&self, updater: &dyn Fn(RefMut<VertexBuffer>)) {
         updater(self.vertices.borrow_mut());
         self.vertex_revision
@@ -109,6 +153,7 @@ impl VulkanRenderObject {
             vertices: RefCell::new(vertices),
             _indices: indices,
             material,
+            camera_clip: OnceCell::new(),
             host_dynamic,
             vertex_revision: Cell::new(0),
             dub_manager: dub_manager.clone(),
@@ -155,7 +200,48 @@ impl VulkanRenderObject {
     }
 
     pub fn material_rc(&self) -> &Rc<VulkanMaterial> {
-        &self.material
+        if let Some(clip) = self
+            .camera_clip
+            .get()
+            .filter(|clip| clip.opacity.get() < 1.)
+        {
+            &clip.material
+        } else {
+            &self.material
+        }
+    }
+
+    pub(super) fn update_camera_clip(&self, world: &Mat44, camera: &Vec3) {
+        let Some(clip) = self.camera_clip.get().filter(|clip| clip.enabled.get()) else {
+            return;
+        };
+        let center = Vec3::new(
+            world[0][0] * clip.center[0]
+                + world[0][1] * clip.center[1]
+                + world[0][2] * clip.center[2]
+                + world[0][3],
+            world[1][0] * clip.center[0]
+                + world[1][1] * clip.center[1]
+                + world[1][2] * clip.center[2]
+                + world[1][3],
+            world[2][0] * clip.center[0]
+                + world[2][1] * clip.center[1]
+                + world[2][2] * clip.center[2]
+                + world[2][3],
+        );
+        let opacity = super::super::render_object::camera_clip_opacity(
+            Vec3::sub(&center, camera).norm(),
+            clip.distance,
+        );
+        clip.opacity.set(opacity);
+        clip.material
+            .update_camera_clip(self.material.params(), opacity);
+    }
+
+    pub(super) fn camera_clipped(&self) -> bool {
+        self.camera_clip
+            .get()
+            .is_some_and(|clip| clip.opacity.get() == 0.)
     }
 
     pub fn index_buffer(&self) -> &Buffer {
@@ -171,7 +257,7 @@ impl VulkanRenderObject {
     }
 
     pub fn material(&self) -> &VulkanMaterial {
-        &self.material
+        self.material_rc()
     }
 
     pub fn vk_descriptor_set(&self) -> vk::DescriptorSet {

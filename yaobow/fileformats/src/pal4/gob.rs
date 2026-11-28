@@ -243,6 +243,15 @@ impl GobGomTaskProperty {
     pub const MOVE_EFFECT_NAME: &'static str = "PAL4_GOMTask_move_effect_name";
     pub const MOVE_SOUND_NAME: &'static str = "PAL4_GOMTask_move_sound_name";
     pub const MOVE_SOUND_TIME: &'static str = "PAL4_GOMTask_move_sound_time";
+    pub const MOVMENT_POS_X: &'static str = "PAL4_GOMTask_movment_tPosX";
+    pub const MOVMENT_POS_Y: &'static str = "PAL4_GOMTask_movment_tPosY";
+    pub const MOVMENT_POS_Z: &'static str = "PAL4_GOMTask_movment_tPosZ";
+    pub const MOVMENT_ROT_X: &'static str = "PAL4_GOMTask_movment_tRotX";
+    pub const MOVMENT_ROT_Y: &'static str = "PAL4_GOMTask_movment_tRotY";
+    pub const MOVMENT_ROT_Z: &'static str = "PAL4_GOMTask_movment_tRotZ";
+    pub const MOVMENT_EFFECT_NAME: &'static str = "PAL4_GOMTask_movment_effect_name";
+    pub const MOVMENT_SOUND_NAME: &'static str = "PAL4_GOMTask_movment_sound_name";
+    pub const MOVMENT_SOUND_TIME: &'static str = "PAL4_GOMTask_movment_sound_time";
 }
 
 /// Numerical opcode stored as `PAL4_GOMTask_type`, kept as an opaque

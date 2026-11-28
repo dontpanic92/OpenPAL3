@@ -36,7 +36,7 @@ pub(crate) fn supported_metadata(entry: &GobEntry) -> bool {
         && matches!(integer(Float::AUTO_TOUCH, 0), 0 | 1)
         && matches!(integer(Float::TOUCH_TYPE, 1), 0 | 1)
         && matches!(integer(Fixed::STORE, 0), 0 | 1)
-        && integer(Fixed::CLIP, 0) == 0
+        && matches!(integer(Fixed::CLIP, 0), 0 | 1)
         && matches!(integer(Fixed::AUTO_DISAPPEAR, 0), 0 | 1)
         && integer(Fixed::MARKER, 0) == 0
         && integer(Fixed::HIDE, 0) == 0
@@ -61,11 +61,17 @@ pub(crate) fn supported_platform(entry: &GobEntry, kind: u32, has_motion: bool) 
         && supported_metadata(entry)
         && (has_motion
             || (entry
-                .get_property(Fixed::AUTO_DISAPPEAR)
-                .or_else(|| entry.get_parameter(Fixed::AUTO_DISAPPEAR))
+                .get_property(Fixed::CLIP)
+                .or_else(|| entry.get_parameter(Fixed::CLIP))
                 .and_then(GobProperty::value_i32)
                 .unwrap_or(0)
                 == 0
+                && entry
+                    .get_property(Fixed::AUTO_DISAPPEAR)
+                    .or_else(|| entry.get_parameter(Fixed::AUTO_DISAPPEAR))
+                    .and_then(GobProperty::value_i32)
+                    .unwrap_or(0)
+                    == 0
                 && entry
                     .get_property(Fixed::STORE)
                     .or_else(|| entry.get_parameter(Fixed::STORE))
@@ -116,7 +122,8 @@ impl ScriptPlatform {
                 .and_then(GobProperty::value_i32)
                 .unwrap_or(default)
         };
-        if integer(Fixed::STORE, 0) != 0
+        if integer(Fixed::CLIP, 0) != 0
+            || integer(Fixed::STORE, 0) != 0
             || integer(Fixed::AUTO_DISAPPEAR, 0) != 0
             || integer(Float::TOUCH_TYPE, 1) != 0
             || integer(Float::AUTO_TOUCH, 0) != 0
@@ -206,6 +213,42 @@ impl ScriptPlatform {
     }
 }
 
+pub(crate) fn enable_camera_clip(entity: &ComRc<IEntity>) -> bool {
+    use radiance::{comdef::IStaticMeshComponent, components::mesh::StaticMeshComponent};
+    fn collect(entity: &ComRc<IEntity>, meshes: &mut Vec<ComRc<IStaticMeshComponent>>) -> bool {
+        if let Some(mesh) = entity.get_component(IStaticMeshComponent::uuid()) {
+            meshes.push(mesh.query_interface::<IStaticMeshComponent>().unwrap());
+        } else if entity.get_rendering_component().is_some() {
+            log::debug!(
+                "Camera clipping unavailable for {}: rendering subtree is not rigid",
+                entity.name()
+            );
+            return false;
+        }
+        entity.children().iter().all(|child| collect(child, meshes))
+    }
+    let mut meshes = Vec::new();
+    if !collect(entity, &mut meshes) || meshes.is_empty() {
+        return false;
+    }
+    for mesh in &meshes {
+        if !mesh
+            .inner::<StaticMeshComponent>()
+            .enable_camera_clip(1200.)
+        {
+            log::debug!(
+                "Camera clipping unavailable for {}: missing sphere or unsupported renderer/material",
+                entity.name()
+            );
+            for mesh in &meshes {
+                mesh.inner::<StaticMeshComponent>().disable_camera_clip();
+            }
+            return false;
+        }
+    }
+    true
+}
+
 impl ScriptVm<Pal4VmContext> {
     pub(crate) fn tick_platform_scripts(&mut self, delta_sec: f32) {
         let (entities, module) = {
@@ -247,7 +290,14 @@ pub(crate) struct PlatformRide {
     rider_position: Vec3,
 }
 
-fn yaw(entity: &ComRc<IEntity>) -> f32 {
+pub(super) fn yaw(entity: &ComRc<IEntity>) -> f32 {
+    if let Some(component) = object_component(entity) {
+        if let Some(motion) = component.inner::<Pal4ObjectComponent>().motion.as_ref() {
+            if let Some(angle) = motion.borrow().platform_yaw(entity) {
+                return angle;
+            }
+        }
+    }
     let transform = entity.transform();
     let transform = transform.borrow();
     transform.matrix()[0][2].atan2(transform.matrix()[2][2])
@@ -295,6 +345,7 @@ impl Pal4Scene {
                 }
             }
         };
+        // Native selection queries floating atomics, independently of the static floor.
         let Some((platform, depth)) = world.dynamic_floor_hit(&origin) else {
             retain_stationary();
             return;
@@ -303,10 +354,7 @@ impl Pal4Scene {
             retain_stationary();
             return;
         }
-        if world
-            .cast_aa_ny(&origin)
-            .is_some_and(|nearest| depth > nearest + 0.001)
-            || !platform.visible()
+        if !platform.visible()
             || !object_component(&platform)
                 .is_some_and(|component| component.inner::<Pal4ObjectComponent>().platform.get())
         {
@@ -426,6 +474,113 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires original PAL4 assets; set PAL4_ASSET_ROOT"]
+    fn floating_selection_is_independent_of_a_nearer_static_floor() {
+        use common::store_ext::StoreExt2;
+        use fileformats::{binrw::BinRead, pal4::gob::GobFile};
+        use radiance::rendering::{
+            ComponentFactory, MaterialDef, RenderObjectHandle, RenderTarget, RenderingComponent,
+            Texture, TextureDef, VertexBuffer, VideoPlayer,
+        };
+        use std::rc::Rc;
+        struct UnrenderedFactory;
+        impl ComponentFactory for UnrenderedFactory {
+            fn create_texture(&self, _: &TextureDef) -> Box<dyn Texture> {
+                unreachable!()
+            }
+            fn create_imgui_texture(
+                &self,
+                _: &[u8],
+                _: u32,
+                _: u32,
+                _: u32,
+                _: Option<imgui::TextureId>,
+            ) -> (Box<dyn Texture>, imgui::TextureId) {
+                unreachable!()
+            }
+            fn remove_imgui_texture(&self, _: Option<imgui::TextureId>) {
+                unreachable!()
+            }
+            fn create_render_object(
+                &self,
+                _: VertexBuffer,
+                _: Vec<u32>,
+                _: &MaterialDef,
+                _: bool,
+            ) -> RenderObjectHandle {
+                unreachable!()
+            }
+            fn create_rendering_component(&self, _: Vec<RenderObjectHandle>) -> RenderingComponent {
+                unreachable!()
+            }
+            fn create_video_player(&self) -> Box<VideoPlayer> {
+                unreachable!()
+            }
+            fn create_render_target(&self, _: u32, _: u32) -> Box<dyn RenderTarget> {
+                unreachable!()
+            }
+        }
+        let vfs = packfs::init_virtual_fs(&std::env::var("PAL4_ASSET_ROOT").unwrap(), None);
+        let gob = GobFile::read(&mut std::io::Cursor::new(
+            vfs.read_to_end("/gamedata/scenedata/M15/1/GameObjs.gob")
+                .unwrap(),
+        ))
+        .unwrap();
+        let entry = gob
+            .entries
+            .iter()
+            .find(|e| e.name.to_string().unwrap() == "trans12")
+            .unwrap();
+        let scene = Pal4Scene::new_empty();
+        let platform = radiance::debug::create_box_entity(Rc::new(UnrenderedFactory));
+        let component = Pal4ObjectComponent::create(
+            entry.clone(),
+            GobObjectType::FLOAT,
+            *platform.transform().borrow().matrix(),
+        );
+        component.inner::<Pal4ObjectComponent>().platform.set(true);
+        platform.add_component(
+            crate::openpal4::comdef::IPal4ObjectComponent::uuid(),
+            component
+                .query_interface::<radiance::comdef::IComponent>()
+                .unwrap(),
+        );
+        let world = scene.scene.collision_world();
+        let world = world.inner::<CollisionWorldComponent>();
+        assert!(world.attach_dynamic_collider(&platform));
+        let origin = Vec3::new(0., 10000., 0.);
+        let (_, depth) = world.dynamic_floor_hit(&origin).unwrap();
+        let static_floor = radiance::debug::create_box_entity(Rc::new(UnrenderedFactory));
+        static_floor
+            .transform()
+            .borrow_mut()
+            .set_position(&Vec3::new(0., 4., 0.));
+        world.attach_collider(&static_floor);
+        assert!(world.cast_aa_ny(&origin).unwrap() < depth);
+        scene.players[0]
+            .transform()
+            .borrow_mut()
+            .set_position(&Vec3::new(0., 10000. - depth + 8., 0.));
+        scene.prepare_platform_rider(0);
+        assert_eq!(
+            scene
+                .platform_rider
+                .borrow()
+                .as_ref()
+                .unwrap()
+                .platform
+                .ptr_value(),
+            platform.ptr_value()
+        );
+        platform
+            .transform()
+            .borrow_mut()
+            .set_position(&Vec3::new(10., 0., 0.));
+        scene.carry_platform_rider();
+        assert_eq!(scene.players[0].transform().borrow().position().x, 10.);
+    }
+
+    #[test]
     fn stationary_rider_survives_a_missed_query_but_a_moved_or_disabled_rider_does_not() {
         let scene = Pal4Scene::new_empty();
         let platform = CoreEntity::create("platform".into(), true);
@@ -474,7 +629,7 @@ mod tests {
         use fileformats::{binrw::BinRead, pal4::gob::GobFile};
         let vfs = packfs::init_virtual_fs(&std::env::var("PAL4_ASSET_ROOT").unwrap(), None);
         let mut accepted = Vec::new();
-        for (scene, block) in [("M15", "1"), ("M15", "2"), ("M17", "2")] {
+        for (scene, block) in [("M14", "3"), ("M15", "1"), ("M15", "2"), ("M17", "2")] {
             let bytes = vfs
                 .read_to_end(&format!("/gamedata/scenedata/{scene}/{block}/GameObjs.gob"))
                 .unwrap();
@@ -503,6 +658,14 @@ mod tests {
         assert_eq!(
             accepted,
             [
+                "M14/3/trans01",
+                "M14/3/trans02",
+                "M14/3/trans03",
+                "M14/3/trans04",
+                "M14/3/trans05",
+                "M14/3/trans06",
+                "M14/3/trans07",
+                "M14/3/trans08",
                 "M15/1/JPuzzleA01",
                 "M15/1/JPuzzleA03",
                 "M15/1/JPuzzleA05",
@@ -517,13 +680,24 @@ mod tests {
                 "M15/1/JPuzzleE_3",
                 "M15/1/JPuzzleE_5",
                 "M15/1/JPuzzleE_8",
+                "M15/1/trans01",
+                "M15/1/trans02",
+                "M15/1/trans03",
                 "M15/1/trans04",
+                "M15/1/trans05",
+                "M15/1/trans06",
+                "M15/1/trans07",
+                "M15/1/trans09",
+                "M15/1/trans10",
+                "M15/1/trans11",
+                "M15/1/trans12",
                 "M15/2/JPuzzleF_1",
                 "M15/2/JPuzzleF_2",
                 "M15/2/JPuzzleF_5",
                 "M15/2/JPuzzleF_6",
                 "M15/2/JPuzzleG_2",
                 "M15/2/JPuzzleG_4",
+                "M15/2/JPuzzleG_7",
                 "M15/2/JPuzzleG_8",
                 "M15/2/JPuzzleH_1",
                 "M15/2/JPuzzleH_11",
@@ -533,9 +707,24 @@ mod tests {
                 "M15/2/JPuzzleI_14",
                 "M15/2/JPuzzleI_4",
                 "M15/2/JPuzzleI_9",
+                "M15/2/trans01",
+                "M15/2/trans02",
+                "M15/2/trans03",
+                "M15/2/trans04",
                 "M15/2/trans05",
                 "M15/2/trans06",
+                "M15/2/trans07",
+                "M15/2/trans11",
+                "M15/2/trans12",
                 "M15/2/trans13",
+                "M15/2/trans14",
+                "M15/2/trans15",
+                "M15/2/trans16",
+                "M15/2/trans17",
+                "M15/2/trans18",
+                "M15/2/trans20",
+                "M15/2/trans21",
+                "M15/2/trans34",
                 "M17/2/trans01",
                 "M17/2/trans02",
             ]

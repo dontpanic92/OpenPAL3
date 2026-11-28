@@ -286,6 +286,7 @@ impl RenderingEngine for VulkanRenderingEngine {
             return;
         }
         let entities = scene.visible_entities();
+        Self::update_camera_clips(&entities, &scene.camera());
         target.draw_frame_mut().prepare(&entities);
 
         // Build opaque / cutout / transparent buckets (mirrors `render_objects`).
@@ -920,6 +921,9 @@ impl VulkanRenderingEngine {
         let frame = self.current_frame;
         self.device
             .wait_for_fences(&[self.in_flight_fences[frame]], true, u64::MAX)?;
+        if let Some(camera) = camera {
+            Self::update_camera_clips(&entities, camera);
+        }
         let updated_vros = crate::perf::time("vulkan.render.ubo_update_total_ns", || {
             self.draw_frames[frame].prepare(&entities)
         });
@@ -1268,6 +1272,17 @@ impl VulkanRenderingEngine {
     /// Every output Vec is `clear()`ed (capacity retained) before
     /// population, so callers should pass the engine's persistent
     /// scratch fields to avoid per-frame allocations.
+    fn update_camera_clips(entities: &[ComRc<IEntity>], camera: &Camera) {
+        let eye = camera.transform().position();
+        for entity in entities {
+            if let Some(rendering) = entity.get_rendering_component() {
+                for object in rendering.vulkan_render_objects() {
+                    object.update_camera_clip(entity.world_transform().matrix(), &eye);
+                }
+            }
+        }
+    }
+
     fn bucketize_visible(
         entities: &[ComRc<IEntity>],
         camera: &Camera,
@@ -1323,6 +1338,9 @@ impl VulkanRenderingEngine {
         for (entity_idx, (rendering, world)) in components_out.iter().enumerate() {
             let m = world.floats();
             for (ro_idx, vro) in rendering.vulkan_render_objects().iter().enumerate() {
+                if vro.camera_clipped() {
+                    continue;
+                }
                 total_count += 1;
                 let world_aabb = vro
                     .local_aabb()

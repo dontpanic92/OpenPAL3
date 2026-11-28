@@ -39,6 +39,12 @@ pub trait RenderObject {
     /// against every render object it knows about.
     fn set_uv_xform(&self, _scale: [f32; 2], _offset: [f32; 2]) {}
 
+    /// Enable camera-distance clipping around an authored local sphere center.
+    /// Unsupported backends return false so callers can keep the feature gated.
+    fn set_camera_clip(&self, clip: Option<([f32; 3], f32)>) -> bool {
+        clip.is_none()
+    }
+
     /// Returns the source material's `debug_name`, when available.
     ///
     /// PAL4's water-UV-animation driver uses this to find render objects
@@ -59,6 +65,24 @@ pub trait RenderObject {
     /// material textures distinctly.
     fn material_texture_name(&self) -> Option<&str> {
         None
+    }
+}
+
+pub(super) fn camera_clip_opacity(distance: f32, cutoff: f32) -> f32 {
+    (((distance - cutoff) / 50.).clamp(0., 1.) * 255.).round() / 255.
+}
+
+#[cfg(test)]
+mod tests {
+    use super::camera_clip_opacity;
+
+    #[test]
+    fn camera_clip_uses_a_fifty_unit_quantized_ramp() {
+        assert_eq!(camera_clip_opacity(1199., 1200.), 0.);
+        assert_eq!(camera_clip_opacity(1200., 1200.), 0.);
+        assert_eq!(camera_clip_opacity(1225., 1200.), 128. / 255.);
+        assert_eq!(camera_clip_opacity(1250., 1200.), 1.);
+        assert_eq!(camera_clip_opacity(1800., 1200.), 1.);
     }
 }
 

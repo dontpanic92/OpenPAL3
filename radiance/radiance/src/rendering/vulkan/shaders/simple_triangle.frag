@@ -46,7 +46,7 @@ layout(location = 0) out vec4 outColor;
 
 void main() {
     vec4 sampled = texture(texSampler, fragTexCoord);
-    if (ALPHA_TEST && sampled.a < mat.misc.x) {
+    if ((ALPHA_TEST || mat.misc.x > 0.0) && sampled.a < mat.misc.x) {
         discard;
     }
     // Premultiplied invariant: scale RGB *and* alpha by tint.a so the

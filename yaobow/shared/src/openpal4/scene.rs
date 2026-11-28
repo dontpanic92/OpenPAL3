@@ -1026,7 +1026,15 @@ impl Pal4SceneLoader {
                         .functions
                         .iter()
                         .any(|function| function.name == program.borrow().function_name())
-                }) && world.attach_dynamic_collider(&e)
+                }) && (component
+                    .entry()
+                    .get_property(GobFixedProperty::CLIP)
+                    .or_else(|| component.entry().get_parameter(GobFixedProperty::CLIP))
+                    .and_then(GobProperty::value_i32)
+                    .unwrap_or(0)
+                    == 0
+                    || super::platforms::enable_camera_clip(&e))
+                    && world.attach_dynamic_collider(&e)
                 {
                     component.platform.set(true);
                 }

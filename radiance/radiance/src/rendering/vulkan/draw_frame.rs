@@ -470,6 +470,94 @@ mod tests {
                     .unwrap()
                     .read_into_vec(12)
             );
+            let clip_def = MaterialDef::builder(ShaderProgram::TexturedNoLight).build();
+            let clip_material = Rc::new(VulkanMaterial::new(
+                &clip_def,
+                &device,
+                &allocator,
+                &runner,
+                &mut VulkanTextureStore::new(),
+                &shaders,
+                &descriptors,
+            ));
+            let make_object = || {
+                Rc::new(
+                    VulkanRenderObject::new(
+                        VertexBuffer::new(VertexComponents::POSITION, 1),
+                        vec![0],
+                        clip_material.clone(),
+                        true,
+                        &allocator,
+                        &runner,
+                        &manager,
+                        &descriptors,
+                    )
+                    .unwrap(),
+                )
+            };
+            let clipped = make_object();
+            let sibling = make_object();
+            assert!(clipped.set_camera_clip(Some(([10., 20., 30.], 1200.))));
+            let base_params = clip_material.params();
+            let mut world = Transform::new();
+            world
+                .scale_local(&crate::math::Vec3::new(2., 3., 4.))
+                .rotate_axis_angle(&crate::math::Vec3::UP, std::f32::consts::FRAC_PI_2)
+                .set_position(&crate::math::Vec3::new(100., 200., 300.));
+            let center = crate::math::Vec3::new(220., 260., 280.);
+            let camera_at =
+                |distance| crate::math::Vec3::new(center.x, center.y + distance, center.z);
+            clipped.update_camera_clip(world.matrix(), &camera_at(1225.));
+            assert!(!clipped.camera_clipped());
+            assert_eq!(
+                clipped.material().key().blend,
+                crate::rendering::BlendMode::AlphaBlend
+            );
+            assert_eq!(
+                clipped.material().key().depth,
+                crate::rendering::DepthMode::TestOnly
+            );
+            assert!(
+                (clipped.material().params().tint[3] - base_params.tint[3] * 128. / 255.).abs()
+                    < 0.0001
+            );
+            assert_eq!(sibling.material().params(), base_params);
+            assert!(Rc::ptr_eq(sibling.material_rc(), &clip_material));
+            let clip_entity = crate::scene::CoreEntity::create("camera clip snapshot".into(), true);
+            let mut component = RenderingComponent::new();
+            component.push_render_object(RenderObjectHandle::from_vulkan(clipped.clone()));
+            clip_entity.set_rendering_component(Some(Rc::new(component)));
+            frames[0].prepare(&[clip_entity.clone()]);
+            let faded_key = Rc::as_ptr(clipped.material_rc()) as usize;
+            let faded_snapshot = frames[0]
+                .materials
+                .get_mut(&faded_key)
+                .unwrap()
+                .buffer
+                .read_into_vec(std::mem::size_of::<MaterialParamsGpu>());
+            clipped.update_camera_clip(world.matrix(), &camera_at(1200.));
+            assert!(clipped.camera_clipped());
+            frames[1].prepare(&[clip_entity.clone()]);
+            assert_eq!(
+                frames[0]
+                    .materials
+                    .get_mut(&faded_key)
+                    .unwrap()
+                    .buffer
+                    .read_into_vec(faded_snapshot.len()),
+                faded_snapshot
+            );
+            clipped.update_camera_clip(world.matrix(), &camera_at(1250.));
+            assert!(!clipped.camera_clipped());
+            assert!(Rc::ptr_eq(clipped.material_rc(), &clip_material));
+            assert_eq!(clipped.material().key(), clip_material.key());
+            assert_eq!(clip_material.params(), base_params);
+            clipped.update_camera_clip(world.matrix(), &camera_at(1199.));
+            assert!(clipped.camera_clipped());
+            assert!(clipped.set_camera_clip(None));
+            assert!(!clipped.camera_clipped());
+            assert!(Rc::ptr_eq(clipped.material_rc(), &clip_material));
+            frames[1].prepare(&[entity.clone()]);
             drop(entity);
             drop(object);
             frames[0].prepare(&[]);

@@ -16,6 +16,8 @@ pub struct StaticMeshComponent {
     entity: ComRc<IEntity>,
     geometries: RefCell<Vec<Geometry>>,
     model_bounds: Cell<Option<(Vec3, Vec3)>>,
+    model_sphere_center: Cell<Option<[f32; 3]>>,
+    camera_clip_distance: Cell<Option<f32>>,
     component_factory: Rc<dyn ComponentFactory>,
 }
 
@@ -31,6 +33,8 @@ impl StaticMeshComponent {
             entity,
             geometries: RefCell::new(geometries),
             model_bounds: Cell::new(None),
+            model_sphere_center: Cell::new(None),
+            camera_clip_distance: Cell::new(None),
             component_factory,
         }
     }
@@ -48,6 +52,49 @@ impl StaticMeshComponent {
 
     pub fn set_model_bounds(&self, bounds: (Vec3, Vec3)) {
         self.model_bounds.set(Some(bounds));
+    }
+
+    pub fn model_sphere_center(&self) -> Option<[f32; 3]> {
+        self.model_sphere_center.get()
+    }
+
+    pub fn set_model_sphere_center(&self, center: [f32; 3]) {
+        self.model_sphere_center.set(Some(center));
+    }
+
+    pub fn enable_camera_clip(&self, distance: f32) -> bool {
+        let Some(center) = self.model_sphere_center.get() else {
+            return false;
+        };
+        if !self.component_factory.supports_camera_clip()
+            || !center.iter().all(|v| v.is_finite())
+            || !distance.is_finite()
+            || distance < 0.
+            || self.geometries.borrow().iter().any(|geometry| {
+                geometry.material.program() != crate::rendering::ShaderProgram::TexturedNoLight
+            })
+        {
+            return false;
+        }
+        self.camera_clip_distance.set(Some(distance));
+        if let Some(rendering) = self.entity.get_rendering_component() {
+            for object in rendering.render_objects() {
+                if !object.as_dyn().set_camera_clip(Some((center, distance))) {
+                    self.disable_camera_clip();
+                    return false;
+                }
+            }
+        }
+        true
+    }
+
+    pub fn disable_camera_clip(&self) {
+        self.camera_clip_distance.set(None);
+        if let Some(rendering) = self.entity.get_rendering_component() {
+            for object in rendering.render_objects() {
+                object.as_dyn().set_camera_clip(None);
+            }
+        }
     }
 
     /// Replace the material on geometry `idx`. Must be called before
@@ -85,6 +132,10 @@ impl IComponentImpl for StaticMeshComponent {
                     &geometry.material,
                     false,
                 );
+                if let Some(distance) = self.camera_clip_distance.get() {
+                    ro.as_dyn()
+                        .set_camera_clip(Some((self.model_sphere_center.get().unwrap(), distance)));
+                }
 
                 objects.push(ro);
             }
@@ -98,4 +149,106 @@ impl IComponentImpl for StaticMeshComponent {
     fn on_unloading(&self) {}
 
     fn on_updating(&self, delta_sec: f32) -> crosscom::Void {}
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::rendering::{
+        RenderObject, RenderObjectHandle, RenderTarget, RenderingComponent, ShaderProgram, Texture,
+        TextureDef, VertexBuffer, VertexComponents, VideoPlayer,
+    };
+
+    struct ClipFactory {
+        calls: Rc<RefCell<Vec<Option<([f32; 3], f32)>>>>,
+    }
+
+    struct ClipObject(Rc<RefCell<Vec<Option<([f32; 3], f32)>>>>);
+
+    impl RenderObject for ClipObject {
+        fn update_vertices(&self, _: &dyn Fn(std::cell::RefMut<VertexBuffer>)) {}
+        fn set_camera_clip(&self, clip: Option<([f32; 3], f32)>) -> bool {
+            self.0.borrow_mut().push(clip);
+            true
+        }
+    }
+
+    impl ComponentFactory for ClipFactory {
+        fn supports_camera_clip(&self) -> bool {
+            true
+        }
+        fn create_render_object(
+            &self,
+            _: VertexBuffer,
+            _: Vec<u32>,
+            _: &MaterialDef,
+            _: bool,
+        ) -> RenderObjectHandle {
+            RenderObjectHandle::from_dyn(Rc::new(ClipObject(self.calls.clone())))
+        }
+        fn create_rendering_component(
+            &self,
+            objects: Vec<RenderObjectHandle>,
+        ) -> RenderingComponent {
+            let mut component = RenderingComponent::new();
+            for object in objects {
+                component.push_render_object(object);
+            }
+            component
+        }
+        fn create_texture(&self, _: &TextureDef) -> Box<dyn Texture> {
+            unreachable!()
+        }
+        fn create_imgui_texture(
+            &self,
+            _: &[u8],
+            _: u32,
+            _: u32,
+            _: u32,
+            _: Option<imgui::TextureId>,
+        ) -> (Box<dyn Texture>, imgui::TextureId) {
+            unreachable!()
+        }
+        fn remove_imgui_texture(&self, _: Option<imgui::TextureId>) {
+            unreachable!()
+        }
+        fn create_video_player(&self) -> Box<VideoPlayer> {
+            unreachable!()
+        }
+        fn create_render_target(&self, _: u32, _: u32) -> Box<dyn RenderTarget> {
+            unreachable!()
+        }
+    }
+
+    #[test]
+    fn camera_clip_registration_survives_deferred_mesh_loading_and_can_be_disabled() {
+        let entity = crate::scene::CoreEntity::create("deferred clip".into(), true);
+        let calls = Rc::new(RefCell::new(Vec::new()));
+        let geometry = Geometry {
+            vertices: VertexBuffer::new(VertexComponents::POSITION, 1),
+            indices: vec![0],
+            material: MaterialDef::builder(ShaderProgram::TexturedNoLight).build(),
+        };
+        let mesh = StaticMeshComponent::new(
+            entity.clone(),
+            vec![geometry],
+            Rc::new(ClipFactory {
+                calls: calls.clone(),
+            }),
+        );
+        assert!(!mesh.enable_camera_clip(1200.));
+        mesh.set_model_sphere_center([10., 20., 30.]);
+        assert!(mesh.enable_camera_clip(1200.));
+        assert!(calls.borrow().is_empty());
+        assert!(entity.get_rendering_component().is_none());
+        mesh.on_loading();
+        assert_eq!(*calls.borrow(), [Some(([10., 20., 30.], 1200.))]);
+        mesh.disable_camera_clip();
+        assert_eq!(calls.borrow().last(), Some(&None));
+        assert!(mesh.enable_camera_clip(1200.));
+        assert_eq!(calls.borrow().last(), Some(&Some(([10., 20., 30.], 1200.))));
+        let count = calls.borrow().len();
+        assert!(!mesh.enable_camera_clip(f32::NAN));
+        assert_eq!(calls.borrow().len(), count);
+    }
 }

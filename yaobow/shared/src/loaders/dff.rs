@@ -895,7 +895,7 @@ fn create_geometry(
     });
 
     create_geometry_internal(
-        entity,
+        entity.clone(),
         component_factory,
         vertices,
         normals,
@@ -913,6 +913,16 @@ fn create_geometry(
         fog_exempt,
         false,
     );
+    if let Some(component) = entity.get_component(IStaticMeshComponent::uuid()) {
+        let center = &geometry.morph_targets[0];
+        component
+            .inner::<StaticMeshComponent>()
+            .set_model_sphere_center([
+                center.bounding_sphere_x,
+                center.bounding_sphere_y,
+                center.bounding_sphere_z,
+            ]);
+    }
 }
 
 pub(crate) fn create_geometry_internal(

@@ -196,6 +196,10 @@ pub struct VulkanComponentFactory {
 }
 
 impl ComponentFactory for VulkanComponentFactory {
+    fn supports_camera_clip(&self) -> bool {
+        true
+    }
+
     fn create_texture(&self, texture_def: &TextureDef) -> Box<dyn Texture> {
         Box::new(
             VulkanTexture::new(

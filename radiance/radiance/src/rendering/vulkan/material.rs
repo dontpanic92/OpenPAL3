@@ -4,7 +4,7 @@ use super::shader_cache::VulkanShaderCache;
 use super::texture::VulkanTextureStore;
 use super::{device::Device, shader::VulkanShader, texture::VulkanTexture};
 use crate::rendering::vulkan::adhoc_command_runner::AdhocCommandRunner;
-use crate::rendering::{MaterialDef, MaterialKey, MaterialParams};
+use crate::rendering::{BlendMode, DepthMode, MaterialDef, MaterialKey, MaterialParams};
 use std::cell::Cell;
 use std::rc::Rc;
 
@@ -31,6 +31,30 @@ impl std::fmt::Debug for VulkanMaterial {
 }
 
 impl VulkanMaterial {
+    pub(super) fn camera_clip_variant(&self) -> Self {
+        let mut key = self.key;
+        key.blend = BlendMode::AlphaBlend;
+        key.depth = DepthMode::TestOnly;
+        Self {
+            debug_name: self.debug_name.clone(),
+            key,
+            shader: self.shader.clone(),
+            textures: self.textures.clone(),
+            texture_names: self.texture_names.clone(),
+            samplers: self.samplers.clone(),
+            params: Cell::new(self.params()),
+            revision: Cell::new(0),
+        }
+    }
+
+    pub(super) fn update_camera_clip(&self, mut params: MaterialParams, opacity: f32) {
+        params.tint[3] *= opacity;
+        if params != self.params.get() {
+            self.params.set(params);
+            self.revision.set(self.revision.get().wrapping_add(1));
+        }
+    }
+
     pub fn new(
         def: &MaterialDef,
         device: &Rc<Device>,

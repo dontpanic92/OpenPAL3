@@ -6,6 +6,10 @@ use super::{
 };
 
 pub trait ComponentFactory {
+    fn supports_camera_clip(&self) -> bool {
+        false
+    }
+
     fn create_texture(&self, texture_def: &TextureDef) -> Box<dyn Texture>;
 
     fn create_imgui_texture(
