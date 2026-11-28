@@ -489,7 +489,7 @@ Differences from PAL4:
 | `POST /v1/player/teleport`            | **Supported**      | Teleports `GlobalState::role_controlled` and mirrors to `PersistentState` |
 | `POST /v1/dialog/advance`             | **Supported**      | Synthesises a `Space` tap |
 | `POST /v1/dialog/choose`              | **not_implemented**| Deferred; needs an injection point in the SCE dialog system. (Under fast-forward, PAL3 auto-picks the first option so runs don't stall.) |
-| `POST /v1/save`                       | **Supported**      | Checked `PersistentState::try_save` |
+| `POST /v1/save`                       | **Supported**      | Checked `PersistentState::try_save`; **409** while loading or running an SCE script |
 | `POST /v1/load`                       | **Supported**      | Rebuilds the `AdventureDirector` from the slot (PAL3 has no in-place restore, so the menu/in-game auto-route resolves to the same fresh boot) |
 | `GET  /v1/script/globals`             | **Supported**      | Dense window over `PersistentState::get_global(i16)` |
 | `POST /v1/menu/new_game` / `/v1/menu/exit` | **Supported** | Routed through `Pal3Service`; `--pal3 --agent-port` must have been the launch flag so the asset path is known |
@@ -511,10 +511,13 @@ Differences from PAL4:
   scene manager, skipping the menu.
 * **Save slots**: PAL3 uses slots 1..=36, matching its original save browser.
   Num1..Num4 remain quick-save shortcuts. Failed writes are reported as errors.
+  Save only after player control returns: saves retain persistent progress, not
+  the in-flight SCE stack or cutscene commands. The agent rejects busy saves
+  without creating or overwriting the slot.
 * **`script_running` semantics**: PAL4 derives this from the
   AngelScript VM call stack. PAL3 ORs the SCE proc stack with the
-  inverse of `adv_input_enabled`, so dialogues and movies (which
-  disable adv input) read as `script_running = true` even when the
+  inverse of `adv_input_enabled` and pending SCE commands, so dialogues and
+  movies (which disable adv input) read as `script_running = true` even when the
   underlying VM is in a `Yield` waiting for input.
 
 ## PAL5 / SWD5 support

@@ -35,6 +35,12 @@ pub struct SceVm {
 }
 
 impl SceVm {
+    pub fn is_busy(&self) -> bool {
+        !self.state.global_state().adv_input_enabled()
+            || self.state.context().is_running()
+            || !self.active_commands.is_empty()
+    }
+
     pub fn new(
         audio_engine: Rc<dyn AudioEngine>,
         input_engine: Rc<RefCell<dyn InputEngine>>,

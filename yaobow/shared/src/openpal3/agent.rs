@@ -198,10 +198,9 @@ pub fn build_snapshot(ctx: &Pal3DispatchCtx) -> StateSnapshot {
     // engine is mid-cutscene, dialog, or movie. Treat its negation
     // as "script is running" for the agent contract — combined with
     // `is_running()` for the case where a proc is pending but input
-    // is still nominally enabled (script kick-off frame).
-    let script_running = director.is_loading()
-        || !global.adv_input_enabled()
-        || sce_vm.state().context().is_running();
+    // is still nominally enabled (script kick-off frame), and with pending
+    // commands whose procedure has already returned.
+    let script_running = director.is_loading() || sce_vm.is_busy();
     snap.script_running = script_running;
     snap.current_script_fn = sce_vm.state().context().current_proc_name();
 
@@ -362,6 +361,13 @@ fn handle_save_slot(ctx: &Pal3DispatchCtx, params: SlotParams) -> AgentResponse 
             super::save_slots::SAVE_SLOT_COUNT,
             params.slot
         )));
+    }
+    if director.sce_vm().is_busy() {
+        // Saves restore through the scene entry procedure, not a serialized
+        // SCE stack. A cutscene snapshot can strand the unfinished plot.
+        return AgentResponse::err(AgentError::conflict(
+            "PAL3 script is running; wait for player control before saving",
+        ));
     }
     if let Some(engine) = ctx.bridge.rendering_engine.borrow().clone() {
         director
