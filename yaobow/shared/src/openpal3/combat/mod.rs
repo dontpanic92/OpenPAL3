@@ -1,3 +1,4 @@
+pub mod battle;
 pub mod resources;
 pub mod timeline;
 
