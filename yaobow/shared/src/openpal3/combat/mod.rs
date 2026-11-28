@@ -1,4 +1,5 @@
 pub mod battle;
+pub mod commands;
 pub mod resources;
 pub mod timeline;
 

@@ -21,6 +21,12 @@ pub struct InitiativeMeter {
     held: bool,
 }
 
+impl InitiativeMeter {
+    pub fn held(&self) -> bool {
+        self.held
+    }
+}
+
 pub struct InitiativeTimeline {
     meters: [Option<InitiativeMeter>; ACTOR_SLOTS],
     time: f32,
@@ -82,6 +88,10 @@ impl InitiativeTimeline {
 
     pub fn paused(&self) -> bool {
         self.paused
+    }
+
+    pub fn time(&self) -> f32 {
+        self.time
     }
 
     pub fn set_running(&mut self, running: bool) {

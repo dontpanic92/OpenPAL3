@@ -130,26 +130,12 @@ impl BattleState {
         source: usize,
         target: usize,
     ) -> Result<AttackReport, AttackError> {
+        self.validate_physical(source, target)?;
         let attacker = self.actor(source).ok_or(AttackError::InvalidActor)?.clone();
         let defender = self
             .actor(target)
             .ok_or(AttackError::InvalidTarget)?
             .clone();
-        if !attacker.vitals.enabled || attacker.vitals.removed || attacker.vitals.current.hp <= 0 {
-            return Err(AttackError::InvalidActor);
-        }
-        if (source < 5) == (target < 5)
-            || defender.vitals.current.hp <= 0
-            || defender.vitals.removed
-        {
-            return Err(AttackError::InvalidTarget);
-        }
-        if source >= 5
-            && (901..=929).contains(&attacker.normal_attack)
-            && !(922..=925).contains(&attacker.normal_attack)
-        {
-            return Err(AttackError::UnsupportedOnHitEffect);
-        }
         let critical_chance = if attacker.attributes.luck > 0 {
             (f64::from(attacker.attributes.luck / 2).sqrt() * 10.0) as i32
         } else {
@@ -262,6 +248,31 @@ impl BattleState {
             }
         }
         Ok(report)
+    }
+
+    pub(super) fn validate_physical(
+        &self,
+        source: usize,
+        target: usize,
+    ) -> Result<(), AttackError> {
+        let attacker = self.actor(source).ok_or(AttackError::InvalidActor)?;
+        let defender = self.actor(target).ok_or(AttackError::InvalidTarget)?;
+        if !attacker.vitals.enabled || attacker.vitals.removed || attacker.vitals.current.hp <= 0 {
+            return Err(AttackError::InvalidActor);
+        }
+        if (source < 5) == (target < 5)
+            || defender.vitals.current.hp <= 0
+            || defender.vitals.removed
+        {
+            return Err(AttackError::InvalidTarget);
+        }
+        if source >= 5
+            && (901..=929).contains(&attacker.normal_attack)
+            && !(922..=925).contains(&attacker.normal_attack)
+        {
+            return Err(AttackError::UnsupportedOnHitEffect);
+        }
+        Ok(())
     }
 
     fn roll_percent(&mut self, chance: i32) -> bool {
