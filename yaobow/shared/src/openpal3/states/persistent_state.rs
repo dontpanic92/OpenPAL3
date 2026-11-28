@@ -397,7 +397,24 @@ impl PersistentState {
     }
 
     pub fn average_level(&mut self, role_id: i32, offset: i32, data: &StatsData) -> bool {
-        self.stats.average_level(&self.party, role_id, offset, data)
+        let has_others = self.party.members().any(|role| role != role_id);
+        if !self.stats.average_level(&self.party, role_id, offset, data) {
+            return false;
+        }
+        if has_others {
+            let level = self.stats.character(role_id).unwrap().level();
+            self.magic.learn_from_script_level(role_id, level, data);
+        }
+        true
+    }
+
+    pub fn advance_level(&mut self, role_id: i32, data: &StatsData) -> bool {
+        if !self.stats.advance_level(role_id, data) {
+            return false;
+        }
+        let level = self.stats.character(role_id).unwrap().level();
+        self.magic.learn_after_level_up(role_id, level, data);
+        true
     }
 
     pub fn set_scene_name(&mut self, scene: String, sub_scene: String) {

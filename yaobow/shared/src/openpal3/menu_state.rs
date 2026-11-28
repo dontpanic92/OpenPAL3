@@ -882,6 +882,7 @@ mod tests {
                 name: format!("Name{id}"),
                 description: "$Detail".into(),
                 usable_by: [true, id != 301 && id != 4101, true, true, true],
+                ..Default::default()
             });
         }
         let data = Rc::new(test_data_with_magic(&spells));

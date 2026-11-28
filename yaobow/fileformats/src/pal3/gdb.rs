@@ -14,6 +14,23 @@ pub struct MagicDefinition {
     pub description: String,
     /// Unlike the item block, these flags are already in gameplay role order.
     pub usable_by: [bool; 5],
+    /// Cumulative uses required for the three proficiency increases.
+    pub proficiency_uses: [u8; 3],
+    /// Skill unlock level for kind 0; successor unlock level for elemental magic.
+    pub learning_level: u8,
+    /// One-based proficiency required to learn `successor`.
+    pub successor_rank: u8,
+    pub successor: u32,
+    pub mixed_recipes: [MagicRecipe; 3],
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct MagicRecipe {
+    pub spell: u32,
+    pub other_spell: u32,
+    pub source_rank: u8,
+    pub other_rank: u8,
+    pub character_level: u8,
 }
 
 pub fn read_magic(bytes: &[u8]) -> io::Result<Vec<MagicDefinition>> {
@@ -49,6 +66,21 @@ pub fn read_magic(bytes: &[u8]) -> io::Result<Vec<MagicDefinition>> {
                 name: text(&record[0x1c..0x3c])?,
                 description: text(&record[0x3c..0x23c])?,
                 usable_by: std::array::from_fn(|i| record[0x23c + i] != 0),
+                proficiency_uses: record[0x2c6..0x2c9].try_into().unwrap(),
+                learning_level: record[0x2c9],
+                successor_rank: record[0x2ca],
+                successor: u32::from_le_bytes(record[0x2cc..0x2d0].try_into().unwrap()),
+                mixed_recipes: std::array::from_fn(|i| MagicRecipe {
+                    spell: u32::from_le_bytes(
+                        record[0x2d4 + i * 4..0x2d8 + i * 4].try_into().unwrap(),
+                    ),
+                    other_spell: u32::from_le_bytes(
+                        record[0x2e0 + i * 4..0x2e4 + i * 4].try_into().unwrap(),
+                    ),
+                    source_rank: record[0x2ef + i],
+                    other_rank: record[0x2ec + i],
+                    character_level: record[0x2f2 + i],
+                }),
             })
         })
         .collect()
@@ -144,6 +176,13 @@ mod tests {
         record[0x1c..0x20].copy_from_slice(&[0xb2, 0xe2, 0xca, 0xd4]);
         record[0x3c..0x41].copy_from_slice(b"$desc");
         record[0x23c..0x241].copy_from_slice(&[1, 0, 1, 0, 0]);
+        record[0x2c6..0x2cb].copy_from_slice(&[15, 30, 45, 4, 2]);
+        record[0x2cc..0x2d0].copy_from_slice(&302u32.to_le_bytes());
+        record[0x2d4..0x2d8].copy_from_slice(&326u32.to_le_bytes());
+        record[0x2e0..0x2e4].copy_from_slice(&319u32.to_le_bytes());
+        record[0x2ec] = 2;
+        record[0x2ef] = 3;
+        record[0x2f2] = 35;
         bytes[0xa0 + MAGIC_SIZE..0xa4 + MAGIC_SIZE].copy_from_slice(&4101u32.to_le_bytes());
         let spells = read_magic(&bytes).unwrap();
         assert_eq!(spells.len(), 2);
@@ -153,6 +192,26 @@ mod tests {
         assert_eq!(spells[0].description, "$desc");
         assert_eq!(spells[0].elements, [false, false, true, false, false]);
         assert_eq!(spells[0].usable_by, [true, false, true, false, false]);
+        assert_eq!(spells[0].proficiency_uses, [15, 30, 45]);
+        assert_eq!(
+            (
+                spells[0].learning_level,
+                spells[0].successor_rank,
+                spells[0].successor
+            ),
+            (4, 2, 302)
+        );
+        let recipe = &spells[0].mixed_recipes[0];
+        assert_eq!(
+            (
+                recipe.spell,
+                recipe.other_spell,
+                recipe.source_rank,
+                recipe.other_rank,
+                recipe.character_level
+            ),
+            (326, 319, 3, 2, 35)
+        );
         assert_eq!(spells[1].id, 4101);
         assert_eq!(spells[1].kind, 0);
     }

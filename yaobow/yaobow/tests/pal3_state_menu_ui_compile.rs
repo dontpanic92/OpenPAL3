@@ -1836,7 +1836,7 @@ fn native_item_panels_filter_scroll_and_select_without_changing_gameplay() {
 }
 
 #[test]
-fn magic_catalog_selects_and_filters_without_casting_or_consuming_books() {
+fn magic_catalog_shows_saved_automatic_learning_without_casting_or_consuming_books() {
     let mut database = vec![0u8; 0xa0 + 4 * 760 + 800];
     let header = b"__PAL(Softstar_Ltd: Cool_J)_GameDataBase_OutFile__";
     database[..header.len()].copy_from_slice(header);
@@ -1870,8 +1870,8 @@ fn magic_catalog_selects_and_filters_without_casting_or_consuming_books() {
             "$Water description",
         ),
         (
-            4101,
-            "Steal",
+            4102,
+            "Level skill",
             0,
             None,
             [1, 0, 0, 0, 0],
@@ -1906,8 +1906,11 @@ fn magic_catalog_selects_and_filters_without_casting_or_consuming_books() {
     let state = Rc::new(RefCell::new(PersistentState::new("test".into())));
     state.borrow_mut().party_mut().set_in_team(1, true);
     state.borrow_mut().grant_world_item(6409, &data);
-    assert!(state.borrow_mut().magic_mut().learn(0, 4101, &data));
+    assert!(state.borrow_mut().average_level(0, 3, &data));
+    assert_eq!(state.borrow().stats().character(0).unwrap().level(), 4);
+    assert!(state.borrow().magic().progress(0, 4102).is_some());
     let before = serde_json::to_string(&*state.borrow()).unwrap();
+    *state.borrow_mut() = serde_json::from_str(&before).unwrap();
     let service = Pal3MenuState::create(state.clone(), Some(data));
     let host = ScriptHost::new();
     host.set_script_assets(install_script_assets());
@@ -1970,7 +1973,7 @@ fn magic_catalog_selects_and_filters_without_casting_or_consuming_books() {
                 .any(|call| matches!(call, UiCall::TextAt { s, .. } if s == text))
         };
         click(350.0, 570.0);
-        assert!(has("Steal") && has("已习得") && has("Skill description"));
+        assert!(has("Level skill") && has("已习得") && has("Skill description"));
         click(420.0, 147.0);
         assert!(has("Wind") && has("Heal") && has("等级1") && has("未习得"));
         assert!(has("Wind description"));
