@@ -144,9 +144,30 @@ impl BattleCommands {
         if self.queue.iter().flatten().any(|command| command.started) {
             return Err(CommandError::Ai(AiError::UnsupportedPresentation));
         }
+        self.queue_enemy_physical_with_rest(source, profile, [true; ACTOR_SLOTS])
+    }
+
+    /// Rest predicates must come from current actor positions, not queue/busy flags.
+    pub fn queue_enemy_physical_with_rest(
+        &mut self,
+        source: usize,
+        profile: &EnemyAiProfile,
+        at_rest: [bool; ACTOR_SLOTS],
+    ) -> Result<Option<ActionId>, CommandError> {
+        if self
+            .queue
+            .iter()
+            .flatten()
+            .any(|command| command.source == source)
+        {
+            return Err(CommandError::Busy);
+        }
+        if !self.ready_actors().any(|slot| slot == source) {
+            return Err(CommandError::NotReady);
+        }
         let choice = self
             .battle
-            .choose_enemy_physical(source, profile)
+            .choose_enemy_physical_with_rest(source, profile, at_rest)
             .map_err(CommandError::Ai)?;
         choice
             .map(|target| self.queue_attack(source, target))
@@ -442,6 +463,49 @@ mod tests {
         );
         assert!(commands.hit(id).unwrap().hp_change < 0);
         commands.complete(id).unwrap();
+    }
+
+    #[test]
+    fn verified_rest_snapshot_allows_enemy_choice_during_another_actors_animation() {
+        let mut actor = battle().actor(0).unwrap().clone();
+        actor.vitals.current.hp = 1200;
+        let mut actors = std::array::from_fn(|_| None);
+        for slot in [0, 1, 5] {
+            actors[slot] = Some(actor.clone());
+        }
+        let mut commands = BattleCommands::new(BattleState::new(actors, Opening::PartyReady, 6, 0));
+        commands.set_running(true);
+        let party_action = commands.queue_attack(0, 5).unwrap();
+        commands.advance_to(10.0).unwrap();
+        let profile = EnemyAiProfile {
+            role_id: 701,
+            spells: [0; 4],
+            uses_items: false,
+        };
+        let before = *commands.battle().rng();
+        assert_eq!(
+            commands.queue_enemy_physical(5, &profile),
+            Err(CommandError::Ai(AiError::UnsupportedPresentation))
+        );
+        assert_eq!(*commands.battle().rng(), before);
+        let mut rest = [true; ACTOR_SLOTS];
+        rest[0] = false;
+        let enemy_action = commands
+            .queue_enemy_physical_with_rest(5, &profile, rest)
+            .unwrap()
+            .unwrap();
+        assert_eq!(commands.battle().rng().draws(), 3);
+        assert_eq!(
+            commands.advance_to(10.0).unwrap(),
+            [CommandEvent::Started {
+                id: enemy_action,
+                source: 5,
+                target: 1
+            }]
+        );
+        assert_eq!(commands.battle().actor(1).unwrap().vitals.current.hp, 1200);
+        commands.complete(enemy_action).unwrap();
+        commands.complete(party_action).unwrap();
     }
 
     #[test]

@@ -2,7 +2,9 @@ use crate::openpal3::states::stats::{Attributes, Resources};
 
 use super::{
     CombatRng,
-    ai::{AiError, EnemyAiProfile, choose_noncasting_physical},
+    ai::{
+        AiError, EnemyAiProfile, choose_noncasting_physical, choose_noncasting_physical_with_rest,
+    },
     native_integer, physical_base_delta,
     resources::CombatVitals,
     timeline::{ACTOR_SLOTS, InitiativeTimeline, Opening, READY_THRESHOLD},
@@ -131,6 +133,15 @@ impl BattleState {
         profile: &EnemyAiProfile,
     ) -> Result<Option<usize>, AiError> {
         choose_noncasting_physical(&self.actors, source, profile, &mut self.rng)
+    }
+
+    pub fn choose_enemy_physical_with_rest(
+        &mut self,
+        source: usize,
+        profile: &EnemyAiProfile,
+        at_rest: [bool; ACTOR_SLOTS],
+    ) -> Result<Option<usize>, AiError> {
+        choose_noncasting_physical_with_rest(&self.actors, source, profile, &mut self.rng, at_rest)
     }
 
     /// Resolves effects after preparation, not player-command submission.

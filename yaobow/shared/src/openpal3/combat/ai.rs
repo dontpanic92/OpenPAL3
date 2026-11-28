@@ -41,12 +41,28 @@ pub fn choose_noncasting_physical(
     profile: &EnemyAiProfile,
     rng: &mut CombatRng,
 ) -> Result<Option<usize>, AiError> {
+    choose_noncasting_physical_with_rest(actors, source, profile, rng, [true; ACTOR_SLOTS])
+}
+
+/// Uses the animation host's actual rest-position predicates (native 0x50a700).
+/// Moving candidates remain in sampling/caches but fail physical proposals.
+/// The source must be idle and at rest; other decision trees remain unsupported.
+pub fn choose_noncasting_physical_with_rest(
+    actors: &[Option<PhysicalActor>; ACTOR_SLOTS],
+    source: usize,
+    profile: &EnemyAiProfile,
+    rng: &mut CombatRng,
+    at_rest: [bool; ACTOR_SLOTS],
+) -> Result<Option<usize>, AiError> {
     let actor = actors
         .get(source)
         .and_then(Option::as_ref)
         .ok_or(AiError::InvalidActor)?;
     if source < 5 || !actor.vitals.enabled || actor.vitals.current.hp <= 0 {
         return Err(AiError::InvalidActor);
+    }
+    if !at_rest[source] {
+        return Err(AiError::UnsupportedPresentation);
     }
     if profile.role_id == 739 {
         return Err(AiError::UnsupportedBoss);
@@ -109,7 +125,7 @@ pub fn choose_noncasting_physical(
             continue;
         }
         // The critical tree tries an ordinary hit before any spell attempt.
-        if critical && slot < 5 {
+        if critical && slot < 5 && at_rest[slot] {
             return Ok(Some(slot));
         }
         if party_needs_area_action {
@@ -121,10 +137,12 @@ pub fn choose_noncasting_physical(
             // Healthy and wounded trees try a 15%/10% spell action before
             // falling back to physical. Unavailable casting still draws.
             rng.next_u15();
-            return Ok(Some(slot));
+            if at_rest[slot] {
+                return Ok(Some(slot));
+            }
         }
         // Only the healthy tree has these nested enemy-side 30% attempts.
-        if healthy && rng.next_u15() % 1024 < 307 {
+        if slot >= 5 && healthy && rng.next_u15() % 1024 < 307 {
             rng.next_u15();
         }
     }
@@ -256,6 +274,34 @@ mod tests {
     }
 
     #[test]
+    fn moving_targets_keep_native_attempt_draws_and_fall_through_to_resting_targets() {
+        let mut actors = std::array::from_fn(|_| None);
+        for slot in [0, 1, 2, 5] {
+            actors[slot] = Some(actor());
+        }
+        for (hp, draws, no_target_draws) in [(100, 3, 6), (49, 5, 8), (24, 3, 8)] {
+            for actor in actors.iter_mut().flatten() {
+                actor.vitals.current.hp = hp;
+            }
+            let mut rest = [true; ACTOR_SLOTS];
+            rest[0] = false;
+            let mut rng = CombatRng::new(6);
+            assert_eq!(
+                choose_noncasting_physical_with_rest(&actors, 5, &profile(), &mut rng, rest),
+                Ok(Some(1))
+            );
+            assert_eq!(rng.draws(), draws);
+            rest[..3].fill(false);
+            let mut rng = CombatRng::new(6);
+            assert_eq!(
+                choose_noncasting_physical_with_rest(&actors, 5, &profile(), &mut rng, rest),
+                Ok(None)
+            );
+            assert_eq!(rng.draws(), no_target_draws);
+        }
+    }
+
+    #[test]
     #[ignore = "requires PAL3_AI_ORACLE"]
     fn original_noncasting_health_bands_match_proposals_and_rng() {
         use serde::Deserialize;
@@ -264,6 +310,8 @@ mod tests {
             hp: i32,
             max_hp: i32,
             enabled: bool,
+            #[serde(default = "default_rest")]
+            at_rest: bool,
         }
         #[derive(Deserialize)]
         struct ResultState {
@@ -283,6 +331,9 @@ mod tests {
         struct Oracle {
             cases: Vec<Case>,
         }
+        fn default_rest() -> bool {
+            true
+        }
         let oracle: Oracle = serde_json::from_slice(
             &std::fs::read(std::env::var("PAL3_AI_ORACLE").unwrap()).unwrap(),
         )
@@ -299,8 +350,17 @@ mod tests {
                 })
             });
             let mut rng = CombatRng::new(case.seed);
-            let choice =
-                choose_noncasting_physical(&actors, case.source, &profile(), &mut rng).unwrap();
+            let rest = std::array::from_fn(|slot| {
+                case.actors[slot].as_ref().is_none_or(|actor| actor.at_rest)
+            });
+            let choice = choose_noncasting_physical_with_rest(
+                &actors,
+                case.source,
+                &profile(),
+                &mut rng,
+                rest,
+            )
+            .unwrap();
             assert_eq!(
                 choice.map(|target| [0x103, 0, case.source as i32, target as i32]),
                 case.result.proposal,
