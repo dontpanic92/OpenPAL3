@@ -1,4 +1,5 @@
 use super::{
+    ai::{AiError, EnemyAiProfile},
     battle::{AttackError, AttackReport, BattleState},
     timeline::{ACTOR_SLOTS, READY_THRESHOLD},
 };
@@ -8,6 +9,7 @@ pub struct ActionId(u64);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CommandError {
+    Ai(AiError),
     Attack(AttackError),
     NotReady,
     Busy,
@@ -121,6 +123,34 @@ impl BattleCommands {
             hit_consumed: false,
         });
         Ok(id)
+    }
+
+    pub fn queue_enemy_physical(
+        &mut self,
+        source: usize,
+        profile: &EnemyAiProfile,
+    ) -> Result<Option<ActionId>, CommandError> {
+        if self
+            .queue
+            .iter()
+            .flatten()
+            .any(|command| command.source == source)
+        {
+            return Err(CommandError::Busy);
+        }
+        if !self.ready_actors().any(|slot| slot == source) {
+            return Err(CommandError::NotReady);
+        }
+        if self.queue.iter().flatten().any(|command| command.started) {
+            return Err(CommandError::Ai(AiError::UnsupportedPresentation));
+        }
+        let choice = self
+            .battle
+            .choose_enemy_physical(source, profile)
+            .map_err(CommandError::Ai)?;
+        choice
+            .map(|target| self.queue_attack(source, target))
+            .transpose()
     }
 
     /// Native command handlers run before the meter update (0x513060).
@@ -354,6 +384,55 @@ mod tests {
                 .iter()
                 .any(|&slot| commands.battle().actor(slot).unwrap().vitals.current.hp == 0)
         );
+    }
+
+    #[test]
+    fn enemy_ai_no_choice_preserves_readiness_and_caster_rejection_is_atomic() {
+        let mut actor = battle().actor(0).unwrap().clone();
+        actor.normal_attack = 924;
+        let mut actors = std::array::from_fn(|_| None);
+        actors[0] = Some(actor.clone());
+        actors[5] = Some(actor);
+        let state = BattleState::new(actors, Opening::EnemiesReady, 0, 0);
+        let mut commands = BattleCommands::new(state);
+        let profile = EnemyAiProfile {
+            role_id: 701,
+            spells: [0; 4],
+            uses_items: false,
+        };
+        assert_eq!(commands.queue_enemy_physical(5, &profile), Ok(None));
+        assert_eq!(commands.battle().rng().draws(), 8);
+        assert_eq!(
+            commands.battle().timeline().meter(5).unwrap().ready,
+            READY_THRESHOLD
+        );
+        let mut caster = profile.clone();
+        caster.spells[0] = 210;
+        let before = *commands.battle().rng();
+        assert_eq!(
+            commands.queue_enemy_physical(5, &caster),
+            Err(CommandError::Ai(AiError::UnsupportedCasting))
+        );
+        assert_eq!(*commands.battle().rng(), before);
+        let mut queued = None;
+        for _ in 0..64 {
+            queued = commands.queue_enemy_physical(5, &profile).unwrap();
+            if queued.is_some() {
+                break;
+            }
+        }
+        let id = queued.expect("the native retry path eventually proposes an attack");
+        commands.set_running(true);
+        assert_eq!(
+            commands.advance_to(0.0).unwrap(),
+            [CommandEvent::Started {
+                id,
+                source: 5,
+                target: 0
+            },]
+        );
+        assert!(commands.hit(id).unwrap().hp_change < 0);
+        commands.complete(id).unwrap();
     }
 
     #[test]

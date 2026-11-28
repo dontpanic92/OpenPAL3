@@ -1,7 +1,9 @@
 use crate::openpal3::states::stats::{Attributes, Resources};
 
 use super::{
-    CombatRng, native_integer, physical_base_delta,
+    CombatRng,
+    ai::{AiError, EnemyAiProfile, choose_healthy_physical},
+    native_integer, physical_base_delta,
     resources::CombatVitals,
     timeline::{ACTOR_SLOTS, InitiativeTimeline, Opening, READY_THRESHOLD},
 };
@@ -121,6 +123,14 @@ impl BattleState {
     }
     pub fn money(&self) -> i32 {
         self.money
+    }
+
+    pub fn choose_enemy_physical(
+        &mut self,
+        source: usize,
+        profile: &EnemyAiProfile,
+    ) -> Result<Option<usize>, AiError> {
+        choose_healthy_physical(&self.actors, source, profile, &mut self.rng)
     }
 
     /// Resolves effects after preparation, not player-command submission.
