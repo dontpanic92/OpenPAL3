@@ -2,6 +2,7 @@ pub mod ai;
 pub mod battle;
 pub mod commands;
 pub mod resources;
+pub mod setup;
 pub mod timeline;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -21,6 +21,9 @@ pub struct RoleDefinition {
     pub normal_attack: u32,
     pub spells: [u32; 4],
     pub spell_levels: [u8; 4],
+    /// Native conditions 1..23 installed at battle entry.
+    pub initial_conditions: [bool; 23],
+    pub status_immune: bool,
     pub qi_gain: i32,
     pub money: i16,
 }
@@ -67,6 +70,8 @@ pub fn read_roles(bytes: &[u8]) -> io::Result<Vec<RoleDefinition>> {
                 normal_attack: integer(0x2ec) as u32,
                 spells: std::array::from_fn(|i| integer(0x2f8 + i * 4) as u32),
                 spell_levels: record[0x308..0x30c].try_into().unwrap(),
+                initial_conditions: std::array::from_fn(|i| record[0x2ac + i] != 0),
+                status_immune: record[0x2c5] != 0,
                 qi_gain: integer(0x30c),
                 // Native settlement 0x4fb3f0 sign-extends this field.
                 money: i16::from_le_bytes(record[0x352..0x354].try_into().unwrap()),
@@ -178,6 +183,9 @@ pub struct ItemDefinition {
     pub modes: [u8; 12],
     pub amounts: [i16; 12],
     pub elements: [bool; 5],
+    pub hit_divisor: i32,
+    /// Qi discount, MP discount, critical bonus, native fourth percentage.
+    pub combat_percentages: [i16; 4],
 }
 
 /// Read common metadata and stat effects from the compiled database's item block.
@@ -224,6 +232,10 @@ pub fn read_items(bytes: &[u8]) -> io::Result<Vec<ItemDefinition>> {
                     i16::from_le_bytes(record[0x284 + i * 2..0x286 + i * 2].try_into().unwrap())
                 }),
                 elements: std::array::from_fn(|i| record[0x26b + i] != 0),
+                hit_divisor: i32::from_le_bytes(record[0x2fc..0x300].try_into().unwrap()),
+                combat_percentages: std::array::from_fn(|i| {
+                    i16::from_le_bytes(record[0x300 + i * 2..0x302 + i * 2].try_into().unwrap())
+                }),
             })
         })
         .collect()
@@ -260,6 +272,9 @@ mod tests {
             record[0x2f8 + i * 4..0x2fc + i * 4].copy_from_slice(&value.to_le_bytes());
         }
         record[0x308..0x30c].copy_from_slice(&[1, 3, 0, 0]);
+        record[0x2ac + 5] = 1;
+        record[0x2ac + 22] = 1;
+        record[0x2c5] = 1;
         record[0x30c..0x310].copy_from_slice(&8i32.to_le_bytes());
         record[0x350..0x352].copy_from_slice(&123i16.to_le_bytes());
         record[0x352..0x354].copy_from_slice(&(-30i16).to_le_bytes());
@@ -284,6 +299,11 @@ mod tests {
         );
         assert_eq!(role.spells, [210, 206, 0, 0]);
         assert_eq!(role.spell_levels, [1, 3, 0, 0]);
+        assert_eq!(
+            role.initial_conditions,
+            std::array::from_fn(|i| matches!(i, 5 | 22))
+        );
+        assert!(role.status_immune);
     }
 
     #[test]
@@ -399,6 +419,11 @@ mod tests {
         bytes[0xa0 + 0x276] = 3;
         bytes[0xa0 + 0x2c0..0xa0 + 0x2c2].copy_from_slice(&2i16.to_le_bytes());
         bytes[0xa0 + 0x2f8..0xa0 + 0x2fa].copy_from_slice(&(-1i16).to_le_bytes());
+        bytes[0xa0 + 0x2fc..0xa0 + 0x300].copy_from_slice(&3i32.to_le_bytes());
+        for (i, percentage) in [-10i16, 20, -30, 40].iter().enumerate() {
+            bytes[0xa0 + 0x300 + i * 2..0xa0 + 0x302 + i * 2]
+                .copy_from_slice(&percentage.to_le_bytes());
+        }
         let items = read_items(&bytes).unwrap();
         assert_eq!(items.len(), 2);
         assert_eq!(items[0].id, 123);
@@ -418,6 +443,8 @@ mod tests {
         assert_eq!(items[0].modes[0], 1);
         assert_eq!(items[0].amounts[3], -7);
         assert_eq!(items[0].elements, [false, false, true, false, false]);
+        assert_eq!(items[0].hit_divisor, 3);
+        assert_eq!(items[0].combat_percentages, [-10, 20, -30, 40]);
         assert_eq!(items[1].id, 456);
         assert_eq!(items[1].amounts, [0; 12]);
     }

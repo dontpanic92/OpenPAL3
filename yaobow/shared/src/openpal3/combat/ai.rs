@@ -29,6 +29,7 @@ pub enum AiError {
     UnsupportedStatusOrFormation,
     UnsupportedOnHitEffect,
     UnsupportedPresentation,
+    UnsupportedEquipment,
 }
 
 /// Native 0x4d7120 selects healthy/wounded/critical non-casting decision trees.
@@ -77,6 +78,9 @@ pub fn choose_noncasting_physical_with_rest(
         return Err(AiError::UnsupportedOnHitEffect);
     }
     for actor in actors.iter().flatten() {
+        if actor.unsupported_equipment {
+            return Err(AiError::UnsupportedEquipment);
+        }
         if actor.vitals.maximum.hp <= 0
             || actor.vitals.current.hp < 0
             || (actor.vitals.current.hp == 0 && actor.vitals.enabled)
@@ -217,6 +221,12 @@ mod tests {
             choose_noncasting_physical(&actors, 5, &caster, &mut rng),
             Err(AiError::UnsupportedCasting)
         );
+        actors[0].as_mut().unwrap().unsupported_equipment = true;
+        assert_eq!(
+            choose_noncasting_physical(&actors, 5, &profile(), &mut rng),
+            Err(AiError::UnsupportedEquipment)
+        );
+        actors[0].as_mut().unwrap().unsupported_equipment = false;
         actors[5].as_mut().unwrap().vitals.current.hp = 101;
         assert_eq!(
             choose_noncasting_physical(&actors, 5, &profile(), &mut rng),

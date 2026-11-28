@@ -25,6 +25,7 @@ pub struct PhysicalActor {
     pub cannot_evade: bool,
     pub counter: bool,
     pub critical_bonus_percent: f32,
+    pub unsupported_equipment: bool,
     /// Native packed formation/element flags, not the GDB stat affinities.
     pub element_table: [u32; 5],
 }
@@ -52,6 +53,7 @@ impl PhysicalActor {
             cannot_evade: false,
             counter: false,
             critical_bonus_percent: 0.0,
+            unsupported_equipment: false,
             element_table: [0; 5],
         }
     }
@@ -69,6 +71,7 @@ pub enum AttackError {
     InvalidActor,
     InvalidTarget,
     UnsupportedOnHitEffect,
+    UnsupportedEquipment,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -99,7 +102,15 @@ impl BattleState {
         seed: u32,
         money: i32,
     ) -> Self {
-        let mut rng = CombatRng::new(seed);
+        Self::with_rng(actors, opening, CombatRng::new(seed), money)
+    }
+
+    pub(crate) fn with_rng(
+        actors: [Option<PhysicalActor>; ACTOR_SLOTS],
+        opening: Opening,
+        mut rng: CombatRng,
+        money: i32,
+    ) -> Self {
         let speeds = std::array::from_fn(|slot| actors[slot].as_ref().map(|a| a.attributes.speed));
         let timeline = InitiativeTimeline::new(speeds, opening, &mut rng);
         Self {
@@ -287,6 +298,9 @@ impl BattleState {
         {
             return Err(AttackError::InvalidTarget);
         }
+        if attacker.unsupported_equipment || defender.unsupported_equipment {
+            return Err(AttackError::UnsupportedEquipment);
+        }
         if source >= 5
             && (901..=929).contains(&attacker.normal_attack)
             && !(922..=925).contains(&attacker.normal_attack)
@@ -437,6 +451,29 @@ mod tests {
             expanded.resolve_physical(5, 0).unwrap()
         );
         assert_eq!(baseline.rng(), expanded.rng());
+    }
+
+    #[test]
+    fn unsupported_equipment_on_either_participant_rejects_before_damage_or_rng() {
+        for guarded in [0, 5] {
+            let mut actors = std::array::from_fn(|_| None);
+            actors[0] = Some(actor());
+            actors[5] = Some(actor());
+            actors[guarded].as_mut().unwrap().unsupported_equipment = true;
+            let mut battle = BattleState::new(actors, Opening::PartyReady, 6, 200);
+            let before = *battle.rng();
+            assert_eq!(
+                battle.resolve_physical(0, 5),
+                Err(AttackError::UnsupportedEquipment)
+            );
+            assert_eq!(
+                battle.resolve_physical(5, 0),
+                Err(AttackError::UnsupportedEquipment)
+            );
+            assert_eq!(*battle.rng(), before);
+            assert_eq!(battle.actor(0).unwrap().vitals.current.hp, 10000);
+            assert_eq!(battle.actor(5).unwrap().vitals.current.hp, 10000);
+        }
     }
 
     #[test]
