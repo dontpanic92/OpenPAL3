@@ -20,7 +20,7 @@ image = "0.23.0"
 imgui = { workspace = true }
 lazy_static = "1.2.0"
 log = { version = "0.4", features = ["max_level_debug", "release_max_level_debug"] }
-lru = { version = "0.12.5" }
+lru = { version = "0.16.3" }
 mini-fs = { workspace = true }
 p7 = { path = "../../radiance/protosept/p7" }
 radiance = { path = "../../radiance/radiance" }
@@ -54,4 +54,4 @@ gltf = { version = "1.4", default-features = false, features = ["utils", "extras
 # real, catalog-resolvable vfs path without needing any packfs
 # changes). Version matches `tools/repacker`'s already-locked `zip`
 # dependency.
-zip = "7"
+zip = "9.0.5"

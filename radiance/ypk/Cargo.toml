@@ -8,5 +8,5 @@ description = "Lightweight reader, writer, and mini-fs store for Yaobow YPK arch
 anyhow = "1"
 binrw = "0.11"
 mini-fs = { workspace = true }
-xxhash-rust = { version = "0.8", features = ["xxh3"] }
+xxhash-rust = { version = "0.8.16", features = ["xxh3"] }
 zstd = "0.13"
