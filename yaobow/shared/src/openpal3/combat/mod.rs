@@ -1,3 +1,5 @@
+pub mod timeline;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CombatRng {
     state: u32,
